@@ -60,7 +60,9 @@ Read `.claude/settings.local.json` and merge these into `permissions.allow` (do 
 "Bash(codemap summary:*)", "Bash(codemap coupling:*)",
 "Bash(codemap graph-stats:*)", "Bash(codemap config:*)",
 "Bash(codemap init:*)", "Bash(codemap ignore:*)",
-"Bash(codemap watch:*)", "Bash(codemap rebuild-depgraph:*)"
+"Bash(codemap watch:*)", "Bash(codemap rebuild-depgraph:*)",
+"Bash(codemap read:*)", "Bash(codemap serve:*)",
+"Bash(codemap statusline:*)", "Bash(codemap update:*)"
 ```
 
 If `.claude/settings.local.json` does not exist, create it with:
@@ -85,7 +87,11 @@ If `.claude/settings.local.json` does not exist, create it with:
       "Bash(codemap init:*)",
       "Bash(codemap ignore:*)",
       "Bash(codemap watch:*)",
-      "Bash(codemap rebuild-depgraph:*)"
+      "Bash(codemap rebuild-depgraph:*)",
+      "Bash(codemap read:*)",
+      "Bash(codemap serve:*)",
+      "Bash(codemap statusline:*)",
+      "Bash(codemap update:*)"
     ]
   }
 }
@@ -113,6 +119,10 @@ Do NOT prompt the user — auto-configure silently.
 | `codemap ignore` | Generate .codemapignore | `--force` |
 | `codemap watch` | Live index updates on file change | `--debounce <ms>` |
 | `codemap rebuild-depgraph` | Rebuild dep graph from scratch | `--json` |
+| `codemap read <file>` | Read full source of a file (or line range) | `--start`, `--end` |
+| `codemap serve` | Start MCP server over stdio | |
+| `codemap statusline` | Install CodeMap status into Claude Code statusline | |
+| `codemap update` | Update codemap to latest version | |
 
 ## When to Use Which Command
 
