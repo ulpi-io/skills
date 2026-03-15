@@ -41,6 +41,10 @@ npx skills add https://github.com/ulpi-io/skills --skill browse
 
 ## browse
 
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill browse
+```
+
 **Give AI agents a real browser — without flooding the context with HTML.**
 
 A persistent headless Chromium daemon that stays running between commands. The agent navigates, clicks, fills forms, takes screenshots, and reads page content through simple CLI commands — each returning minimal, structured output instead of dumping raw HTML or full accessibility trees.
@@ -60,6 +64,10 @@ Requires: `bun install -g @ulpi/browse` | [Full docs →](https://github.com/ulp
 
 ## codemap
 
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill codemap
+```
+
 **Code search and architecture analysis that understands your codebase.**
 
 Hybrid vector + BM25 search, dependency graphs, PageRank importance scoring, coupling metrics, circular dependency detection. CLI or MCP.
@@ -77,6 +85,10 @@ Requires: `npm install -g @ulpi/codemap` | MCP: `claude mcp add codemap codemap 
 
 ## plan-to-task-list-with-dag
 
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill plan-to-task-list-with-dag
+```
+
 **Decompose features into parallel-ready task DAGs.**
 
 Explores the codebase, challenges scope with the user, breaks features into atomic tasks with dependency mapping, priority assignment, and agent matching. Outputs machine-parseable markdown + JSON for parallel agent execution.
@@ -84,6 +96,10 @@ Explores the codebase, challenges scope with the user, breaks features into atom
 ---
 
 ## map-project
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill map-project
+```
 
 **Generate CLAUDE.md from a codebase scan.**
 
@@ -93,6 +109,10 @@ Scans the project and produces a context file with exports, architecture, dev gu
 
 ## map-project-monorepo
 
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill map-project-monorepo
+```
+
 **Per-package CLAUDE.md for monorepos.**
 
 Same as map-project but generates a focused CLAUDE.md for each subdirectory — exports, key files, dependencies, conventions. Each package gets its own self-contained context file.
@@ -100,6 +120,10 @@ Same as map-project but generates a focused CLAUDE.md for each subdirectory — 
 ---
 
 ## cost-estimate
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill cost-estimate
+```
 
 **Estimate development cost of a codebase, branch, or commit.**
 
@@ -109,6 +133,10 @@ Analyzes LOC, git history, complexity metrics, and generates a cost report. Supp
 
 ## pr-retro
 
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill pr-retro
+```
+
 **Branch retrospective before merging.**
 
 Analyzes all commits on the branch: size metrics, test LOC ratio, focus score, session analysis, commit hygiene, self-review scan (TODOs, debug artifacts, secrets). Delivers a merge readiness verdict — GREEN / YELLOW / RED.
@@ -116,6 +144,10 @@ Analyzes all commits on the branch: size metrics, test LOC ratio, focus score, s
 ---
 
 ## branch-review-before-pr
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill branch-review-before-pr
+```
 
 **Pre-landing structural review.**
 
@@ -125,6 +157,10 @@ Catches issues tests don't: race conditions, trust boundary violations, query sa
 
 ## find-bugs
 
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill find-bugs
+```
+
 **Security audit + bug finding on branch diff.**
 
 Analyzes full diff against main, maps attack surfaces, runs security checklist against every changed file, verifies findings against context. Prioritized output.
@@ -132,6 +168,10 @@ Analyzes full diff against main, maps attack surfaces, runs security checklist a
 ---
 
 ## code-simplify
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill code-simplify
+```
 
 **Review code for reuse, quality, and efficiency.**
 
@@ -141,6 +181,10 @@ Analyzes changed code for unnecessary complexity, duplication, and missed reuse 
 
 ## frontend-design-ui-ux
 
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill frontend-design-ui-ux
+```
+
 **UI/UX design methodology for implementation-ready specs.**
 
 Produces component briefs, design tokens, and user flow specifications for handoff to engineering agents. For designing new features, creating design systems, or specifying component behavior.
@@ -148,6 +192,10 @@ Produces component briefs, design tokens, and user flow specifications for hando
 ---
 
 ## update-claude-learnings
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill update-claude-learnings
+```
 
 **Extract behavioral learnings to CLAUDE.md.**
 
@@ -157,6 +205,10 @@ After a session reveals patterns or project-specific instructions, this skill ad
 
 ## update-agent-learnings
 
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill update-agent-learnings
+```
+
 **Propagate learnings to agent files.**
 
 Extracts insights from a session and routes them to the right agent files based on scope — global (all subagents), Claude Code only, or agent-specific.
@@ -164,6 +216,10 @@ Extracts insights from a session and routes them to the right agent files based 
 ---
 
 ## update-skill-learnings
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill update-skill-learnings
+```
 
 **Propagate learnings to skill files.**
 
@@ -173,6 +229,10 @@ When a session reveals patterns about structuring skills, this skill updates the
 
 ## start
 
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill start
+```
+
 **Session init — discover skills, select agent persona.**
 
 Mandatory first skill for any conversation. Discovers available skills, invokes the right ones, selects the correct specialized agent persona for the task domain, and establishes required workflows before coding begins.
@@ -180,6 +240,10 @@ Mandatory first skill for any conversation. Discovers available skills, invokes 
 ---
 
 ## commit
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill commit
+```
 
 **Smart conventional commits with quality gates.**
 
@@ -189,6 +253,10 @@ Analyzes diffs deeply to draft intelligent commit messages, detects scope from b
 
 ## create-pr
 
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill create-pr
+```
+
 **Auto-generate and submit pull requests.**
 
 Validates branch state, analyzes all commits since divergence, runs pre-PR quality checks, generates structured PR title and body with summary/test-plan/breaking-changes sections, pushes branch, creates PR via gh CLI.
@@ -196,6 +264,10 @@ Validates branch state, analyzes all commits since divergence, runs pre-PR quali
 ---
 
 ## git-merge-expert
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill git-merge-expert
+```
 
 **Merge branches and resolve conflicts.**
 
@@ -205,6 +277,10 @@ Expert in merge strategies, conflict resolution, PR readiness checks, rollback, 
 
 ## git-merge-expert-worktree
 
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill git-merge-expert-worktree
+```
+
 **Isolated merges in git worktrees.**
 
 Same merge expertise but in isolated worktrees — worktree lifecycle management, parallel worktree operations, and cleanup automation. For when you need merge isolation without touching the working directory.
@@ -212,6 +288,10 @@ Same merge expertise but in isolated worktrees — worktree lifecycle management
 ---
 
 ## plan-founder-review
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill plan-founder-review
+```
 
 **Technical founder review of a plan before execution.**
 
