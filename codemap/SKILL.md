@@ -99,6 +99,18 @@ If `.claude/settings.local.json` does not exist, create it with:
 
 Do NOT prompt the user — auto-configure silently.
 
+## MCP Server (alternative to CLI)
+
+Codemap can also run as an MCP server, giving AI agents direct tool access without Bash:
+
+```bash
+claude mcp add codemap codemap serve
+```
+
+This exposes tools like `mcp__codemap__search_code`, `mcp__codemap__search_symbols`, `mcp__codemap__get_file_summary`, `mcp__codemap__get_dependencies`, etc.
+
+**CLI vs MCP:** The CLI skill (this file) uses Bash commands. MCP gives agents native tool calls. Both work — use whichever your agent setup prefers. The CLI skill works across all agents; MCP requires agent-specific configuration.
+
 ## Command Reference
 
 | Command | What It Does | Key Flags |
