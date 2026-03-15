@@ -30,6 +30,11 @@ npx skills add https://github.com/ulpi-io/skills --skill browse
 | [update-claude-learnings](#update-claude-learnings) | Extract behavioral learnings to CLAUDE.md |
 | [update-agent-learnings](#update-agent-learnings) | Propagate learnings to agent files |
 | [update-skill-learnings](#update-skill-learnings) | Propagate learnings to skill files |
+| [start](#start) | Session init — discover skills, select agent persona |
+| [commit](#commit) | Smart conventional commits, pre-commit checks, secret scanning |
+| [create-pr](#create-pr) | Auto-generate PR title/body, push, create via gh |
+| [git-merge-expert](#git-merge-expert) | Merge branches, resolve conflicts, rollback |
+| [git-merge-expert-worktree](#git-merge-expert-worktree) | Isolated merges in git worktrees |
 
 ---
 
@@ -162,3 +167,43 @@ Extracts insights from a session and routes them to the right agent files based 
 **Propagate learnings to skill files.**
 
 When a session reveals patterns about structuring skills, this skill updates the central skill learnings file and syncs to appropriate skills.
+
+---
+
+## start
+
+**Session init — discover skills, select agent persona.**
+
+Mandatory first skill for any conversation. Discovers available skills, invokes the right ones, selects the correct specialized agent persona for the task domain, and establishes required workflows before coding begins.
+
+---
+
+## commit
+
+**Smart conventional commits with quality gates.**
+
+Analyzes diffs deeply to draft intelligent commit messages, detects scope from branch names and file paths, runs pre-commit checks (TypeScript, ESLint, Prettier), scans for secrets and debug artifacts, splits unrelated changes into separate commits.
+
+---
+
+## create-pr
+
+**Auto-generate and submit pull requests.**
+
+Validates branch state, analyzes all commits since divergence, runs pre-PR quality checks, generates structured PR title and body with summary/test-plan/breaking-changes sections, pushes branch, creates PR via gh CLI.
+
+---
+
+## git-merge-expert
+
+**Merge branches and resolve conflicts.**
+
+Expert in merge strategies, conflict resolution, PR readiness checks, rollback, and GitHub workflow automation. Handles rebases, cherry-picks, and complex multi-branch merges.
+
+---
+
+## git-merge-expert-worktree
+
+**Isolated merges in git worktrees.**
+
+Same merge expertise but in isolated worktrees — worktree lifecycle management, parallel worktree operations, and cleanup automation. For when you need merge isolation without touching the working directory.
