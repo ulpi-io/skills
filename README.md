@@ -36,6 +36,8 @@ npx skills add https://github.com/ulpi-io/skills --skill browse
 | [git-merge-expert](#git-merge-expert) | Merge branches, resolve conflicts, rollback |
 | [git-merge-expert-worktree](#git-merge-expert-worktree) | Isolated merges in git worktrees |
 | [plan-founder-review](#plan-founder-review) | Technical founder review of a plan before execution |
+| [run-parallel-agents-feature-build](#run-parallel-agents-feature-build) | Orchestrate parallel agents for feature building |
+| [run-parallel-agents-feature-debug](#run-parallel-agents-feature-debug) | Orchestrate parallel agents for debugging |
 
 ---
 
@@ -296,3 +298,27 @@ npx skills add https://github.com/ulpi-io/skills --skill plan-founder-review
 **Technical founder review of a plan before execution.**
 
 Reads a plan from `plans/<name>.md`, verifies file paths exist, challenges scope and architecture decisions, audits risk coverage and test gaps, scores sections, and delivers a verdict — APPROVE / REVISE / REJECT. Quality gate between planning and execution.
+
+---
+
+## run-parallel-agents-feature-build
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill run-parallel-agents-feature-build
+```
+
+**Orchestrate parallel agents for feature building.**
+
+Detects independent tasks, matches each to the right specialized agent, and launches them concurrently via the Agent tool with `isolation: "worktree"` for safe parallel file modifications. Verifies independence, prepares complete briefs, aggregates results, and checks for conflicts. Integrates with codemap for codebase understanding and browse sessions for parallel web work.
+
+---
+
+## run-parallel-agents-feature-debug
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill run-parallel-agents-feature-debug
+```
+
+**Orchestrate parallel agents for debugging.**
+
+Clusters independent bugs by subsystem, verifies no shared root cause or cascading failures, matches each problem to the right expert agent, and launches concurrent debugging sessions. Uses `codemap deps` in briefs so agents understand impact radius. Aggregates fixes and validates no conflicts.
