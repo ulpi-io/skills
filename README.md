@@ -38,6 +38,7 @@ npx skills add https://github.com/ulpi-io/skills --skill browse
 | [plan-founder-review](#plan-founder-review) | Technical founder review of a plan before execution |
 | [run-parallel-agents-feature-build](#run-parallel-agents-feature-build) | Orchestrate parallel agents for feature building |
 | [run-parallel-agents-feature-debug](#run-parallel-agents-feature-debug) | Orchestrate parallel agents for debugging |
+| [update-claude-settings](#update-claude-settings) | Detect tech stack, generate Claude Code permissions |
 
 ---
 
@@ -322,3 +323,15 @@ npx skills add https://github.com/ulpi-io/skills --skill run-parallel-agents-fea
 **Orchestrate parallel agents for debugging.**
 
 Clusters independent bugs by subsystem, verifies no shared root cause or cascading failures, matches each problem to the right expert agent, and launches concurrent debugging sessions. Uses `codemap deps` in briefs so agents understand impact radius. Aggregates fixes and validates no conflicts.
+
+---
+
+## update-claude-settings
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill update-claude-settings
+```
+
+**Detect tech stack, generate Claude Code permissions.**
+
+Analyzes the repository to detect languages, package managers, frameworks, services, and monorepo structure. Generates `.claude/settings.local.json` with correct permissions for the detected stack — including @ulpi tools (browse, codemap) when installed. Only includes commands for tools actually detected. Suggests MCP servers for detected services.
