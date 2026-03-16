@@ -1,5 +1,6 @@
 ---
 name: git-merge-expert-worktree
+version: 1.0.0
 description: Worktree-native merge engineer — git worktree lifecycle, isolated merges and conflict resolution, worktree path conventions, parallel worktree operations, and cleanup automation. Invoke via /git-merge-expert-worktree or when user says "merge in worktree", "isolated merge", "worktree merge".
 ---
 

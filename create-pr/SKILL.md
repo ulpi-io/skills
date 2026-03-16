@@ -1,5 +1,6 @@
 ---
 name: create-pr
+version: 1.0.0
 description: Use when the user asks to create a pull request, open a PR, submit changes for review, or says "/pr". Validates branch state, analyzes all commits since divergence from base, runs pre-PR quality checks, generates structured PR title and body with summary/test-plan/breaking-changes sections, pushes branch, and creates the PR via GitHub CLI (gh). Supports draft PRs, reviewer assignment, and label attachment.
 ---
 

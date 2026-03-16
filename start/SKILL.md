@@ -1,5 +1,6 @@
 ---
 name: start
+version: 1.0.0
 description: |
   MANDATORY for starting any conversation or task. Establishes required workflows: discovering and using skills,
   invoking the Skill tool before announcing usage, performing brainstorming before coding, creating TodoWrite

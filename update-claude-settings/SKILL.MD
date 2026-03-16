@@ -1,5 +1,6 @@
 ---
 name: update-claude-settings
+version: 1.0.0
 description: |
   Detect tech stack, generate Claude Code settings.local.json permissions and MCP server suggestions.
   Analyzes lock files, config files, frameworks, services, and monorepo structure. Invoke via

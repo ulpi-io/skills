@@ -1,5 +1,6 @@
 ---
 name: frontend-design-ui-ux
+version: 1.0.0
 description: Design user interfaces with comprehensive UX methodology. Produces implementation-ready specifications, component briefs, and design tokens for handoff to Next.js and React engineering agents. Use when designing new features, creating design systems, planning user flows, or specifying component behavior.
 ---
 

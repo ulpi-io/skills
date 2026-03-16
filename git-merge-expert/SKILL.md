@@ -1,5 +1,6 @@
 ---
 name: git-merge-expert
+version: 1.0.0
 description: Expert in merging branches, resolving Git conflicts, worktree management, PR readiness checks, merge strategies, rollback, and GitHub workflow automation. Invoke via /git-merge-expert or when user says "merge branch", "resolve conflicts", "merge PR", "rollback merge".
 ---
 

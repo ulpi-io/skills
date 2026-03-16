@@ -1,5 +1,6 @@
 ---
 name: codemap
+version: 1.0.0
 description: |
   Hybrid vector+BM25 code search, symbol lookup, dependency analysis, PageRank importance scoring,
   coupling metrics, and circular dependency detection via the codemap CLI. Use when the user asks to

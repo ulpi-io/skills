@@ -1,5 +1,6 @@
 ---
 name: update-agent-learnings
+version: 1.0.0
 description: Extract learnings from a session and propagate them to appropriate agent files based on scope (Global for all subagents, Claude Code Only for main agent, or Agent-Specific). Use when a session revealed patterns, mistakes, or insights. Invoke via /update-agent-learnings or after challenging sessions.
 ---
 

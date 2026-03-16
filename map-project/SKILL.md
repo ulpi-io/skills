@@ -1,5 +1,6 @@
 ---
 name: map-project
+version: 1.0.0
 description: Scan the codebase and generate/update CLAUDE.md + reference files (exports, architecture, dev guide) with real project-specific patterns. Run after each coding session or major refactor to keep the AI context map current. Supports Laravel, Next.js, NestJS, Expo/React Native, and Node.js projects.
 ---
 

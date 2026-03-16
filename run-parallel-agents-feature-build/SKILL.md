@@ -1,5 +1,6 @@
 ---
 name: run-parallel-agents-feature-build
+version: 1.0.0
 description: |
   Orchestrate multiple specialized agents working in parallel when building independent features.
   Use when the task list contains 3+ unrelated tasks that don't share state or files.

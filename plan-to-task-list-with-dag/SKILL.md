@@ -1,5 +1,6 @@
 ---
 name: plan-to-task-list-with-dag
+version: 1.0.0
 description: Interactive build planner — explores codebase via CodeMap, challenges scope with user, decomposes features into atomic TASK-NNN entries with dependency mapping and priority assignment, produces machine-parseable task plans for parallel agent execution. Use when you need to break a feature, bug fix, or project into a structured DAG of tasks for parallel agent execution.
 ---
 

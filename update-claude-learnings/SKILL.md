@@ -1,5 +1,6 @@
 ---
 name: update-claude-learnings
+version: 1.0.0
 description: Extract learnings about Claude Code behavior from a session and add them to the project's CLAUDE.md file. Use for behavioral rules, workflow patterns, and project-specific instructions that apply to the main Claude Code agent. Invoke via /update-claude-learnings after sessions revealing behavioral patterns.
 ---
 

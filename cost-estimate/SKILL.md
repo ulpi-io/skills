@@ -1,5 +1,6 @@
 ---
 name: cost-estimate
+version: 1.0.0
 description: Estimate development cost of a codebase (full repo, branch diff, or single commit). Invoke via /cost-estimate or when user says "estimate cost", "how much would this cost", "development cost". Accepts optional scope args like "branch:feat/foo" or "commit:abc1234".
 ---
 

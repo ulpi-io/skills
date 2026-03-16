@@ -1,5 +1,6 @@
 ---
 name: ast-grep
+version: 1.0.0
 description: |
   Structural code search via AST patterns. Find code by structure, not text — async functions
   without error handling, specific API call patterns, missing guards. Use when grep/ripgrep

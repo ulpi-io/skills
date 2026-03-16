@@ -1,5 +1,6 @@
 ---
 name: branch-review-before-pr
+version: 1.0.0
 description: |
   Pre-landing PR review. Analyzes diff against main for structural issues that
   tests don't catch: query safety, race conditions, trust boundary violations,

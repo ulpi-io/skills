@@ -1,5 +1,6 @@
 ---
 name: find-bugs
+version: 1.0.0
 description: Use when the user asks to find bugs, review changes, security audit, or check code quality on the current branch. Analyzes full diffs against the default branch, maps attack surfaces, runs a security checklist against every changed file, verifies findings against context, and reports prioritized issues. Invoke via /find-bugs or when user says "find bugs", "review my changes", "security review", "audit this code".
 ---
 

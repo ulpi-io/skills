@@ -1,5 +1,6 @@
 ---
 name: pr-retro
+version: 1.0.0
 description: Use when the user asks for a branch retrospective, pre-PR analysis, branch health check, or says "/pr-retro". Analyzes all commits on the current branch vs base (main..HEAD), computes size metrics, test LOC ratio, focus score, session analysis, commit hygiene, contributor breakdown, self-review scan (TODOs, debug artifacts, .only, secrets), and delivers a merge readiness verdict (GREEN/YELLOW/RED). Supports --quick (dashboard only) and --base <branch> (custom base). Saves JSON snapshot to .history/pr-retros/.
 allowed-tools:
   - Bash

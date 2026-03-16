@@ -1,5 +1,6 @@
 ---
 name: code-simplify
+version: 1.0.0
 description: |
   Review changed code for reuse, quality, and efficiency. Analyzes for unnecessary complexity,
   redundant abstractions, deep nesting, and unclear naming, then applies targeted simplifications

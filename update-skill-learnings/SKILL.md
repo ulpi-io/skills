@@ -1,5 +1,6 @@
 ---
 name: update-skill-learnings
+version: 1.0.0
 description: Extract learnings about skill creation/improvement from a session and propagate them to the central skill learnings file, then sync to appropriate skills. Use when a session revealed patterns, anti-patterns, or insights about structuring skills. Invoke via /update-skill-learnings or after skill creation/improvement sessions.
 ---
 

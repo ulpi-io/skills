@@ -1,5 +1,6 @@
 ---
 name: run-parallel-agents-feature-debug
+version: 1.0.0
 description: |
   Orchestrate multiple specialized agents working in parallel to debug independent problems.
   Use when encountering 3+ unrelated bugs or test failures in isolated modules.

@@ -1,5 +1,6 @@
 ---
 name: plan-founder-review
+version: 1.0.0
 description: |
   Technical founder review of a plan before execution. Reads a plan from plans/<name>.md,
   verifies file paths exist, challenges scope and architecture decisions, audits risk coverage

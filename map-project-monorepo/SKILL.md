@@ -1,5 +1,6 @@
 ---
 name: map-project-monorepo
+version: 1.0.0
 description: Scan a monorepo and generate/update per-package CLAUDE.md files. Each subdirectory gets a focused, self-contained CLAUDE.md with exports, key files, dependencies, and conventions. Run after each coding session, major refactors, or package additions to keep the AI context map current.
 ---
 

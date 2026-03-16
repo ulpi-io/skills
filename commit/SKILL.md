@@ -1,5 +1,6 @@
 ---
 name: commit
+version: 1.0.0
 description: Use when the user asks to commit changes. Analyzes diffs deeply to draft intelligent conventional commit messages, detects scope from branch names and file paths, runs pre-commit quality checks (TypeScript, ESLint, Prettier), scans for secrets and debug artifacts, splits unrelated changes into separate commits, and verifies success. Invoke via /commit or when user says "commit", "commit this", "make a commit".
 ---
 
