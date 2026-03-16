@@ -174,7 +174,7 @@ Use the Agent tool with these parameters for each task:
 - subagent_type: Matched agent from the Agent Table
 - isolation: "worktree" (MANDATORY for parallel file modifications)
 - run_in_background: true (for concurrent execution)
-- model: "sonnet" for most tasks, "haiku" for simple tasks (docs, linting)
+- model: "opus" for complex tasks, "sonnet" for straightforward tasks
 ```
 
 **Critical Requirements:**

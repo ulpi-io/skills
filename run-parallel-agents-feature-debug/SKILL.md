@@ -204,7 +204,7 @@ Use the Agent tool with these parameters for each issue:
 - subagent_type: Matched agent from the Agent Table
 - isolation: "worktree" (MANDATORY for parallel file modifications)
 - run_in_background: true (for concurrent execution)
-- model: "sonnet" for most debugging, "haiku" for simple lint/type fixes
+- model: "opus" for complex debugging, "sonnet" for straightforward fixes
 ```
 
 **Critical Requirements:**
