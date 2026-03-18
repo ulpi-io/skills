@@ -1,6 +1,6 @@
 ---
 name: browse
-version: 2.3.0
+version: 2.3.1
 description: |
   Fast web browsing for AI coding agents via persistent headless Chromium daemon. Navigate to any URL,
   read page content, click elements, fill forms, run JavaScript, take screenshots,
