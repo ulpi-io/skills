@@ -215,6 +215,23 @@ Parallel execution complete. Results:
 **Overall:** [X/Y features completed, any conflicts, next steps]
 ```
 
+### Step 5b: Review Dispatch (Mandatory When Plan Specifies Review)
+
+After each task agent completes and before merging its worktree, check the task's `review` field from the plan JSON. If it is not `none`, invoke the corresponding review skill using the `Skill` tool:
+
+| `review` value | Skill invocation | What it runs |
+|---------------|-----------------|--------------|
+| `codex` | `Skill("codex-review")` | OpenAI Codex CLI (`codex review`) — external binary, independent AI |
+| `claude` | `Skill("claude-review")` | Separate Claude Code agent in isolated worktree |
+| `kiro` | `Skill("kiro-review")` | Kiro CLI (`kiro-cli chat`) — external binary, independent AI |
+| `none` | Skip review | No review needed |
+
+**CRITICAL:** These are real external CLI tools, not prompts for a general-purpose agent. Do NOT substitute a Claude agent with "review this diff" in the prompt — that is a self-review, not an independent review. The entire point of specifying `codex` or `kiro` is to get a second opinion from a different AI system.
+
+**Review timing:** Reviews can run in parallel with other task agents that don't depend on the reviewed task. For example, if TASK-001 and TASK-002 are both in Layer 0, you can review TASK-001 while TASK-002's agent is still running.
+
+**Review failures:** If the review tool finds P0/P1 issues, fix them before merging the worktree and before launching dependent tasks. P2/P3 issues can be noted and fixed during merge.
+
 ### Step 6: Verification (MANDATORY)
 
 After aggregating results, verify the parallel execution was successful:
@@ -417,6 +434,8 @@ These are excuses. Don't fall for them:
 - **"One message is too long"** → ALL Agent tool calls MUST be in one message
 - **"The user just wants it done"** → Correct execution = faster completion
 - **"Two tasks don't need parallel agents"** → Correct, need 3+ tasks
+- **"I'll just have a Claude agent review the diff, same thing as codex"** → It is NOT the same thing. Codex and Kiro are independent AI systems with different training and different blind spots. Self-review catches fewer bugs than cross-model review. Use the tool specified in the plan.
+- **"The review tool isn't installed"** → WARN the user, don't silently substitute. `which codex` or `which kiro-cli` to check availability.
 
 ---
 

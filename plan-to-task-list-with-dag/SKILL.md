@@ -558,9 +558,11 @@ The `run-parallel-agents-feature-build` skill (or manual execution) should:
 
 1. Run the task agent
 2. Check the `review` field
-3. If not `none`, invoke the corresponding review skill on the task's commit
+3. If not `none`, invoke the corresponding review skill on the task's commit using `Skill("codex-review")`, `Skill("claude-review")`, or `Skill("kiro-review")`
 4. Report findings to the user
 5. Fix findings before marking the task complete
+
+**IMPORTANT:** The `review` field is a binding instruction to the executor, not a suggestion. When `run-parallel-agents-feature-build` processes this plan, it MUST invoke the specified tool via the `Skill` tool — not approximate it with a general-purpose agent prompt. If the review tool binary is not installed, the executor should warn the user rather than silently substituting.
 
 ### Default
 
