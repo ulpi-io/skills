@@ -1,6 +1,6 @@
 ---
 name: plan-to-task-list-with-dag
-version: 1.0.0
+version: 1.1.0
 description: Interactive build planner — explores codebase via CodeMap, challenges scope with user, decomposes features into atomic TASK-NNN entries with dependency mapping and priority assignment, produces machine-parseable task plans for parallel agent execution. Use when you need to break a feature, bug fix, or project into a structured DAG of tasks for parallel agent execution.
 ---
 
@@ -172,7 +172,8 @@ Pick the agent whose domain best matches the task's technology. If a task spans 
 ├── If >10 tasks expected, challenge whether a simpler approach exists
 ├── Present findings to user via AskUserQuestion
 ├── Ask user to select mode: EXPANSION / HOLD / REDUCTION
-└── Gate: user has confirmed scope and selected mode
+├── Ask user to select review tool: claude / codex / kiro / all / none
+└── Gate: user has confirmed scope, selected mode, and chosen review tool
 ```
 
 **Actions:**
@@ -192,7 +193,21 @@ Pick the agent whose domain best matches the task's technology. If a task spans 
 | **HOLD** | Feature builds on existing patterns, moderate scope | Balanced — reuse existing code, only build what's new |
 | **REDUCTION** | Tight scope, refactor, bug fix, or existing code covers most of it | Minimal tasks, maximum reuse, skip nice-to-haves |
 
-**Gate:** Do NOT proceed to Phase 1 until the user has confirmed the scope and selected a mode. The selected mode guides all subsequent phases.
+4. Ask user to select **post-task review tool**:
+
+**Review Options:**
+
+| Option | Tool | Best For |
+|--------|------|----------|
+| **claude** | `/claude-review` (Agent in worktree) | Deep context, understands full codebase |
+| **codex** | `/codex-review` (OpenAI Codex CLI) | Independent perspective, repro scripts |
+| **kiro** | `/kiro-review` (Kiro CLI) | Alternative AI perspective |
+| **all** | Run all three sequentially | Critical/security-sensitive work |
+| **none** | Skip review | Fast iteration, trivial changes |
+
+The user's choice becomes the default `**Review:**` value for all tasks in the plan. Individual tasks can override (e.g., security tasks → `codex` even if default is `claude`).
+
+**Gate:** Do NOT proceed to Phase 1 until the user has confirmed the scope, selected a mode, and chosen a review tool. The selected mode and review tool guide all subsequent phases.
 
 ### PHASE 1: EXPLORE
 
@@ -362,6 +377,7 @@ Include specific file paths where the agent should create or modify files.>
 - [ ] <Failure/edge case criterion>
 
 **Agent:** <subagent_type>
+**Review:** claude | codex | kiro | none
 
 **Priority:** P0
 
@@ -381,6 +397,7 @@ Include specific file paths where the agent should create or modify files.>
 **Agent:** <subagent_type>
 
 **Depends on:** TASK-001
+**Review:** codex
 **Priority:** P1
 
 ---
@@ -448,7 +465,8 @@ In addition to the markdown plan, **always save a companion JSON file** at `.ulp
       ],
       "filesToModify": ["path/to/file.ts"],
       "filesToCreate": ["path/to/new-file.ts"],
-      "agent": "express-senior-engineer"
+      "agent": "express-senior-engineer",
+      "review": "codex"
     },
     {
       "id": "TASK-002",
@@ -461,7 +479,8 @@ In addition to the markdown plan, **always save a companion JSON file** at `.ulp
       "acceptanceCriteria": ["Criterion 1"],
       "filesToModify": [],
       "filesToCreate": ["path/to/file.ts"],
-      "agent": "react-vite-tailwind-engineer"
+      "agent": "react-vite-tailwind-engineer",
+      "review": "claude"
     }
   ],
   "dependencies": {
@@ -478,6 +497,7 @@ In addition to the markdown plan, **always save a companion JSON file** at `.ulp
 - The `dependencies` object must have every task ID as a key, mapping to its dependency array
 - `filesToModify` and `filesToCreate` contain specific file paths found during exploration
 - `agent` is the subagent type that will execute this task (required — see Agent Table)
+- `review` is the post-task review tool: `claude`, `codex`, `kiro`, or `none` (default: `none` for S, `claude` for M+)
 - `type` is one of: `feature`, `bug`, `chore`, `refactor`, `test`, `docs`, `infra`
 - `effort` is one of: `S`, `M`, `L`, `XL`
 - `priority` is one of: `P0`, `P1`, `P2`, `P3`
@@ -507,14 +527,50 @@ These fields are supported when present:
 - **`**Effort:**`** — `S | M | L | XL`
 - **`**Labels:**`** — comma-separated tags
 - **`**Agent:**`** — subagent type to execute this task (REQUIRED — see Agent Table)
+- **`**Review:**`** — post-task review tool: `claude`, `codex`, `kiro`, or `none` (see Post-Task Review below)
 
 ---
+
+## Post-Task Review
+
+Every task can specify a `**Review:**` field that triggers an independent code review after the task agent completes. This catches bugs before they propagate to dependent tasks.
+
+### Review Tools
+
+| Value | Skill | What it does |
+|-------|-------|-------------|
+| `claude` | `/claude-review` | Spawns a separate Claude agent in a worktree to review the changes |
+| `codex` | `/codex-review` | Runs OpenAI Codex CLI (`codex review`) against the task's commit |
+| `kiro` | `/kiro-review` | Runs Kiro CLI (`kiro-cli chat`) with the diff |
+| `none` | — | Skip review (use for trivial tasks like config/docs) |
+
+### When to Assign Which Reviewer
+
+- **Security-sensitive tasks** (auth, crypto, secrets, permissions): `codex` — independent AI catches things Claude might miss
+- **Complex logic tasks** (parsers, state machines, concurrency): `claude` — deep context understanding
+- **API/integration tasks**: `kiro` — alternative perspective
+- **Trivial tasks** (rename, config change, docs): `none`
+- **Critical P0 tasks**: consider running multiple reviewers in sequence
+
+### How the Executor Uses This Field
+
+The `run-parallel-agents-feature-build` skill (or manual execution) should:
+
+1. Run the task agent
+2. Check the `review` field
+3. If not `none`, invoke the corresponding review skill on the task's commit
+4. Report findings to the user
+5. Fix findings before marking the task complete
+
+### Default
+
+If `**Review:**` is omitted, default to `none` for S-effort tasks, `claude` for M/L/XL-effort tasks.
 
 ## Quality Self-Check
 
 Before outputting the final plan, verify ALL of the following:
 
-- [ ] Phase 0 was completed — user confirmed scope and selected mode via AskUserQuestion
+- [ ] Phase 0 was completed — user confirmed scope, selected mode, and chose review tool via AskUserQuestion
 - [ ] Mode (EXPANSION/HOLD/REDUCTION) is recorded in plan header and JSON
 - [ ] `## Scope Challenge` section documents what was considered and ruled out
 - [ ] `## Architecture` section has an ASCII diagram with TASK-NNN labels
@@ -588,8 +644,8 @@ These are excuses. Don't fall for them:
 PHASE 0: SCOPE CHALLENGE (INTERACTIVE)
 ├── Quick CodeMap scan for existing overlap
 ├── Estimate complexity
-├── AskUserQuestion: present findings + mode selection
-└── Gate: User confirmed scope + mode
+├── AskUserQuestion: present findings + mode selection + review tool selection
+└── Gate: User confirmed scope + mode + review tool
 
 PHASE 1: EXPLORE
 ├── CodeMap search for feature-related code

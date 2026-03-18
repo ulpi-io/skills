@@ -41,6 +41,7 @@ npx skills add https://github.com/ulpi-io/skills --skill browse
 | [run-parallel-agents-feature-debug](#run-parallel-agents-feature-debug) | Orchestrate parallel agents for debugging |
 | [update-claude-settings](#update-claude-settings) | Detect tech stack, generate Claude Code permissions |
 | [ast-grep](#ast-grep) | Structural code search via AST patterns |
+| [claude-review](#claude-review) | Independent self-review via Claude agent in worktree isolation |
 | [codex-review](#codex-review) | Independent AI review via OpenAI Codex CLI — second opinion on your changes |
 | [kiro-review](#kiro-review) | Independent AI review via Kiro CLI — second opinion on your changes |
 | [find-agents](#find-agents) | Find, install, and manage AI agents across 43+ IDEs |
@@ -419,6 +420,18 @@ npx skills add https://github.com/ulpi-io/skills --skill codex-review
 Get a second opinion on code changes. Analyzes the diff, builds focused review instructions, runs `codex review` with sandbox permissions, parses prioritized findings, and supports iterative multi-round reviews. Use for cross-review before merging or when you want a rival AI to verify Claude's work.
 
 Requires: `codex` CLI + OpenAI API key
+
+---
+
+## claude-review
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill claude-review
+```
+
+**Independent self-review via Claude agent in worktree isolation.**
+
+Spawns a separate Claude Code agent in a read-only worktree to review code changes. Builds focused review prompts from the actual diff, parses prioritized findings, and supports iterative multi-round reviews. Part of the review trifecta alongside `/codex-review` and `/kiro-review`. No external dependencies — uses Claude's built-in Agent tool.
 
 ---
 
