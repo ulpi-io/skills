@@ -41,6 +41,7 @@ npx skills add https://github.com/ulpi-io/skills --skill browse
 | [run-parallel-agents-feature-debug](#run-parallel-agents-feature-debug) | Orchestrate parallel agents for debugging |
 | [update-claude-settings](#update-claude-settings) | Detect tech stack, generate Claude Code permissions |
 | [ast-grep](#ast-grep) | Structural code search via AST patterns |
+| [codex-review](#codex-review) | Independent AI review via OpenAI Codex CLI — second opinion on your changes |
 | [find-agents](#find-agents) | Find, install, and manage AI agents across 43+ IDEs |
 | [secrets](#secrets) | Credential management — encrypted vault, CLI injection, MCP shim |
 
@@ -403,3 +404,17 @@ secrets status                               # → overview of vault, hooks, age
 ```
 
 Built-in services: github, anthropic, openai, aws, slack, jira, google-cloud, vercel, stripe, linear
+
+---
+
+## codex-review
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill codex-review
+```
+
+**Independent AI review via OpenAI Codex CLI.**
+
+Get a second opinion on code changes. Analyzes the diff, builds focused review instructions, runs `codex review` with sandbox permissions, parses prioritized findings, and supports iterative multi-round reviews. Use for cross-review before merging or when you want a rival AI to verify Claude's work.
+
+Requires: `codex` CLI + OpenAI API key
