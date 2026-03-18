@@ -1,6 +1,6 @@
 ---
 name: secrets
-version: 0.1.0
+version: 0.1.1
 description: Credential management for AI coding agents — encrypted vault, CLI injection, MCP shim
 ---
 
@@ -18,10 +18,10 @@ Manage credentials for AI coding agents. Stores secrets in an encrypted local va
 
 | Command | Description |
 |---------|-------------|
-| `secrets add <service>` | Store credentials (interactive or `--token ghp_...`) |
+| `secrets add <service>` | Store credentials (interactive prompt — never pass tokens as CLI arguments) |
 | `secrets remove <service>` | Remove stored credentials |
 | `secrets list` | List stored services (no values shown) |
-| `secrets show <service>` | Show masked credentials (`--reveal` for full) |
+| `secrets show <service>` | Show masked credentials (do not use `--reveal` — secret values must never appear in agent output) |
 | `secrets rotate <service>` | Update credential values |
 | `secrets enable <service>` | Enable MCP server in .mcp.json |
 | `secrets disable <service>` | Remove MCP server from .mcp.json |
@@ -34,7 +34,7 @@ Manage credentials for AI coding agents. Stores secrets in an encrypted local va
 
 ### Add GitHub credentials and enable MCP
 ```bash
-secrets add github --token ghp_your_token_here
+secrets add github    # interactive prompt — never pass tokens as CLI arguments
 secrets enable github
 ```
 
@@ -47,6 +47,12 @@ secrets init
 ```bash
 secrets status
 ```
+
+## Safety rules
+
+- **Never pass secret values as CLI arguments** — use `secrets add <service>` interactively so tokens don't appear in shell history or agent output
+- **Never use `--reveal`** — secret values must never appear in agent context or conversation output
+- **Never echo, log, or include secret values in responses** — only reference services by name
 
 ## Built-in services
 
