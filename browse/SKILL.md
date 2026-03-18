@@ -18,77 +18,30 @@ allowed-tools:
 Persistent headless Chromium daemon. First call auto-starts the server (~3s).
 Every subsequent call: ~100-200ms. Auto-shuts down after 30 min idle.
 
-## SETUP (run this check BEFORE any browse command)
+## SETUP
+
+Before using browse, confirm the CLI is installed:
 
 ```bash
-# Check if browse is available
-if command -v browse &>/dev/null; then
-  echo "READY"
-else
-  echo "NEEDS_INSTALL"
-fi
+browse --version
 ```
 
-If `NEEDS_INSTALL`:
-1. Tell the user: "browse needs a one-time install via npm. OK to proceed?"
-2. If they approve: `bun install -g @ulpi/browse`
-3. If `bun` is not installed: `curl -fsSL https://bun.sh/install | bash`
+If not installed, tell the user:
 
-### Permissions check
+> `browse` CLI is not installed. Install it with:
+>
+> ```bash
+> bun install -g @ulpi/browse
+> ```
+>
+> If you don't have bun, install it first from https://bun.sh then run the command above.
 
-After confirming browse is available, check if browse commands are pre-allowed:
-
-```bash
-cat .claude/settings.json 2>/dev/null
-```
-
-If the file is missing or does not contain browse permission rules in `permissions.allow`:
-1. Tell the user: "browse works best when its commands are pre-allowed so you don't get prompted on every call. Add browse permissions to `.claude/settings.json`?"
-2. If they approve, read the existing `.claude/settings.json` (or create it), and add ALL of these rules to `permissions.allow` (merge with existing rules — do not overwrite):
-
-```json
-"Bash(browse:*)",
-"Bash(browse goto:*)", "Bash(browse back:*)", "Bash(browse forward:*)",
-"Bash(browse reload:*)", "Bash(browse url:*)", "Bash(browse text:*)",
-"Bash(browse html:*)", "Bash(browse links:*)", "Bash(browse forms:*)",
-"Bash(browse accessibility:*)", "Bash(browse snapshot:*)",
-"Bash(browse snapshot-diff:*)", "Bash(browse click:*)",
-"Bash(browse dblclick:*)", "Bash(browse fill:*)", "Bash(browse select:*)",
-"Bash(browse hover:*)", "Bash(browse focus:*)",
-"Bash(browse check:*)", "Bash(browse uncheck:*)",
-"Bash(browse type:*)", "Bash(browse press:*)",
-"Bash(browse keydown:*)", "Bash(browse keyup:*)",
-"Bash(browse scroll:*)", "Bash(browse wait:*)",
-"Bash(browse viewport:*)", "Bash(browse upload:*)",
-"Bash(browse drag:*)", "Bash(browse highlight:*)", "Bash(browse download:*)",
-"Bash(browse dialog-accept:*)", "Bash(browse dialog-dismiss:*)",
-"Bash(browse js:*)", "Bash(browse eval:*)", "Bash(browse css:*)",
-"Bash(browse attrs:*)", "Bash(browse element-state:*)", "Bash(browse dialog:*)",
-"Bash(browse console:*)", "Bash(browse network:*)",
-"Bash(browse cookies:*)", "Bash(browse storage:*)", "Bash(browse perf:*)",
-"Bash(browse value:*)", "Bash(browse count:*)",
-"Bash(browse devices:*)", "Bash(browse emulate:*)",
-"Bash(browse screenshot:*)", "Bash(browse pdf:*)",
-"Bash(browse responsive:*)", "Bash(browse diff:*)",
-"Bash(browse chain:*)", "Bash(browse tabs:*)", "Bash(browse tab:*)",
-"Bash(browse newtab:*)", "Bash(browse closetab:*)",
-"Bash(browse frame:*)",
-"Bash(browse sessions:*)", "Bash(browse session-close:*)",
-"Bash(browse state:*)", "Bash(browse auth:*)", "Bash(browse har:*)", "Bash(browse video:*)",
-"Bash(browse route:*)", "Bash(browse offline:*)",
-"Bash(browse status:*)", "Bash(browse stop:*)", "Bash(browse restart:*)",
-"Bash(browse cookie:*)", "Bash(browse header:*)",
-"Bash(browse useragent:*)",
-"Bash(browse clipboard:*)", "Bash(browse screenshot-diff:*)",
-"Bash(browse find:*)", "Bash(browse inspect:*)",
-"Bash(browse instances:*)", "Bash(browse --headed:*)"
-```
+**Do NOT install anything automatically.** Wait for the user to confirm they have installed it before proceeding.
 
 ## IMPORTANT
 
 - Always call `browse` as a bare command (it's on PATH via global install).
-- Do NOT use shell variables like `B=...` or full paths — they break Claude Code's permission matching.
-- NEVER use `#` in CSS selectors — use `[id=foo]` instead of `#foo`. The `#` character breaks Claude Code's permission matching and triggers approval prompts.
+- Prefer `[id=foo]` over `#foo` in CSS selectors — the `#` character can cause shell quoting issues.
 - The browser persists between calls — cookies, tabs, and state carry over.
 - The server auto-starts on first command. No manual setup needed.
 - Use `--session <id>` for parallel agent isolation. Each session gets its own tabs, refs, cookies.
