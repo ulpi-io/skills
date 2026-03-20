@@ -18,7 +18,9 @@ set -euo pipefail
 #   USE_XCODEGEN    — Set to "1" to run xcodegen before building
 #   DMG_BACKGROUND  — Path to DMG background image (optional)
 
-cd "$(dirname "$0")/../.."
+# Run from project root — the agent invokes this script from the working directory
+PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
+cd "$PROJECT_ROOT"
 
 # --- Validate required vars ---
 if [ -z "${APP_NAME:-}" ]; then

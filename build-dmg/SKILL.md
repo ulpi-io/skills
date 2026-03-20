@@ -1,6 +1,6 @@
 ---
 name: build-dmg
-version: 1.0.0
+version: 1.0.1
 description: |
   Build a distributable DMG installer for any macOS Xcode project. Handles archiving,
   code signing, DMG creation with styled Finder window, and version management.
@@ -32,11 +32,13 @@ Present the detected configuration to the user and confirm before building.
 
 ## Running the Build
 
-The build script is at `helpers/build-dmg.sh` (relative to this skill). Before running, check if `scripts/build-dmg.sh` already exists in the project. If not, ask the user: "I need to copy the build script to `scripts/build-dmg.sh` in your project. OK to proceed?" **Do NOT copy the script without user confirmation.** Then run it with the required env vars:
+The build script is at `.claude/skills/build-dmg/helpers/build-dmg.sh`. Run it directly from the project root with the required env vars:
 
 ```bash
-APP_NAME="<app>" SCHEME="<scheme>" ./scripts/build-dmg.sh
+APP_NAME="<app>" SCHEME="<scheme>" bash .claude/skills/build-dmg/helpers/build-dmg.sh
 ```
+
+The script uses the current working directory as the project root. Do NOT copy the script into the project.
 
 ### Required Environment Variables
 
