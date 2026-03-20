@@ -1,6 +1,6 @@
 ---
 name: browse
-version: 2.3.3
+version: 2.4.0
 description: |
   Fast web browsing and web app testing for AI coding agents via persistent headless Chromium daemon.
   Browse any URL, read page content, click elements, fill forms, run JavaScript, take screenshots,
@@ -87,6 +87,8 @@ To avoid being prompted on every browse command, tell the user they can add brow
 
 - Always call `browse` as a bare command (it's on PATH via global install).
 - Prefer `[id=foo]` over `#foo` in CSS selectors — the `#` character can cause shell quoting issues.
+- After `goto`, always run `browse wait --network-idle` before reading content or taking screenshots. Pages with dynamic content, SPAs, and lazy-loaded assets need time to fully render.
+- Screenshots MUST be saved to `.browse/sessions/default/` (or `.browse/sessions/<session-id>/` when using `--session`). Use descriptive filenames like `browse screenshot .browse/sessions/default/homepage.png`. NEVER save screenshots to `/tmp` or any other location.
 - The browser persists between calls — cookies, tabs, and state carry over.
 - The server auto-starts on first command. No manual setup needed.
 - Use `--session <id>` for parallel agent isolation. Each session gets its own tabs, refs, cookies.
@@ -103,8 +105,8 @@ browse goto https://example.com
 # Read cleaned page text
 browse text
 
-# Take a screenshot (then Read the image)
-browse screenshot .browse/sessions/default/screenshot.png
+# Take a screenshot (then Read the image — saved to .browse/sessions/default/screenshot.png)
+browse screenshot
 
 # Snapshot: accessibility tree with refs
 browse snapshot -i
@@ -448,7 +450,7 @@ browse inspect                 Open DevTools (requires BROWSE_DEBUG_PORT)
 | Check if element exists | `count ".thing"` |
 | Get input value | `value "[id=email]"` |
 | Extract specific data | `js "document.querySelector('.price').textContent"` |
-| Visual check | `screenshot .browse/sessions/default/x.png` then Read the image |
+| Visual check | `screenshot` then `Read .browse/sessions/default/screenshot.png` |
 | Fill and submit form | `snapshot -i` → `fill @e4 "val"` → `click @e5` |
 | Check/uncheck boxes | `check @e7` / `uncheck @e7` |
 | Check CSS | `css "selector" "property"` or `css @e3 "property"` |
