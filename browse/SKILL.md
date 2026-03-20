@@ -1,6 +1,6 @@
 ---
 name: browse
-version: 2.3.2
+version: 2.3.3
 description: |
   Fast web browsing and web app testing for AI coding agents via persistent headless Chromium daemon.
   Browse any URL, read page content, click elements, fill forms, run JavaScript, take screenshots,
@@ -329,7 +329,8 @@ browse clipboard write <text>  Write text to system clipboard
 
 ### Visual
 ```
-browse screenshot [path]              Screenshot (default: .browse/sessions/{id}/screenshot.png)
+browse screenshot [path]              Viewport screenshot (default: .browse/sessions/{id}/screenshot.png)
+browse screenshot --full [path]       Full-page screenshot (entire scrollable page)
 browse screenshot --annotate [path]   Screenshot with numbered badges + legend
 browse pdf [path]                     Save as PDF
 browse responsive [prefix]            Screenshots at mobile/tablet/desktop
