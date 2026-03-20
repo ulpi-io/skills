@@ -18,7 +18,8 @@ set -euo pipefail
 #   USE_XCODEGEN    — Set to "1" to run xcodegen before building
 #   DMG_BACKGROUND  — Path to DMG background image (optional)
 
-# Run from project root — the agent invokes this script from the working directory
+# This script lives in .claude/skills/build-dmg/helpers/ — NOT in the project tree.
+# The agent runs it from the project root, so pwd is the project root.
 PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 cd "$PROJECT_ROOT"
 
