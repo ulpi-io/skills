@@ -1,6 +1,6 @@
 ---
 name: browse
-version: 2.7.0
+version: 2.8.0
 description: |
   Fast web browsing and web app testing for AI coding agents via persistent headless Chromium daemon.
   Browse any URL, read page content, click elements, fill forms, run JavaScript, take screenshots,
@@ -245,6 +245,7 @@ browse back               Go back
 browse forward            Go forward
 browse reload             Reload page
 browse url                Print current URL
+browse version                 Print CLI version
 ```
 
 ### Content extraction
@@ -260,7 +261,8 @@ browse accessibility      Accessibility tree snapshot (ARIA)
 ```
 browse snapshot           Full accessibility tree with @refs
 browse snapshot -i        Interactive elements only — terse flat list (minimal tokens)
-browse snapshot -i -v     Interactive elements — verbose indented tree with props
+browse snapshot -i -f     Interactive elements — full indented tree with props
+browse snapshot -i -V     Interactive elements — viewport only (skip below-fold)
 browse snapshot -c        Compact (no empty structural elements)
 browse snapshot -C        Cursor-interactive (detect divs with cursor:pointer/onclick/tabindex)
 browse snapshot -d <N>    Limit depth to N levels
@@ -422,7 +424,6 @@ browse instances               List all running browse servers (instance, PID, p
 browse stop                    Shutdown server
 browse restart                 Kill + restart server
 browse inspect                 Open DevTools (requires BROWSE_DEBUG_PORT)
-browse version                 Print CLI version
 ```
 
 ## CLI Flags
