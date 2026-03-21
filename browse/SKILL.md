@@ -1,6 +1,6 @@
 ---
 name: browse
-version: 2.6.0
+version: 2.7.0
 description: |
   Fast web browsing and web app testing for AI coding agents via persistent headless Chromium daemon.
   Browse any URL, read page content, click elements, fill forms, run JavaScript, take screenshots,
@@ -422,6 +422,7 @@ browse instances               List all running browse servers (instance, PID, p
 browse stop                    Shutdown server
 browse restart                 Kill + restart server
 browse inspect                 Open DevTools (requires BROWSE_DEBUG_PORT)
+browse version                 Print CLI version
 ```
 
 ## CLI Flags
