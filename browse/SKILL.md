@@ -1,6 +1,6 @@
 ---
 name: browse
-version: 2.5.0
+version: 2.6.0
 description: |
   Fast web browsing and web app testing for AI coding agents via persistent headless Chromium daemon.
   Browse any URL, read page content, click elements, fill forms, run JavaScript, take screenshots,
@@ -86,7 +86,8 @@ To avoid being prompted on every browse command, tell the user they can add brow
 ## IMPORTANT
 
 - Always call `browse` as a bare command (it's on PATH via global install).
-- Prefer `[id=foo]` over `#foo` in CSS selectors — the `#` character can cause shell quoting issues.
+- Do NOT use shell variables like `B=...` or full paths — they break Claude Code's permission matching.
+- NEVER use `#` in CSS selectors — use `[id=foo]` instead of `#foo`. The `#` character breaks Claude Code's permission matching and triggers approval prompts.
 - After `goto`, always run `browse wait --network-idle` before reading content or taking screenshots. Pages with dynamic content, SPAs, and lazy-loaded assets need time to fully render.
 - Screenshots MUST be saved to `.browse/sessions/default/` (or `.browse/sessions/<session-id>/` when using `--session`). Use descriptive filenames like `browse screenshot .browse/sessions/default/homepage.png`. NEVER save screenshots to `/tmp` or any other location.
 - The browser persists between calls — cookies, tabs, and state carry over.
@@ -258,7 +259,8 @@ browse accessibility      Accessibility tree snapshot (ARIA)
 ### Snapshot (ref-based element selection)
 ```
 browse snapshot           Full accessibility tree with @refs
-browse snapshot -i        Interactive elements only (buttons, links, inputs)
+browse snapshot -i        Interactive elements only — terse flat list (minimal tokens)
+browse snapshot -i -v     Interactive elements — verbose indented tree with props
 browse snapshot -c        Compact (no empty structural elements)
 browse snapshot -C        Cursor-interactive (detect divs with cursor:pointer/onclick/tabindex)
 browse snapshot -d <N>    Limit depth to N levels
