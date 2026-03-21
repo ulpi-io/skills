@@ -1,6 +1,6 @@
 ---
 name: browse
-version: 2.9.0
+version: 2.10.0
 description: |
   Fast web browsing and web app testing for AI coding agents via persistent headless Chromium daemon.
   Browse any URL, read page content, click elements, fill forms, run JavaScript, take screenshots,
@@ -32,7 +32,7 @@ If not installed, tell the user:
 > `browse` CLI is not installed. Install it with:
 >
 > ```bash
-> bun install -g @ulpi/browse
+> npm install -g @ulpi/browse
 > ```
 >
 > If you don't have bun, install it first from https://bun.sh then run the command above.
