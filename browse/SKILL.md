@@ -1,6 +1,6 @@
 ---
 name: browse
-version: 2.8.0
+version: 2.9.0
 description: |
   Fast web browsing and web app testing for AI coding agents via persistent headless Chromium daemon.
   Browse any URL, read page content, click elements, fill forms, run JavaScript, take screenshots,
@@ -71,6 +71,7 @@ To avoid being prompted on every browse command, tell the user they can add brow
 "Bash(browse newtab:*)", "Bash(browse closetab:*)",
 "Bash(browse frame:*)",
 "Bash(browse sessions:*)", "Bash(browse session-close:*)",
+"Bash(browse record:*)",
 "Bash(browse state:*)", "Bash(browse auth:*)", "Bash(browse har:*)", "Bash(browse video:*)",
 "Bash(browse route:*)", "Bash(browse offline:*)",
 "Bash(browse status:*)", "Bash(browse stop:*)", "Bash(browse restart:*)",
@@ -78,7 +79,14 @@ To avoid being prompted on every browse command, tell the user they can add brow
 "Bash(browse useragent:*)",
 "Bash(browse clipboard:*)", "Bash(browse screenshot-diff:*)",
 "Bash(browse find:*)", "Bash(browse inspect:*)",
-"Bash(browse instances:*)", "Bash(browse --headed:*)"
+"Bash(browse instances:*)", "Bash(browse --headed:*)",
+"Bash(browse rightclick:*)", "Bash(browse tap:*)",
+"Bash(browse swipe:*)", "Bash(browse mouse:*)",
+"Bash(browse keyboard:*)", "Bash(browse scrollinto:*)",
+"Bash(browse scrollintoview:*)", "Bash(browse set:*)",
+"Bash(browse box:*)", "Bash(browse errors:*)",
+"Bash(browse doctor:*)", "Bash(browse upgrade:*)",
+"Bash(browse --max-output:*)"
 ```
 
 **Do NOT modify settings files automatically.** Show the user the permissions and let them decide whether to add them.
@@ -188,6 +196,28 @@ browse --allowed-domains example.com,*.cdn.example.com goto https://example.com
 # State persistence
 browse state save mysite
 browse state load mysite
+browse state clean                    # delete states older than 7 days
+browse state clean --older-than 30    # custom threshold
+
+# Cookie management
+browse cookie clear                                      # clear all cookies
+browse cookie set auth token --domain .example.com       # set with options
+browse cookie export ./cookies.json                      # export to file
+browse cookie import ./cookies.json                      # import from file
+
+# Cookie import from real browsers (macOS — Chrome, Arc, Brave, Edge)
+browse cookie-import --list                              # show installed browsers
+browse cookie-import chrome --domain .example.com        # import cookies for a domain
+browse cookie-import arc --domain .github.com            # import from Arc
+browse cookie-import chrome --profile "Profile 1" --domain .site.com  # specific Chrome profile
+
+# Session auto-persistence (named sessions survive restarts)
+browse --session myapp goto https://app.com/login        # login...
+browse session-close myapp                               # state auto-saved (encrypted if BROWSE_ENCRYPTION_KEY set)
+browse --session myapp goto https://app.com/dashboard    # cookies auto-restored
+
+# Load state at launch
+browse --state auth.json goto https://app.com            # load cookies before first command
 
 # Auth vault (credentials never visible to LLM)
 browse auth save github https://github.com/login user pass123
@@ -198,11 +228,31 @@ browse har start
 browse goto https://example.com
 browse har stop ./recording.har
 
-# Video recording
+# Video recording (watch a .webm of the session)
 browse video start ./videos
 browse goto https://example.com
 browse click @e3
 browse video stop
+
+# Command recording (export replayable scripts)
+browse record start
+browse goto https://example.com
+browse click "a"
+browse fill "[id=search]" "test query"
+browse record stop
+browse record export replay ./recording.json    # replay with: npx @puppeteer/replay ./recording.json
+browse record export browse ./steps.json        # replay with: cat steps.json | browse chain
+
+# Both together (video + replayable script)
+browse video start ./videos
+browse record start
+browse goto https://example.com
+browse snapshot -i
+browse click @e3
+browse fill "[id=email]" "user@test.com"
+browse record stop
+browse video stop
+browse record export replay ./recording.json
 
 # Device emulation
 browse emulate iphone
@@ -245,7 +295,6 @@ browse back               Go back
 browse forward            Go forward
 browse reload             Reload page
 browse url                Print current URL
-browse version                 Print CLI version
 ```
 
 ### Content extraction
@@ -286,6 +335,7 @@ Refs are invalidated on navigation — run `snapshot` again after `goto`.
 ```
 browse click <selector>        Click element (CSS selector or @ref)
 browse click <x>,<y>           Click at page coordinates (e.g. 590,461)
+browse rightclick <selector>   Right-click element (context menu)
 browse dblclick <selector>     Double-click element
 browse fill <selector> <value> Fill input field
 browse select <selector> <val> Select dropdown value
@@ -293,13 +343,30 @@ browse hover <selector>        Hover over element
 browse focus <selector>        Focus element
 browse check <selector>        Check checkbox
 browse uncheck <selector>      Uncheck checkbox
+browse tap <selector>          Tap element (requires touch context via emulate)
 browse drag <src> <tgt>        Drag source to target
 browse type <text>             Type into focused element
 browse press <key>             Press key (Enter, Tab, Escape, etc.)
 browse keydown <key>           Hold key down
+browse keyboard inserttext <t> Insert text without key events
 browse keyup <key>             Release key
+browse scrollinto <sel>        Scroll element into view (explicit)
+browse swipe <dir> [px]        Swipe up/down/left/right (touch events)
+browse mouse move <x> <y>     Move mouse to coordinates
+browse mouse down [button]     Press mouse button (left/right/middle)
+browse mouse up [button]       Release mouse button
+browse mouse wheel <dy> [dx]   Scroll wheel
 browse scroll [sel|up|down]    Scroll element/viewport/bottom
-browse wait <sel|--url|--network-idle>  Wait for element, URL, or network
+browse wait <sel>              Wait for element to appear
+browse wait <sel> --state hidden  Wait for element to disappear
+browse wait <ms>               Wait for milliseconds
+browse wait --text "..."       Wait for text to appear in page
+browse wait --fn "expr"        Wait for JavaScript condition
+browse wait --load <state>     Wait for load state
+browse wait --url <pattern>    Wait for URL match
+browse wait --network-idle     Wait for network idle
+browse set geo <lat> <lng>     Set geolocation
+browse set media <scheme>      Set color scheme (dark/light/no-preference)
 browse viewport <WxH>          Set viewport size (e.g. 375x812)
 browse upload <sel> <files>    Upload file(s) to a file input
 browse highlight <selector>    Highlight element (visual debugging)
@@ -326,8 +393,10 @@ browse css <selector> <prop>   Get computed CSS property
 browse attrs <selector>        Get element attributes as JSON
 browse element-state <selector> Element state (visible/enabled/checked/focused)
 browse value <selector>        Get input field value
+browse box <selector>          Get bounding box as JSON {x, y, width, height}
 browse count <selector>        Count matching elements
 browse dialog                  Last dialog info or "(no dialog detected)"
+browse errors [--clear]        View/clear page errors (filtered from console)
 browse console [--clear]       View/clear console messages
 browse network [--clear]       View/clear network requests
 browse cookies                 Dump all cookies as JSON
@@ -341,6 +410,8 @@ browse clipboard write <text>  Write text to system clipboard
 ### Visual
 ```
 browse screenshot [path]              Viewport screenshot (default: .browse/sessions/{id}/screenshot.png)
+browse screenshot <sel|@ref> [path]   Screenshot specific element
+browse screenshot --clip x,y,w,h [path]  Screenshot clipped region
 browse screenshot --full [path]       Full-page screenshot (entire scrollable page)
 browse screenshot --annotate [path]   Screenshot with numbered badges + legend
 browse pdf [path]                     Save as PDF
@@ -360,6 +431,11 @@ browse find text <query>              Find elements by text content
 browse find label <query>             Find elements by label
 browse find placeholder <query>       Find elements by placeholder
 browse find testid <query>            Find elements by test ID
+browse find alt <query>               Find elements by alt text
+browse find title <query>             Find elements by title attribute
+browse find first <sel>               First matching element
+browse find last <sel>                Last matching element
+browse find nth <n> <sel>             Nth matching element (0-indexed)
 ```
 
 ### Compare
@@ -394,6 +470,15 @@ browse state save [name]       Save cookies + localStorage (all origins)
 browse state load [name]       Restore saved state
 browse state list              List saved states
 browse state show [name]       Show contents of saved state
+browse state clean             Delete states older than 7 days
+browse state clean --older-than N   Custom age threshold (days)
+```
+
+### Cookie import (macOS — borrow auth from real browsers)
+```
+browse cookie-import --list                         List installed browsers
+browse cookie-import <browser> --domain <d>         Import cookies for a domain
+browse cookie-import <browser> --profile <p> --domain <d>   Specific Chrome profile
 ```
 
 ### Auth vault
@@ -417,6 +502,15 @@ browse video stop              Stop recording and save video files
 browse video status            Check if recording is active
 ```
 
+### Command recording & export
+```
+browse record start                    Start recording commands
+browse record stop                     Stop recording, keep steps for export
+browse record status                   Recording state and step count
+browse record export browse [path]     Export as chain-compatible JSON (replay with browse chain)
+browse record export replay [path]    Export as Chrome DevTools Recorder (Playwright/Puppeteer)
+```
+
 ### Server management
 ```
 browse status                  Server health, uptime, session count
@@ -424,18 +518,23 @@ browse instances               List all running browse servers (instance, PID, p
 browse stop                    Shutdown server
 browse restart                 Kill + restart server
 browse inspect                 Open DevTools (requires BROWSE_DEBUG_PORT)
+browse version                 Print CLI version
+browse doctor                  System check (Bun, Playwright, Chromium)
+browse upgrade                 Self-update via npm
 ```
 
 ## CLI Flags
 
 | Flag | Description |
 |------|-------------|
-| `--session <id>` | Named session (isolates tabs, refs, cookies) |
+| `--session <id>` | Named session (isolates tabs, refs, cookies — auto-persists on close) |
+| `--state <path>` | Load state file (cookies/storage) before first command |
 | `--json` | Wrap output as `{success, data, command}` |
 | `--content-boundaries` | Wrap page content in nonce-delimited markers (prompt injection defense) |
 | `--allowed-domains <d,d>` | Block navigation/resources outside allowlist |
 | `--headed` | Run browser in headed (visible) mode |
 | `--runtime <name>` | Browser engine: playwright (default), rebrowser (stealth) |
+| `--max-output <n>` | Truncate output to N characters |
 
 ## Speed Rules
 
@@ -479,6 +578,7 @@ browse inspect                 Open DevTools (requires BROWSE_DEBUG_PORT)
 | Auto-login | `auth save gh https://github.com/login user pass` → `auth login gh` |
 | Record network | `har start` → browse around → `har stop ./out.har` |
 | Record video | `video start ./vids` → browse around → `video stop` |
+| Export automation script | `record start` → browse around → `record export replay ./recording.json` |
 | Parallel agents | `--session agent-a <cmd>` / `--session agent-b <cmd>` |
 | Multi-step flow | `echo '[...]' \| browse chain` |
 | Secure browsing | `--allowed-domains example.com goto https://example.com` |
@@ -490,6 +590,14 @@ browse inspect                 Open DevTools (requires BROWSE_DEBUG_PORT)
 | Debug with DevTools | `inspect` (set BROWSE_DEBUG_PORT first) |
 | See the browser | `browse --headed goto <url>` |
 | Bypass bot detection | `--runtime rebrowser goto <url>` |
+| Get element position | `box @e3` |
+| Check page errors | `errors` |
+| Right-click context menu | `rightclick @e3` |
+| Test mobile gestures | `emulate iphone` → `tap @e1` / `swipe down` |
+| Set dark mode | `set media dark` |
+| Test geolocation | `set geo 37.7 -122.4` → verify in page |
+| Export/import cookies | `cookie export ./cookies.json` / `cookie import ./cookies.json` |
+| Limit output size | `--max-output 5000 text` |
 
 ## Architecture
 
