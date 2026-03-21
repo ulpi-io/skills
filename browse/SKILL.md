@@ -1,6 +1,6 @@
 ---
 name: browse
-version: 2.11.0
+version: 2.12.0
 description: |
   Fast web browsing and web app testing for AI coding agents via persistent headless Chromium daemon.
   Browse any URL, read page content, click elements, fill forms, run JavaScript, take screenshots,
@@ -198,12 +198,6 @@ browse state load mysite
 browse state clean                    # delete states older than 7 days
 browse state clean --older-than 30    # custom threshold
 
-# Persistent profiles (full browser state, own Chromium)
-browse --profile mysite goto https://app.com       # all state persists automatically
-browse --profile mysite snapshot -i                 # still logged in next time
-browse profile list                                 # list all profiles with size
-browse profile delete old-site                      # remove a profile
-
 # Cookie management
 browse cookie clear                                      # clear all cookies
 browse cookie set auth token --domain .example.com       # set with options
@@ -289,6 +283,12 @@ browse --runtime rebrowser goto https://example.com
 # State list / show
 browse state list
 browse state show mysite
+
+# Persistent profiles (full browser state, own Chromium)
+browse --profile mysite goto https://app.com       # all state persists automatically
+browse --profile mysite snapshot -i                 # still logged in next time
+browse profile list                                 # list all profiles with size
+browse profile delete old-site                      # remove a profile
 ```
 
 ## Command Reference
@@ -479,19 +479,19 @@ browse state clean             Delete states older than 7 days
 browse state clean --older-than N   Custom age threshold (days)
 ```
 
+### Cookie import (macOS — borrow auth from real browsers)
+```
+browse cookie-import --list                         List installed browsers
+browse cookie-import <browser> --domain <d>         Import cookies for a domain
+browse cookie-import <browser> --profile <p> --domain <d>   Specific Chrome profile
+```
+
 ### Profiles
 ```
 browse --profile <name> <cmd>             Use persistent browser profile
 browse profile list                       List profiles with disk size
 browse profile delete <name>              Delete a profile
 browse profile clean [--older-than <d>]   Remove old profiles (default: 7 days)
-```
-
-### Cookie import (macOS — borrow auth from real browsers)
-```
-browse cookie-import --list                         List installed browsers
-browse cookie-import <browser> --domain <d>         Import cookies for a domain
-browse cookie-import <browser> --profile <p> --domain <d>   Specific Chrome profile
 ```
 
 ### Auth vault
@@ -532,7 +532,7 @@ browse stop                    Shutdown server
 browse restart                 Kill + restart server
 browse inspect                 Open DevTools (requires BROWSE_DEBUG_PORT)
 browse version                 Print CLI version
-browse doctor                  System check (Bun, Playwright, Chromium)
+browse doctor                  System check (Node, Playwright, Chromium)
 browse upgrade                 Self-update via npm
 ```
 
