@@ -188,6 +188,7 @@ browse keyup <key>             Release key
 browse keyboard inserttext <t> Insert text without key events
 browse scroll [sel|up|down]    Scroll element/viewport/bottom
 browse scrollinto <sel>        Scroll element into view (explicit)
+browse scrollintoview <sel>    Alias for scrollinto
 browse swipe <dir> [px]        Swipe up/down/left/right (touch events)
 browse mouse move <x> <y>     Move mouse to coordinates
 browse mouse down [button]     Press mouse button (left/right/middle)
@@ -207,6 +208,8 @@ browse wait --download 60000              Custom timeout (ms)
 browse wait --download ./file.pdf 60000   Both path and timeout
 browse set geo <lat> <lng>     Set geolocation
 browse set media <scheme>      Set color scheme (dark/light/no-preference)
+browse header <name>:<value>   Set request header
+browse useragent <string>      Set user agent string
 browse viewport <WxH>          Set viewport size (e.g. 375x812)
 browse upload <sel> <files>    Upload file(s) to a file input
 browse highlight <selector>    Highlight element (visual debugging)
@@ -232,8 +235,6 @@ browse cookie import <file>            Import cookies from JSON file
 browse route <pattern> block           Block matching requests
 browse route <pattern> fulfill <s> [b] Mock with status + body
 browse route clear                     Remove all routes
-browse header <name>:<value>           Set request header
-browse useragent <string>              Set user agent string
 ```
 
 ### Inspection
