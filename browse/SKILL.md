@@ -1,6 +1,6 @@
 ---
 name: browse
-version: 3.2.0
+version: 3.3.0
 description: |
   Fast web browsing and web app testing for AI coding agents via persistent headless Chromium daemon.
   Browse any URL, read page content, click elements, fill forms, run JavaScript, take screenshots,
@@ -201,6 +201,10 @@ browse wait --fn "expr"        Wait for JavaScript condition
 browse wait --load <state>     Wait for load state
 browse wait --url <pattern>    Wait for URL match
 browse wait --network-idle     Wait for network idle
+browse wait --download                    Wait for download, return temp path
+browse wait --download ./report.pdf       Wait and save to path
+browse wait --download 60000              Custom timeout (ms)
+browse wait --download ./file.pdf 60000   Both path and timeout
 browse set geo <lat> <lng>     Set geolocation
 browse set media <scheme>      Set color scheme (dark/light/no-preference)
 browse viewport <WxH>          Set viewport size (e.g. 375x812)
