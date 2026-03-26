@@ -1,6 +1,6 @@
 ---
 name: browse
-version: 3.4.0
+version: 3.5.0
 description: |
   Fast web browsing and web app testing for AI coding agents via persistent headless Chromium daemon.
   Browse any URL, read page content, click elements, fill forms, run JavaScript, take screenshots,
@@ -120,6 +120,12 @@ browse cookie-import chrome --domain .site.com
 
 # Persistent profiles
 browse --profile mysite goto https://app.com
+
+# Cloud providers (encrypted API keys, never visible to agents)
+browse provider save browserbase <api-key>
+browse --provider browserbase goto https://example.com
+browse provider list
+browse provider delete browserbase
 ```
 
 ## Command Reference
@@ -369,6 +375,7 @@ browse record stop                     Stop recording, keep steps for export
 browse record status                   Recording state and step count
 browse record export browse [path]     Export as chain-compatible JSON (replay with browse chain)
 browse record export replay [path]    Export as Chrome DevTools Recorder (Playwright/Puppeteer)
+browse record export replay --selectors css,aria [path]  Filter selector types in export
 ```
 
 ### React DevTools
@@ -386,9 +393,31 @@ browse react-devtools owners <sel>     Parent component chain
 browse react-devtools context <sel>    Context values consumed by component
 ```
 
+### Performance audit
+```
+browse perf-audit [url]                  Full performance audit (Web Vitals, resources, images, fonts, DOM, render-blocking, third-party, stack detection, correlations, recommendations)
+browse perf-audit [url] --no-coverage    Skip JS/CSS coverage collection (faster)
+browse perf-audit [url] --no-detect      Skip framework/SaaS/infrastructure detection
+browse perf-audit [url] --json           Output as structured JSON (for programmatic use)
+browse detect                            Detect tech stack: frameworks, SaaS platforms, CDN, protocol, compression, caching, DOM complexity, third-party inventory
+browse coverage start                    Start JS/CSS code coverage collection
+browse coverage stop                     Stop collection and report per-file used/unused bytes
+browse initscript set <code>             Inject JS that runs before every page load (pre-navigation observers, mocks, polyfills)
+browse initscript show                   Show current init script
+browse initscript clear                  Remove init script
+```
+
+### Cloud Providers
+```
+browse provider save <name> <key>  Save provider API key (encrypted)
+browse provider list               List saved providers
+browse provider delete <name>      Delete provider key
+```
+
 ### Handoff (human takeover)
 ```
-browse handoff [reason]        Swap to visible browser for user to solve CAPTCHA/MFA
+browse handoff [reason]        Swap to Chrome for user to solve CAPTCHA/MFA (bypasses bot detection)
+browse handoff --chromium      Force Playwright Chromium instead of Chrome
 browse resume                  Swap back to headless, returns fresh snapshot
 ```
 
@@ -416,9 +445,12 @@ browse inspect                 Open DevTools (requires BROWSE_DEBUG_PORT)
 | `--allowed-domains <d,d>` | Block navigation/resources outside allowlist |
 | `--max-output <n>` | Truncate output to N characters |
 | `--headed` | Run browser in headed (visible) mode |
+| `--chrome` | Shortcut for `--runtime chrome --headed` (uses real Chrome, bypasses bot detection) |
 | `--cdp <port>` | Connect to Chrome on a specific debugging port |
 | `--connect` | Auto-discover and connect to a running Chrome instance |
-| `--runtime <name>` | Browser engine: playwright (default), rebrowser (stealth), lightpanda |
+| `--provider <name>` | Cloud browser provider (browserless, browserbase) |
+| `--runtime <name>` | Browser engine: playwright (default), rebrowser (stealth), lightpanda, chrome |
+| `--mcp` | Run as MCP server (for Cursor, Windsurf, Cline) |
 
 ## Reference Files
 
