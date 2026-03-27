@@ -1,6 +1,6 @@
 ---
 name: plan-founder-review
-version: 1.2.0
+version: 1.3.0
 description: |
   Technical founder review of a plan before execution. Reads a plan from .ulpi/plans/<name>.md,
   verifies file paths exist, checks markdown/JSON consistency, challenges scope and architecture
@@ -17,7 +17,9 @@ Before delivering ANY verdict on a plan, you **ABSOLUTELY MUST**:
 3. Verify that file paths referenced in the plan actually exist (Glob/Read)
 4. Search for existing code the plan proposes to build from scratch
 5. Check that the architecture diagram matches the task descriptions
-6. Never rubber-stamp a plan — if you find nothing wrong, you missed something
+6. Verify public-surface signatures/examples against the spec/docs when the plan introduces SQL/API/CLI capabilities
+7. Challenge any task that can pass structurally while still being semantically wrong
+8. Never rubber-stamp a plan — if you find nothing wrong, you missed something
 
 **Approving a bad plan = wasted agent execution, wrong code built, rework**
 
@@ -145,6 +147,7 @@ For every file path referenced in the plan (both `filesToModify` and `filesToCre
 6. **Check markdown/JSON path consistency** — Ensure the same files and tasks are represented in both artifacts.
 7. **Check integration-surface ownership** — If tasks create new files under a package/module tree, verify the plan also assigns ownership for the shared wiring file (package root, module index, export barrel, router, registry, manifest, startup hook) or clearly reserves that ownership in a scaffold task.
 8. **Check create-then-modify dependencies** — If a task modifies a file that another task creates, verify the dependency exists explicitly.
+9. **Check public-surface contract pinning** — If the plan introduces or changes a public SQL/API/CLI surface, verify the plan pins the exact signature/example from the current spec/docs and includes at least one wrong-shape or wrong-routing validation.
 
 **Classify findings:**
 - BLOCK: phantom file path (references a file that doesn't exist as "modify"), building functionality that already exists, markdown/JSON path drift that changes execution meaning
@@ -196,6 +199,8 @@ Read the checklist file located alongside this skill at the relative path `refer
 7. **Execution summary consistency** — If the plan includes layers, counts, or a critical path, are they actually derivable from the dependency graph?
 8. **Export / registration ownership** — If later tasks create new modules/files, does the plan make clear who edits the package root, export barrel, router, registry, or manifest to expose them?
 9. **Capability realism** — If a task claims a method/component can append WAL, persist state, do network I/O, spawn workers, or register itself into runtime startup, does the plan say where that capability comes from (owned field, injected trait, callback, parameter, or bootstrap hook)?
+10. **Semantic rewrite safety** — If the plan rewrites planners, optimizers, query composition, filters, or prefilter paths, does it explicitly test for absence of semantic regressions such as dropped projection, lost residual predicates, fake filtering, changed ordering, or visibility drift?
+11. **Structural-vs-semantic split** — If a task could be satisfied by dead wiring or placeholder structure, does the plan split semantic hardening into an explicit follow-up task instead of calling the structural task complete?
 
 **Classify findings:**
 - BLOCK: diagram contradicts task descriptions, dependency JSON has missing critical dependencies, markdown/JSON drift that changes the DAG, undefined critical contract on a core boundary
@@ -246,6 +251,7 @@ Read the checklist file located alongside this skill at the relative path `refer
 4. **Security-sensitive paths** — Are auth, payment, data mutation paths covered by integration tests?
 5. **Public-surface validation** — If the plan promises a user-visible outcome, is there at least one public-surface integration or e2e test that proves it through the real entry point?
 6. **Task validation commands** — If the plan includes per-task validation commands, are they concrete and credible?
+7. **Bug-absence tests for rewrites** — For rewrite/composition tasks, do acceptance criteria or tests prove the old semantics were preserved, rather than only asserting that a node or plan exists?
 
 **Classify findings:**
 - BLOCK: zero test coverage on a security-sensitive path (auth, payment, data mutation)
@@ -355,10 +361,9 @@ Plan: .ulpi/plans/<name>.md | Mode: FULL/QUICK | Tasks: N
 | Building what exists | Plan creates new code for functionality that already exists in the codebase |
 | Diagram inconsistency | Architecture diagram contradicts task descriptions or dependency JSON |
 | Missing critical dependency | Task B uses task A's output but doesn't declare dependency on A |
-| Markdown/JSON drift | Markdown/JSON drift that changes the DAG |
-| Undefined critical contract | Undefined critical contract on a core boundary |
+| Public contract drift | Plan introduces a public SQL/API/CLI surface but does not pin the current signature/examples, or still carries a stale one |
+| Placeholder semantic gap | Plan allows a rewrite/composition task to pass with dead wiring or placeholder behavior and no semantic-hardening follow-up |
 | Unaddressed critical risk | Critical failure mode with no mitigation (FULL only) |
-| Unsafe degraded mode | Unsafe degraded mode with no rebuild/health contract (FULL only) |
 | Zero test coverage on security path | Auth, payment, or data mutation path with no test coverage (FULL only) |
 
 ### CONCERN (3+ → REVISE)
@@ -368,29 +373,16 @@ Plan: .ulpi/plans/<name>.md | Mode: FULL/QUICK | Tasks: N
 | Mode mismatch | Plan mode doesn't match actual scope |
 | Unnecessary scope | Tasks that don't serve the stated goal |
 | Missed reuse | Existing code could be leveraged but plan builds new |
-| Hidden prerequisites | Plan assumes runtime/codebase state without declaring it |
-| Weak non-goal boundary | Non-goals are absent or plan quietly expands into adjacent work |
-| Missing ship cut | No believable minimum shippable subset defined |
-| Vague contract language | Producer/consumer boundaries use undefined nouns |
-| Missing export/registration ownership | New modules/files have no assigned owner for shared wiring edits |
-| Side-effect without capability source | Task claims persistence/network/registration but doesn't name where it comes from |
-| Execution summary drift | Layers, counts, or critical path don't match the dependency graph |
 | Incomplete failure modes | Realistic risks not covered in failure modes table |
 | Vague mitigations | Failure mode mitigations that aren't actionable |
-| Retry/skip without stale-state semantics | Retry/skip policy without defining stale-state behavior |
 | Test gaps | New codepaths missing from test coverage map |
 | All-happy-path criteria | Task acceptance criteria with no failure/edge cases |
-| No public-surface validation | Promised user-visible outcome lacks entry-point test |
-| Missing/vague validation commands | Per-task validation commands not concrete or credible |
+| Rewrite semantics unguarded | Rewrite/composition tasks lack explicit bug-absence criteria for projection, predicates, filtering, ordering, or visibility |
 | Over-constrained DAG | Tasks unnecessarily sequenced, reducing parallelism |
 | Wrong agent assignment | Task assigned to agent outside its domain |
 | XL task not decomposed | Large task that should be split into smaller ones |
 | Effort mismatch | Effort estimate doesn't match task complexity |
 | P0 with dependencies | Foundation task that depends on other tasks |
-| Overlapping write scopes | Parallel tasks write to the same files |
-| Hidden integration overlap | Multiple tasks implicitly need the same shared wiring file |
-| Dishonest write scopes | Declared write scope omits shared files the task must realistically touch |
-| Non-canonical execution artifacts | JSON not clearly the source of truth |
 
 ### OBSERVATION (informational)
 
@@ -460,6 +452,16 @@ These are excuses. Don't fall for them:
 
 **Symptom:** Found 10 minor observations, missed that the plan builds an auth system that already exists
 **Fix:** Always run "search for existing code the plan proposes to build" before diving into details.
+
+### Failure Mode 6: Approving Placeholder Semantics
+
+**Symptom:** The review approves a planner/optimizer/query rewrite because the structure looks right, but the plan never proves projection, residual predicates, or filtering semantics survive.
+**Fix:** Treat missing semantic-hardening tasks or missing bug-absence criteria as at least a CONCERN, and as a BLOCK if the task can clearly "pass" while remaining wrong.
+
+### Failure Mode 7: Missing Public Contract Drift
+
+**Symptom:** The review misses that a plan introduces a stale SQL/API/CLI signature because it checks only architecture, not exact public examples from the spec/docs.
+**Fix:** For every public surface, compare the plan text against the current spec/docs examples and require wrong-shape or wrong-routing validation.
 
 ---
 

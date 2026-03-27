@@ -1,6 +1,6 @@
 ---
 name: plan-to-task-list-with-dag
-version: 1.3.0
+version: 1.4.0
 description: Language-agnostic build planner — explores the codebase, challenges scope with the user, identifies prerequisites and contracts, decomposes work into atomic TASK-NNN entries with dependency mapping, and emits canonical JSON + rendered markdown plans for parallel execution. Use when you need a structured task DAG that is safe to execute, not just easy to read.
 ---
 
@@ -123,6 +123,9 @@ Interactive build planner — explores codebases, challenges scope with the user
 - Reference specific file paths found during exploration in task descriptions
 - Include 2-3 testable acceptance criteria for every task (at least 1 must be a failure/edge case)
 - Include at least one public-surface or failure-path validation for every user-visible capability
+- For public SQL/API/CLI surfaces, pin the exact signature/examples from the spec or current docs and add an acceptance criterion for wrong-shape or wrong-routing behavior
+- For rewrite/planner/optimizer tasks, add explicit bug-absence criteria for preserved semantics (projection, residual predicates, filtering, ordering, visibility), not just "plan exists"
+- If a structural task can be "completed" with placeholders or dead wiring, split semantic hardening into explicit follow-up tasks instead of declaring the structural task fully done
 - For any task that creates a new file/module, explicitly assign who owns the export/registration/wiring edit
 - For any task that claims persistence, WAL append, network I/O, registration, or background mutation, explicitly state where that capability comes from
 - **Assign an `**Agent:**` field to every task** — specifies which subagent type executes it (see Agent Table below)
@@ -313,6 +316,8 @@ The user's choice becomes the default `**Review:**` value for all tasks in the p
 ├── Each task: one clear deliverable, 1-3 files, self-contained
 ├── Include file paths in every task description
 ├── Add 2-3 testable acceptance criteria per task (≥1 failure/edge case)
+├── For rewrites/composition tasks, add at least 1 criterion that proves existing semantics were NOT silently dropped
+├── For public surfaces, include at least 1 exact signature/example check and 1 wrong-shape/wrong-routing check
 ├── Define write scope and validation command per task
 ├── Assign export/registration ownership for every new file/module
 ├── Make capability source explicit for every side-effectful method/API
@@ -355,6 +360,19 @@ The user's choice becomes the default `**Review:**` value for all tasks in the p
   - explicit method parameter
   - runtime/bootstrap integration point
 - If the capability source is not explicit, the task is underspecified and must be split or clarified.
+
+**Semantic-hardening rule:**
+
+- If a task can satisfy its description with placeholder wiring, dead code, or tests that only assert structural presence, the plan is underspecified.
+- Split it into:
+  - a **structural task** that introduces the seam or new shape
+  - a **semantic-hardening task** that proves the seam preserves behavior and is actually wired end-to-end
+- Typical triggers:
+  - planner rewrites
+  - query/pipeline composition
+  - public table functions / routes / handlers
+  - startup wiring / registration
+  - prefilter / caching / optimizer behavior
 
 ### PHASE 3: MAP DEPENDENCIES
 
@@ -717,6 +735,9 @@ Do not save or present the plan until all checks pass:
 - No task's `writeScope` hides required shared wiring edits (package root, module index, export barrel, router, registry, manifest, startup hook)
 - Every side-effectful method/API claim names its capability source (owned field, injected trait, callback, parameter, or runtime hook)
 - Every user-visible capability has at least one public-surface validation task or acceptance criterion
+- Every public surface task pins the exact signature/examples from the spec/docs
+- Every rewrite/composition task has at least one acceptance criterion proving existing semantics were not silently dropped
+- No task is allowed to "pass" by tests that bless placeholder behavior as the intended outcome
 - Every task has a concrete `validateCommand` or an explicit manual-validation reason
 - If the architecture diagram is not task-complete, label it clearly as component-level only
 - No vague phrases remain without semantics: examples include "internal update", "eventually skipped", "initialized", "graceful degradation", "reasonable performance"
@@ -803,6 +824,8 @@ Before outputting the final plan, verify ALL of the following:
 - [ ] All task IDs appear as keys in the `## Task Dependencies` JSON block
 - [ ] No circular dependencies exist in the dependency graph
 - [ ] Every task has 2-3 testable acceptance criteria (at least 1 failure/edge case)
+- [ ] Every public surface task pins the exact signature/examples from spec/docs and includes a wrong-shape or wrong-routing check
+- [ ] Every rewrite/composition task includes at least 1 "absence of regression" acceptance criterion
 - [ ] Every task references specific file paths found during exploration
 - [ ] Every task has `writeScope` and `validateCommand`
 - [ ] Every new file/module is reachable via an explicit export/registration owner in the plan
@@ -877,6 +900,16 @@ These are excuses. Don't fall for them:
 **Symptom:** Plan assumes a startup/runtime/public path already exists, but no task or prerequisite covers it
 **Fix:** Add it to `## Prerequisites` if already true, or add a prerequisite task if missing.
 
+### Failure Mode 8: Structural Task Fakes Semantic Completion
+
+**Symptom:** A task "passes" by creating dead wiring, placeholder filters, or tests that only check node presence while real behavior is still wrong.
+**Fix:** Split structural work from semantic-hardening work. Add negative acceptance criteria that prove projection, predicates, filtering, ordering, or visibility are actually preserved.
+
+### Failure Mode 9: Public Surface Drift
+
+**Symptom:** A new public API/SQL surface ships with a stale signature or silent wrong-routing behavior because tests only cover one happy-path literal form.
+**Fix:** Pin the exact public signature from spec/docs in the task text and require at least one wrong-shape/wrong-routing acceptance criterion.
+
 ---
 
 ## Quick Workflow Summary
@@ -898,6 +931,8 @@ PHASE 1: EXPLORE
 PHASE 2: DECOMPOSE
 ├── Break into atomic TASK-NNN entries
 ├── 2-3 acceptance criteria per task (≥1 failure case)
+├── Add semantic bug-absence criteria for rewrites/composition tasks
+├── Pin exact public signatures/examples for user-visible surfaces
 ├── Add write scope + validation command
 ├── Identify failure modes + cut line
 ├── Mode-aware pruning (REDUCTION/EXPANSION)
