@@ -1,6 +1,6 @@
 ---
 name: browse
-version: 3.7.0
+version: 3.8.0
 description: |
   Fast web browsing, web app testing, and native app automation for AI coding agents.
   Persistent headless Chromium for web. Android, iOS, and macOS app automation via accessibility APIs.
@@ -54,6 +54,11 @@ browse --platform android --app com.android.settings tap @e3
 # macOS — no sim needed, app must be running
 browse --app "System Settings" snapshot -i
 browse --app "System Settings" tap @e5
+
+# Install and test your own app from a file
+browse sim start --platform ios --app ./build/MyApp.app --visible   # .app bundle
+browse sim start --platform ios --app ./MyApp.ipa --visible          # .ipa archive
+browse sim start --platform android --app ./app-debug.apk --visible  # .apk file
 
 # Switch app targets (iOS: instant reconfigure, Android: driver restart)
 browse --platform ios --app com.apple.mobilesafari snapshot -i
