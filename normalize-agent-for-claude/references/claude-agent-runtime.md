@@ -104,12 +104,33 @@ Implication:
 - Do not duplicate repo-wide rules in every agent unless the repetition is truly role-specific.
 - Agent bodies should not carry global policy that already belongs in project memory.
 
+## 7. Identity vs procedure in agent bodies
+
+Not all body content is "procedure." Before extracting, classify each section:
+
+**Identity** (stays in body):
+- Role definition and expertise claims
+- Domain-specific decision heuristics (how to choose between approaches)
+- Failure boundaries and scope constraints
+- Traits that shape the agent's communication style
+- Output contract
+
+**Procedure** (move to skills or references):
+- Step-by-step workflows with shell commands
+- Large code examples and templates
+- Framework-specific variants
+- Checklists and scorecards
+- Verbose how-to guides
+
+Stripping expertise bullets and decision heuristics makes the agent generic — it loses the domain knowledge that justifies its existence as a specialized agent.
+
 ## Rewrite Rules Derived From These Anchors
 
 1. Keep the agent body small because it is the live system prompt.
 2. Move workflow and procedure out of agents and into skills or references.
-3. Use frontmatter for runtime controls instead of prose where possible.
-4. Tighten `tools` and use `disallowedTools` intentionally.
-5. Preload only slim, high-signal skills.
-6. Remove duplicated project-wide rules from agent bodies.
-7. Use only agent-native headers when rewriting an agent.
+3. Keep role expertise, decision heuristics, and domain knowledge in the body — these are identity, not procedure.
+4. Use frontmatter for runtime controls instead of prose where possible.
+5. Tighten `tools` and use `disallowedTools` intentionally.
+6. Preload only slim, high-signal skills.
+7. Remove duplicated project-wide rules from agent bodies.
+8. Use only agent-native headers when rewriting an agent.

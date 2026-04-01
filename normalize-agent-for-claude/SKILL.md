@@ -86,8 +86,9 @@ If this repository contains `claude-code-source/`, use the exact source files na
 Evaluate the target agent using this checklist:
 
 1. **Identity vs procedure**
-   - What content is true role identity?
-   - What content is actually workflow and should live in skills?
+   - What content is true role identity? (role definition, expertise bullets, decision heuristics, domain knowledge, traits)
+   - What content is actually workflow and should live in skills? (step-by-step procedures, shell commands, templates, checklists)
+   - Role-specific expertise lists and decision heuristics are `IDENTITY` — they stay in the body. Only move *procedure* into skills or references.
 2. **Prompt mass**
    - Which large sections exist only because the current agent is compensating for missing skills or shared rules?
 3. **Frontmatter opportunities**
@@ -161,13 +162,13 @@ If mode is `rewrite`:
 
 1. Rewrite the frontmatter first.
 2. Reduce the body to:
-   - role
+   - role and expertise (specific domain knowledge and capability claims)
    - scope
-   - decision heuristics
+   - decision heuristics (how to choose between approaches)
    - failure boundaries
    - output contract
    - brief skill handoff guidance
-3. Move repeated procedures and large examples out of the agent.
+3. Move repeated procedures and large examples out of the agent. Keep role expertise bullets and decision heuristics — these are identity, not procedure.
 4. Add Claude-native frontmatter only when it changes runtime behavior materially.
 5. Keep the result role-specific, not generic.
 

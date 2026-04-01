@@ -93,6 +93,7 @@ Evaluate the target skill using this checklist:
 3. **Body size and shape**
    - Is the body carrying reference material instead of core workflow?
    - Are there giant examples, duplicated checklists, or framework-specific sections that belong in `references/`?
+   - **Structural content audit**: Does the skill contain routing tables (task→reference mappings), personality/expertise definitions, numbered rule sets, or gate classifications? These are high-signal inline content, NOT bulk examples. Tag each as `PRESERVE-INLINE` or `EXTRACT-WITH-MANDATORY-LOAD`.
 4. **Invocation type**
    - Is this a public slash command, an internal router, or a conditional path-scoped helper?
 5. **Execution model**
@@ -163,7 +164,12 @@ If mode is `rewrite`:
    - workflow steps
    - guardrails
    - output contract
-3. Move bulky material into `references/`.
+3. Move bulky material into `references/`, but respect content classification:
+   - **Bulk** (move to references): giant examples, framework variants, edge-case catalogs, verbose checklists, before/after code samples
+   - **Structural** (keep inline OR extract with mandatory load directive): routing tables (task→reference mappings), numbered guardrail rules in EXTREMELY-IMPORTANT, gate classifications (BLOCK/CONCERN/OBSERVATION), personality/expertise sections
+   - Routing tables that map task types to reference files MUST stay inline — they are the skill's primary navigation surface.
+   - Concrete guardrail lists (numbered rules, always/never) MUST either stay in the EXTREMELY-IMPORTANT block or get a mandatory load directive in the step that needs them — not a soft "see references" suggestion.
+   - When extracting personality/expertise to a reference file, add a mandatory load directive at session start, not just a "When To Load References" entry.
 4. Create `scripts/` only when deterministic repeated logic is clearly justified.
 5. Keep the resulting `SKILL.md` lean enough that future edits remain easy.
 
@@ -185,7 +191,8 @@ After planning or rewriting:
 3. Confirm frontmatter fields are intentionally chosen, not cargo-culted.
 4. Confirm no agent-only headers were introduced.
 5. Confirm every `references/` file is directly linked from `SKILL.md`.
-6. Confirm the plan or rewrite summary names the Claude source anchors that drove the major decisions.
+6. Confirm no routing tables, numbered guardrail rules, or gate classifications were stripped without replacement.
+7. Confirm the plan or rewrite summary names the Claude source anchors that drove the major decisions.
 
 **Success criteria**: The output is usable immediately by a human or follow-on agent without guessing.
 

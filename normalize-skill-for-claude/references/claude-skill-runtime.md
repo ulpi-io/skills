@@ -109,12 +109,33 @@ Implication:
 - Internal router or maintenance skills should usually be hidden.
 - User-facing slash commands should remain invocable.
 
+## 7. Content classification: bulk vs structural
+
+Not all inline content is "bulk." Before extracting, classify each section:
+
+**Bulk** (safe to extract to `references/`):
+- Giant code examples, before/after samples
+- Framework-specific variants (e.g., "React version", "Vue version")
+- Edge-case catalogs, verbose checklists, quality scorecards
+- Completion announcement templates, workflow summary diagrams
+
+**Structural** (keep inline or extract with mandatory load):
+- Routing tables that map task types to reference files — these ARE the skill's navigation
+- Numbered guardrail rules in `EXTREMELY-IMPORTANT` blocks
+- Gate classifications (BLOCK/CONCERN/OBSERVATION tables)
+- Personality/expertise/traits sections that define the skill's approach
+- Concrete always/never rule sets that shape execution safety
+
+Stripping structural content without replacement causes silent regression — the skill looks cleaner but loses operational guidance that was load-bearing.
+
 ## Rewrite Rules Derived From These Anchors
 
 1. Frontmatter first. Routing and safety metadata are higher leverage than long prose.
 2. Keep `SKILL.md` to core workflow, not encyclopedia content.
 3. Split large examples and framework variants into `references/`.
-4. Use `paths:` only when the touched-file activation behavior is genuinely useful.
-5. Use `context: fork` only when a forked execution model clearly improves the workflow.
-6. Keep `allowed-tools` intentionally narrow.
-7. Use only skill-native headers when rewriting a skill.
+4. Keep routing tables, numbered guardrails, and gate classifications inline or with mandatory load directives.
+5. When extracting personality/expertise, add a mandatory load directive at session start.
+6. Use `paths:` only when the touched-file activation behavior is genuinely useful.
+7. Use `context: fork` only when a forked execution model clearly improves the workflow.
+8. Keep `allowed-tools` intentionally narrow.
+9. Use only skill-native headers when rewriting a skill.
