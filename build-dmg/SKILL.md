@@ -1,88 +1,127 @@
 ---
 name: build-dmg
-version: 1.0.1
+version: 2.0.0
 description: |
-  Build a distributable DMG installer for any macOS Xcode project. Handles archiving,
-  code signing, DMG creation with styled Finder window, and version management.
-  Trigger on: "build a DMG", "create DMG installer", "package as DMG", "build for distribution",
-  or when the user wants to distribute a macOS app outside the App Store.
+  Build a distributable DMG for a macOS Xcode project by resolving the project, scheme,
+  signing/export inputs, then running the local helper script that archives, exports, and packages
+  the app. Use only when the user explicitly asks to build or package a DMG.
 allowed-tools:
+  - AskUserQuestion
   - Bash
   - Read
   - Write
+disable-model-invocation: true
+user-invocable: true
+argument-hint: "[project, workspace, or scheme hint]"
+arguments:
+  - request
+when_to_use: |
+  Use only when the user explicitly asks to build a DMG, package a macOS app for distribution, or
+  create a signed installer. Examples: "build a DMG", "package this Mac app", "create a
+  distributable installer". Do not use proactively.
+effort: high
 ---
+
+<EXTREMELY-IMPORTANT>
+This skill packages a build artifact and may touch signing/export inputs.
+
+Non-negotiable rules:
+1. Detect project, scheme, and export inputs before building.
+2. Confirm ambiguous signing or export configuration before writing anything.
+3. Use the helper script that lives inside this skill directory.
+4. Do not auto-create or overwrite `ExportOptions.plist` without approval.
+5. Report the built artifact path and any version bump clearly.
+</EXTREMELY-IMPORTANT>
 
 # build-dmg
 
-Build a styled DMG installer from any macOS Xcode project.
+## Inputs
 
-## Before Running
+- `$request`: Optional project, workspace, scheme, or signing hint
 
-Detect the project settings by reading available files:
+## Goal
 
-1. **App name** — from `package.json` name, `project.yml` name, `.xcodeproj` directory name, or ask the user
-2. **Scheme** — run `xcodebuild -list` to discover available schemes, or ask the user
-3. **Project/Workspace** — auto-detected if only one `.xcodeproj` or `.xcworkspace` exists at root
-4. **ExportOptions.plist** — check if `scripts/ExportOptions.plist` exists. If not, ask the user for the path or whether to create one
-5. **VERSION file** — check if a `VERSION` file exists at project root
-6. **xcodegen** — check if `project.yml` exists (indicates xcodegen usage)
-7. **Team ID** — check existing build settings or ask the user
+Produce a DMG build by:
 
-Present the detected configuration to the user and confirm before building.
+- resolving the right Xcode target inputs
+- running the bundled helper script from the project root
+- reporting the resulting DMG path and any packaging blockers
 
-## Running the Build
+## Step 0: Detect the packaging inputs
 
-The build script is at `.claude/skills/build-dmg/helpers/build-dmg.sh`. Run it directly from the project root with the required env vars:
+Read the repo and resolve:
 
-```bash
-APP_NAME="<app>" SCHEME="<scheme>" bash .claude/skills/build-dmg/helpers/build-dmg.sh
-```
+- app name
+- scheme
+- project or workspace path
+- `ExportOptions.plist` location if it exists
+- `VERSION` file if present
+- whether `project.yml` indicates `xcodegen`
+- team ID or signing hints if already present
 
-The script uses the current working directory as the project root. Do NOT copy the script into the project.
+If a required input is ambiguous, ask before building.
 
-### Required Environment Variables
+**Success criteria**: The build configuration is explicit before the helper runs.
 
-| Variable | Description |
-|----------|-------------|
-| `APP_NAME` | Display name for the .app and DMG volume |
-| `SCHEME` | Xcode scheme to build |
+## Step 1: Confirm helper and working directory
 
-### Optional Environment Variables
+The helper script lives next to this skill at:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PROJECT` | auto-detected | Path to `.xcodeproj` |
-| `WORKSPACE` | — | Path to `.xcworkspace` (takes precedence over PROJECT) |
-| `INFO_PLIST` | `<SCHEME>/Info.plist` | Path to Info.plist for version injection |
-| `EXPORT_OPTIONS` | `scripts/ExportOptions.plist` | Path to ExportOptions.plist |
-| `TEAM_ID` | — | Apple Development Team ID |
-| `VERSION_FILE` | `VERSION` | Path to VERSION file. Set to `"none"` to skip version management |
-| `USE_XCODEGEN` | `0` | Set to `"1"` to run `xcodegen generate` before building |
-| `DMG_BACKGROUND` | — | Path to a background image for the DMG window |
+- `helpers/build-dmg.sh`
 
-## After the Build
+Run it from the project root so it can use the current repository as the build context.
 
-1. **Success** — report the DMG path, version, and build number from the script output
-2. **Failure** — extract the error lines from xcodebuild output and summarize what went wrong
-3. **Version bump** — if the script bumped the VERSION file, remind the user to commit it
+**Success criteria**: The correct helper path and project root are established.
 
-## ExportOptions.plist
+## Step 2: Build with explicit environment
 
-If the project doesn't have one, create a minimal `scripts/ExportOptions.plist`:
+Provide the required environment variables such as:
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>method</key>
-    <string>development</string>
-    <key>signingStyle</key>
-    <string>automatic</string>
-</dict>
-</plist>
-```
+- `APP_NAME`
+- `SCHEME`
 
-For distribution outside the App Store, change `method` to `developer-id` and ensure the team has a Developer ID certificate.
+Add optional variables only when the project actually needs them:
 
-**Do NOT create or modify ExportOptions.plist without asking the user first.**
+- `PROJECT`
+- `WORKSPACE`
+- `INFO_PLIST`
+- `EXPORT_OPTIONS`
+- `TEAM_ID`
+- `VERSION_FILE`
+- `USE_XCODEGEN`
+- `DMG_BACKGROUND`
+
+**Success criteria**: The helper has all required inputs and only the needed optional ones.
+
+## Step 3: Handle success or failure cleanly
+
+On success, report:
+
+- DMG output path
+- app version and build number if available
+- whether the `VERSION` file was changed
+
+On failure:
+
+- summarize the real error
+- surface the relevant `xcodebuild` or export failure lines
+- identify whether the blocker is signing, scheme selection, export options, or build failure
+
+**Success criteria**: The user gets either a usable artifact path or a clear blocker summary.
+
+## Guardrails
+
+- Do not run this skill proactively.
+- Do not assume `.claude`-local helper paths; use the helper inside this skill directory.
+- Do not auto-create or overwrite export options without approval.
+- Do not hide signing failures behind generic "build failed" summaries.
+
+## Output Contract
+
+Report:
+
+1. resolved app/project/workspace/scheme inputs
+2. whether the helper ran successfully
+3. DMG path on success
+4. version/build info if available
+5. exact blocker category on failure

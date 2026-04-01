@@ -1,59 +1,108 @@
 ---
 name: secrets
-version: 0.1.1
-description: Credential management for AI coding agents — encrypted vault, CLI injection, MCP shim
+version: 2.0.0
+description: |
+  Manage encrypted local credentials for agent tooling with the `secrets` CLI: add, rotate, list,
+  enable, disable, and inspect service integrations without exposing secret values in agent output.
+allowed-tools:
+  - Bash
+  - Read
+disable-model-invocation: true
+user-invocable: true
+argument-hint: "[service or secret-management action]"
+arguments:
+  - request
+when_to_use: |
+  Use only when the user explicitly asks to manage credentials, wire secrets into MCP servers or
+  agent tooling, or inspect secret-management status. Examples: "/secrets add github", "enable the
+  Jira secret", "what credentials are configured?", "rotate the OpenAI secret". Do not use
+  proactively.
+effort: high
 ---
 
-# Secrets CLI
+<EXTREMELY-IMPORTANT>
+This skill touches credential infrastructure.
 
-Manage credentials for AI coding agents. Stores secrets in an encrypted local vault and injects them transparently into CLI tools and MCP servers.
+Non-negotiable rules:
+1. Never put secret values in arguments, commands, logs, or chat output.
+2. Never use `--reveal`.
+3. Treat service names as the reporting surface, not secret contents.
+4. Prefer the interactive CLI flows for secret entry or rotation.
+5. Report status and enablement, not raw credential material.
+</EXTREMELY-IMPORTANT>
 
-## When to use
+# secrets
 
-- User asks about API keys, tokens, credentials, or authentication
-- User wants to connect MCP servers that need credentials
-- User asks how to securely manage secrets for AI tools
+## Inputs
 
-## Commands
+- `$request`: Service name or management action such as `add`, `rotate`, `enable`, or `status`
 
-| Command | Description |
-|---------|-------------|
-| `secrets add <service>` | Store credentials (interactive prompt — never pass tokens as CLI arguments) |
-| `secrets remove <service>` | Remove stored credentials |
-| `secrets list` | List stored services (no values shown) |
-| `secrets show <service>` | Show masked credentials (do not use `--reveal` — secret values must never appear in agent output) |
-| `secrets rotate <service>` | Update credential values |
-| `secrets enable <service>` | Enable MCP server in .mcp.json |
-| `secrets disable <service>` | Remove MCP server from .mcp.json |
-| `secrets init` | Auto-detect agents, write hooks + MCP entries |
-| `secrets status` | Overview of vault, hooks, agents |
-| `secrets mcp <service>` | Run MCP server with credential injection |
-| `secrets registry list` | List available service definitions |
+## Goal
 
-## Common workflows
+Use the `secrets` CLI to help the user:
 
-### Add GitHub credentials and enable MCP
-```bash
-secrets add github    # interactive prompt — never pass tokens as CLI arguments
-secrets enable github
-```
+- add or rotate credentials safely
+- list configured services
+- enable or disable integrations
+- inspect vault and integration status without exposing secrets
 
-### Initialize for a project
-```bash
-secrets init
-```
+## Step 0: Resolve the requested action
 
-### Check what's configured
-```bash
-secrets status
-```
+Determine whether the user wants to:
 
-## Safety rules
+- add
+- remove
+- list
+- show masked status
+- rotate
+- enable or disable an integration
+- initialize the project setup
+- inspect status
 
-- **Never pass secret values as CLI arguments** — use `secrets add <service>` interactively so tokens don't appear in shell history or agent output
-- **Never use `--reveal`** — secret values must never appear in agent context or conversation output
-- **Never echo, log, or include secret values in responses** — only reference services by name
+If the action is ambiguous, ask before running anything.
 
-## Built-in services
+**Success criteria**: The exact secret-management action is explicit.
 
-github, anthropic, openai, aws, slack, jira, google-cloud, vercel, stripe, linear
+## Step 1: Use the safest command shape
+
+Prefer:
+
+- `secrets add <service>` for new credentials
+- `secrets rotate <service>` for updates
+- `secrets list` or `secrets status` for inspection
+- `secrets enable <service>` or `disable <service>` for integration wiring
+
+Rules:
+
+- never pass the secret value as a CLI argument
+- never use `--reveal`
+- do not echo or restate entered secret material
+
+**Success criteria**: The command path preserves credential secrecy.
+
+## Step 2: Report non-sensitive results
+
+Report:
+
+- which service was targeted
+- whether the action succeeded
+- whether the service is enabled or disabled
+- any follow-up setup the user still needs
+
+**Success criteria**: The user learns the integration state without any credential leakage.
+
+## Guardrails
+
+- Do not run this skill proactively.
+- Do not print or summarize raw secret values.
+- Do not use non-interactive secret entry patterns that leak values into shell history.
+- Do not assume enabling a service is equivalent to testing it successfully unless the command proved that.
+
+## Output Contract
+
+Report:
+
+1. action performed
+2. service targeted
+3. masked or status-only result
+4. any next setup step required

@@ -1,204 +1,128 @@
 ---
 name: claude-review
-version: 1.0.0
+version: 2.0.0
 description: |
-  Spawn a separate Claude Code agent to review code changes made in the current session
-  or branch. Uses the Agent tool with worktree isolation so the reviewer gets an independent
-  read-only copy. Use when the user says "claude review", "self-review", "/claude-review",
-  or when a task plan calls for post-task review.
+  Launch an isolated Claude reviewer for the current branch, a specific commit, or uncommitted
+  changes. Uses Claude's agent runtime with worktree isolation so the review has an independent
+  read-only view of the code before findings are reported back.
+allowed-tools:
+  - Bash
+  - Read
+  - Agent
+disable-model-invocation: true
+user-invocable: true
+argument-hint: "[branch review, last commit, or uncommitted]"
+arguments:
+  - request
+when_to_use: |
+  Use only when the user explicitly asks for a Claude review or a self-review pass. Examples:
+  "/claude-review", "run a Claude review on this branch", "self-review the last commit". Do not
+  use for direct code fixing or when the user asked for Codex or Kiro instead.
+effort: high
 ---
 
 <EXTREMELY-IMPORTANT>
-Before reporting ANY finding, you **ABSOLUTELY MUST**:
+This skill is review orchestration, not code editing.
 
-1. Read the complete diff (every changed line, not just file names)
-2. Read surrounding context to verify the issue is real
-3. Check if the issue is already handled elsewhere in the changed code
-4. Search for existing tests that cover the scenario
-5. Never report stylistic issues as bugs — only real defects and vulnerabilities
-
-**Reporting without verification = false positives, wasted developer time, eroded trust**
-
-This is not optional. Every finding requires disciplined verification.
+Non-negotiable rules:
+1. Read the real diff before building the reviewer prompt.
+2. Always use isolated review execution.
+3. Tell the reviewer to report only, never modify code.
+4. Carry forward exclusion lists on repeated rounds so fixed findings are not re-reported.
+5. Verify returned findings before acting on them.
 </EXTREMELY-IMPORTANT>
 
 # Claude Review
 
-Spawn a separate Claude Code agent to independently review code changes.
+## Inputs
 
-## When to Use
+- `$request`: Optional scope hint such as `last commit`, `uncommitted`, `auth focus`, or `round 2`
 
-- User says "claude review", "self-review", "/claude-review"
-- After completing a task from a DAG plan
-- User wants a second opinion from Claude itself (not codex or kiro)
-- As part of the review trifecta: `/claude-review`, `/codex-review`, `/kiro-review`
+## Goal
 
-## When NOT to Use
+Create a focused Claude review that:
 
-- User specifically wants codex or kiro review (use those skills instead)
-- No changes exist on the branch (nothing to review)
-- User wants to make changes (this is review-only)
+- derives its scope from the real diff
+- gives the reviewer the right focus areas
+- runs in isolation from the main working tree
+- returns actionable findings without changing code
 
-## Workflow
+## Step 0: Resolve the review scope
 
-### Step 1: Determine the Review Scope
+Determine whether the user wants:
 
-```bash
-# Detect default branch
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' || echo main)
+- full branch review
+- last-commit review
+- uncommitted review
+- targeted review of a subsystem or recent task
 
-# What changed?
-git diff --stat $DEFAULT_BRANCH..HEAD
-git diff --name-only $DEFAULT_BRANCH..HEAD
-```
+Read the relevant diff summary and changed-file list before building the prompt.
 
-Determine scope:
-- **Full branch**: all commits since divergence from default branch
-- **Last commit**: only the most recent commit (`git show --stat HEAD`)
-- **Uncommitted**: staged + unstaged changes
+If there is nothing to review, stop and say so explicitly.
 
-If $ARGUMENTS contains a scope hint (e.g., "last commit", "uncommitted"), use that.
-Otherwise default to full branch review.
+**Success criteria**: The review scope is explicit and backed by a real diff.
 
-### Step 2: Build Review Context
+## Step 1: Build a focused review brief
 
-Read the diff to understand what areas need review focus:
+Use the diff to identify:
 
-```bash
-# Get changed directories to identify subsystems
-git diff --name-only $DEFAULT_BRANCH..HEAD | sed 's|/[^/]*$||' | sort -u
+- changed files
+- changed directories or subsystems
+- likely risk areas such as auth, secrets, concurrency, shelling out, migrations, or tests
+- issues already fixed in previous rounds that should not be re-reported
 
-# Count changes per area
-git diff --stat $DEFAULT_BRANCH..HEAD
-```
+The prompt should include:
 
-Identify:
-- Which packages/modules changed
-- Whether changes are security-sensitive (auth, crypto, secrets, permissions)
-- Whether changes involve concurrency, I/O, or shell execution
-- What test files exist vs what source files changed
+- review base and scope
+- changed-file list
+- focused risk areas
+- explicit report-only instruction
+- desired output format
 
-### Step 3: Spawn the Review Agent
+**Success criteria**: The reviewer brief is specific to the actual changes, not generic boilerplate.
 
-Use the Agent tool to launch an independent reviewer in a worktree:
+## Step 2: Launch the isolated reviewer
 
-```
-Agent tool call:
-  subagent_type: general-purpose
-  isolation: worktree
-  prompt: |
-    You are performing a code review of changes on branch [branch-name]
-    compared to [base].
+Use `Agent` with:
 
-    ## Changed files
-    [list of changed files from Step 2]
+- `subagent_type: general-purpose`
+- `isolation: "worktree"`
+- a prompt that says:
+  - read the full diff
+  - read surrounding file context
+  - verify each finding before reporting
+  - do not make code changes
+  - report findings as a markdown table:
+    `| # | Priority | File:Line | Description | Suggested Fix |`
+  - priority levels: P1 (crash/security), P2 (incorrect behavior), P3 (minor)
+  - if nothing significant is found, say so explicitly
 
-    ## Review focus
-    Based on the changes, focus on:
-    1. [Area 1 — derived from actual changes]
-    2. [Area 2 — derived from actual changes]
-    3. [Area 3 — derived from actual changes]
+If the review is expected to take a while, background execution is acceptable, but keep the scope tight enough that the reviewer stays focused.
 
-    ## Previously known issues (do NOT re-report)
-    [List any issues already fixed in prior rounds]
+**Success criteria**: The review runs in an isolated worktree and cannot mutate the active working copy.
 
-    ## Instructions
-    1. Read the full diff: git diff [base]..HEAD
-    2. For each changed file, read it completely and check for:
-       - Logic errors, off-by-one, null access, missing error handling
-       - Security issues: injection, auth bypass, credential leaks
-       - Race conditions, TOCTOU, concurrent modification
-       - Edge cases: empty input, unicode, special characters
-       - Missing or incorrect test coverage
-    3. Verify each finding against surrounding context before reporting
-    4. Report findings as a markdown table:
-       | # | Priority | File:Line | Description | Suggested Fix |
-    5. Priority levels: P1 (crash/security), P2 (incorrect behavior), P3 (minor)
-    6. If you find nothing significant, say so explicitly
+## Step 3: Parse and summarize findings
 
-    Do NOT make any code changes. Report only.
-```
+Report:
 
-**Key configuration:**
-- `isolation: "worktree"` — gives the reviewer a clean read-only copy
-- `subagent_type: general-purpose` — full tool access for reading code
-- The prompt must include the specific files and focus areas (not generic)
+- scope reviewed
+- findings grouped by priority
+- file and line references
+- explicit clean result when no material findings are returned
 
-### Step 4: Parse and Report Findings
+Treat reviewer output as candidate findings, not automatic truth. If the user wants fixes, verify each finding locally first.
 
-When the agent returns, extract findings and present to the user:
+**Success criteria**: The user gets a readable review summary without needing to parse raw agent output.
 
-```
-## Claude Review: [scope description]
+## Step 4: Iterate only when useful
 
-| # | Priority | File:Line | Description |
-|---|----------|-----------|-------------|
-| 1 | P1       | ...       | ...         |
+On a second or later round:
 
-[N] findings: [x] P1, [y] P2, [z] P3
-```
+- include previously fixed findings in the exclusion list
+- tighten the review focus to new or modified areas
+- avoid rerunning a generic full-branch review if only a few files changed
 
-### Step 5: Fix Findings (if requested)
-
-If the user wants to fix:
-1. Read each cited file to verify the finding is real
-2. Apply minimal fixes
-3. Run tests and typecheck
-4. Commit the fixes
-
-### Step 6: Iterate (if requested)
-
-For thorough review, run multiple rounds:
-1. Fix findings from round N
-2. Add fixed issues to the "Previously known issues" list
-3. Spawn a new review agent with the updated prompt
-4. Repeat until findings converge to zero
-
-**Critical:** Always maintain the exclusion list between rounds.
-
-## Example: Full Branch Review
-
-```
-Agent tool call:
-  description: "Review secrets branch changes"
-  subagent_type: general-purpose
-  isolation: worktree
-  prompt: |
-    Review all changes on this branch compared to main.
-
-    Changed files: vault.ts, injection.ts, proxy/server.ts, command-parser.ts
-
-    Focus on:
-    1. SECURITY: AES-256-GCM implementation, credential leaks in error messages
-    2. CORRECTNESS: Shell parser with quotes/pipes/subshells
-    3. EDGE CASES: Concurrent vault access, proxy chunked encoding
-
-    Read every changed file. Verify findings against context.
-    Report as markdown table with Priority, File:Line, Description, Fix.
-```
-
-## Example: Post-Task Review (DAG integration)
-
-After a task agent completes, run claude-review on just that task's changes:
-
-```
-Agent tool call:
-  description: "Review TASK-003 implementation"
-  subagent_type: general-purpose
-  isolation: worktree
-  prompt: |
-    Review the changes in the last commit (TASK-003: Add vault encryption).
-
-    Run: git show --stat HEAD
-    Then: git show HEAD (full diff)
-
-    Focus on:
-    1. Is the AES-256-GCM implementation correct?
-    2. Are there credential leaks in error messages?
-    3. Is the key derivation secure?
-
-    Report findings as markdown table.
-```
+**Success criteria**: Each new round looks for genuinely new issues instead of rehashing old ones.
 
 ## Comparison with Sibling Skills
 
@@ -208,24 +132,22 @@ Agent tool call:
 | `/codex-review` | OpenAI Codex CLI | Independent perspective, repro scripts |
 | `/kiro-review` | Kiro CLI | Alternative AI perspective |
 
-**Recommendation:** For critical code, run all three and cross-reference findings.
-The overlap between reviewers catches more bugs than any single tool.
+For critical code, run all three and cross-reference findings. The overlap between reviewers catches more bugs than any single tool.
 
-## Safety Rules
+## Guardrails
 
-| Rule | Reason |
-|------|--------|
-| Always use `isolation: "worktree"` | Prevents reviewer from modifying your working copy |
-| Always list prior fixes in iterations | Prevents re-reporting already-fixed issues |
-| Never include actual secret values in findings | Report type and location only (e.g., "hardcoded key at config.ts:17") |
-| Always verify findings before fixing | Any reviewer can produce false positives |
-| Never skip the diff reading step | Generic prompts get generic (useless) results |
-| Be specific about focus areas | Targeted reviews find more bugs than broad ones |
+- Do not add `context: fork`; this skill already uses the agent runtime directly.
+- Do not let the reviewer edit code.
+- Do not skip diff reading before prompt construction.
+- Do not include real secret values in the prompt or summary.
+- Do not run this skill proactively; it is explicit-user-only.
 
-## Failure Modes
+## Output Contract
 
-- **Agent returns no findings**: Prompt was too generic. Add specific file names and focus areas.
-- **Agent makes code changes**: Forgot `isolation: "worktree"` or prompt didn't say "report only"
-- **Repeated findings across rounds**: Exclusion list not maintained — add prior fixes
-- **False positives**: Always read the cited code before acting. ~10% of findings are wrong.
-- **Agent times out**: Diff too large. Break into per-file or per-module reviews.
+Report:
+
+1. review scope
+2. changed areas emphasized in the prompt
+3. findings by priority with `file:line`
+4. explicit clean result if no significant findings were returned
+5. whether a later review round should exclude prior fixed issues

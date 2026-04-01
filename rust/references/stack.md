@@ -1,6 +1,11 @@
 # Stack — Toolchain, Workspace Layout, Crate Ecosystem, Cargo Conventions
 
-Every other reference file assumes these decisions. Do not deviate.
+This reference is scoped to hgDB.
+
+`CLAUDE.md` and `docs/hg-db-spec.md` are the source of truth when they conflict with this file.
+Use this file for Rust/Cargo conventions, crate roles, and dependency patterns. For fast-moving
+dependencies like Arrow, DataFusion, pgwire, tantivy, and axum, treat versions here as
+directional and verify them at scaffold time.
 
 ## Toolchain
 
@@ -82,98 +87,101 @@ cargo build --release --workspace
 
 ## Workspace Structure
 
-Realistic multi-crate database engine workspace:
+Current hgDB target workspace:
 
 ```
-project-root/
+hgDB/
 ├── Cargo.toml              # [workspace] definition + shared deps
 ├── Cargo.lock              # Committed — this is a binary/application project
+├── CLAUDE.md               # Locked architecture and process rules
+├── docs/
+│   ├── hg-db-spec.md
+│   ├── hg-type-system.md
+│   └── testing.md
 ├── rustfmt.toml
 ├── clippy.toml
 ├── deny.toml
 ├── .cargo/
 │   └── config.toml         # Linker overrides, target defaults
 ├── crates/
-│   ├── storage/            # WAL, segments, mmap, MVCC, compaction
+│   ├── hgdb/               # Binary entry point / CLI
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       └── main.rs
+│   ├── hgdb-common/        # RowId, RowAddr, Lsn, TxnId, errors, config
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── wal.rs      # Write-ahead log
-│   │       ├── segment.rs  # Immutable segment files
-│   │       ├── mmap.rs     # Memory-mapped I/O
-│   │       ├── mvcc.rs     # Multi-version concurrency control
+│   │       ├── ids.rs
+│   │       ├── error.rs
+│   │       └── config.rs
+│   ├── hgdb-types/         # BMAP, BARR, DEC, disk/exec types, coercion
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── disk.rs
+│   │       ├── execution.rs
+│   │       ├── logical.rs
+│   │       ├── coercion.rs
+│   │       ├── bmap.rs
+│   │       ├── barr.rs
+│   │       └── decimal.rs
+│   ├── hgdb-storage/       # WAL, memtable, segments, Reader, MVCC, B+ tree, compaction
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── reader/
+│   │       ├── wal/
+│   │       ├── memtable/
+│   │       ├── segment/
+│   │       ├── mvcc/
+│   │       ├── btree/
+│   │       ├── row_addr.rs
 │   │       └── compaction.rs
-│   ├── types/              # Shared type system — disk format + execution types
+│   ├── hgdb-doc/           # Document CRUD and JSON/BMAP access (no DataFusion dep)
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── datum.rs    # Runtime value representation
-│   │       ├── schema.rs   # Column types, table schemas
-│   │       └── encoding.rs # Binary encode/decode for on-disk format
-│   ├── planner/            # Query router, cost-based optimizer
+│   │       ├── crud.rs
+│   │       ├── json_path.rs
+│   │       └── accessors.rs
+│   ├── hgdb-sql/           # DataFusion TableProvider, catalog, pg_catalog, JSON UDFs
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── optimizer.rs
-│   │       └── router.rs   # Routes queries to SQL/search/vector/graph
-│   ├── sql/                # DataFusion-backed SQL execution
+│   │       ├── catalog.rs
+│   │       ├── table_provider.rs
+│   │       ├── ddl.rs
+│   │       ├── dml.rs
+│   │       ├── pg_catalog.rs
+│   │       ├── information_schema.rs
+│   │       ├── type_mapping.rs
+│   │       └── json_udfs.rs
+│   ├── hgdb-server/        # pgwire and HTTP connectivity
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── provider.rs # Custom TableProvider implementations
-│   │       └── udf.rs      # User-defined functions
-│   ├── search/             # Tantivy full-text search integration
+│   │       ├── startup.rs
+│   │       └── pgwire/
+│   └── hgdb-testing/       # SimEnv, proptest, TestServer, sqllogictest
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── index.rs    # Index build, merge
-│   │       └── query.rs    # BM25 queries, facets, highlights
-│   ├── vector/             # HNSW index, SIMD distance functions
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── hnsw.rs     # Hierarchical navigable small world graph
-│   │       ├── distance.rs # Cosine, L2, dot — SIMD accelerated
-│   │       └── quantize.rs # Product quantization, scalar quantization
-│   ├── graph/              # Arena-allocated adjacency list graph engine
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── arena.rs    # bumpalo arena for graph nodes/edges
-│   │       └── traverse.rs # BFS, DFS, shortest path
-│   ├── geo/                # R-tree spatial index
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       └── rtree.rs    # rstar-backed spatial queries
-│   ├── temporal/           # Bi-temporal versioning
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       └── bitemporal.rs  # valid-time + transaction-time
-│   ├── server/             # Network layer — pgwire, HTTP, WebSocket
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── pgwire.rs   # Postgres wire protocol handler
-│   │       ├── http.rs     # REST + health endpoints (axum)
-│   │       └── ws.rs       # WebSocket streaming results
-│   └── common/             # Shared utilities — error types, config, metrics
-│       ├── Cargo.toml
-│       └── src/
-│           ├── lib.rs
-│           ├── error.rs    # Unified error enum (thiserror)
-│           ├── config.rs   # TOML config loading
-│           └── metrics.rs  # Prometheus metrics helpers
-├── src/
-│   └── main.rs             # Binary entry point — wires crates together
-├── benches/
-│   ├── storage_bench.rs    # WAL write throughput, segment scan speed
-│   └── vector_bench.rs     # HNSW query latency, distance function throughput
+│   │       ├── simenv.rs
+│   │       ├── crash_sim.rs
+│   │       ├── test_server.rs
+│   │       ├── slt_harness.rs
+│   │       ├── generators.rs
+│   │       └── model_tests.rs
+│   └── benches/            # Per-crate benches live under crate benches/
 └── tests/
     └── integration/
-        ├── sql_test.rs
+        ├── sql_test.rs     # Optional top-level cross-crate integration tests
         └── pgwire_test.rs
+
+# Future crates (create only when they own real code):
+# hgdb-planner, hgdb-vector, hgdb-search, hgdb-graph, hgdb-geo,
+# hgdb-embed, hgdb-branch, hgdb-compute, hgdb-security
 ```
 
 ### Workspace `Cargo.toml`
@@ -181,25 +189,11 @@ project-root/
 ```toml
 [workspace]
 resolver = "2"
-members = [
-    "crates/storage",
-    "crates/types",
-    "crates/planner",
-    "crates/sql",
-    "crates/search",
-    "crates/vector",
-    "crates/graph",
-    "crates/geo",
-    "crates/temporal",
-    "crates/server",
-    "crates/common",
-]
+members = ["crates/*"]
 
 [workspace.package]
 edition = "2021"
 rust-version = "1.75"
-license = "Apache-2.0"
-repository = "https://github.com/org/project"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
@@ -213,19 +207,21 @@ missing_docs = "warn"
 
 # --- Shared dependency versions (consumed via workspace = true) ---
 [workspace.dependencies]
+# Fast-moving crates: verify latest stable at scaffold time.
 tokio = { version = "1.43", features = ["rt-multi-thread", "io-util", "net", "sync", "macros", "signal", "fs"] }
 bytes = "1.9"
-arrow = { version = "54", features = ["prettyprint"] }
-datafusion = "44"
-tantivy = "0.22"
-pgwire = "0.28"
-axum = { version = "0.8", features = ["ws", "macros"] }
+arrow = "..."        # verify latest stable
+datafusion = "..."   # verify latest stable
+tantivy = "..."      # future phase, verify latest stable
+pgwire = { version = "...", default-features = false, features = ["server-api-ring", "pg-ext-types"] }
+axum = "..."         # verify latest stable
 tower = { version = "0.5", features = ["timeout", "limit"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
 memmap2 = "0.9"
 bumpalo = { version = "3.16", features = ["collections"] }
 rstar = "0.12"
 crossbeam = "0.8"
+crossbeam-skiplist = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
@@ -239,12 +235,16 @@ byteorder = "1"
 ring = "0.17"
 proptest = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
+sqllogictest = "..." # verify latest stable
+tokio-postgres = "..." # verify latest stable
 rand = "0.8"
 uuid = { version = "1", features = ["v7", "serde"] }
 parking_lot = "0.12"
 dashmap = "6"
 futures = "0.3"
 pin-project-lite = "0.2"
+object_store = "..."
+roaring = "..."
 
 # Linux-only
 [target.'cfg(target_os = "linux")'.workspace.dependencies]
@@ -252,44 +252,6 @@ io-uring = "0.7"
 
 # Optional / feature-gated
 wasmtime = "27"
-
-# --- Root binary ---
-[package]
-name = "mydb"
-edition.workspace = true
-rust-version.workspace = true
-version = "0.1.0"
-
-[dependencies]
-mydb-storage = { path = "crates/storage" }
-mydb-types = { path = "crates/types" }
-mydb-planner = { path = "crates/planner" }
-mydb-sql = { path = "crates/sql" }
-mydb-search = { path = "crates/search" }
-mydb-vector = { path = "crates/vector" }
-mydb-graph = { path = "crates/graph" }
-mydb-geo = { path = "crates/geo" }
-mydb-temporal = { path = "crates/temporal" }
-mydb-server = { path = "crates/server" }
-mydb-common = { path = "crates/common" }
-tokio.workspace = true
-anyhow.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
-serde.workspace = true
-toml.workspace = true
-
-[dev-dependencies]
-proptest.workspace = true
-criterion.workspace = true
-
-[[bench]]
-name = "storage_bench"
-harness = false
-
-[[bench]]
-name = "vector_bench"
-harness = false
 
 # --- Profiles ---
 [profile.release]
@@ -314,11 +276,44 @@ split-debuginfo = "unpacked"
 opt-level = 2      # Optimize dependencies even in dev
 ```
 
-### Individual crate `Cargo.toml` (example: `crates/storage`)
+### Binary crate `Cargo.toml` (example: `crates/hgdb`)
+
+The workspace root owns shared versions, lints, and profiles. The actual `hgdb` binary lives under `crates/hgdb`.
 
 ```toml
 [package]
-name = "mydb-storage"
+name = "hgdb"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hgdb-common = { path = "../hgdb-common" }
+hgdb-types = { path = "../hgdb-types" }
+hgdb-sql = { path = "../hgdb-sql", optional = true }
+hgdb-server = { path = "../hgdb-server", optional = true }
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+toml.workspace = true
+
+[features]
+default = ["sql", "pgwire"]
+sql = ["dep:hgdb-sql"]
+pgwire = ["dep:hgdb-server"]
+http = ["dep:hgdb-server"]
+```
+
+### Individual crate `Cargo.toml` (example: `crates/hgdb-storage`)
+
+```toml
+[package]
+name = "hgdb-storage"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -329,22 +324,25 @@ workspace = true
 [features]
 default = []
 io-uring = ["dep:io-uring"]  # Linux-only async I/O
-serde = ["dep:serde"]        # Serialization support (off by default for lib crates)
+object-store = ["dep:object_store"]
+sim-env = []                 # Test hook used by hgdb-testing
 
 [dependencies]
-mydb-types = { path = "../types" }
-mydb-common = { path = "../common" }
+hgdb-types = { path = "../hgdb-types" }
+hgdb-common = { path = "../hgdb-common" }
 tokio.workspace = true
 bytes.workspace = true
 memmap2.workspace = true
 crc32fast.workspace = true
 crossbeam.workspace = true
+crossbeam-skiplist.workspace = true
 parking_lot.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 zerocopy.workspace = true
 byteorder.workspace = true
-serde = { workspace = true, optional = true }
+roaring.workspace = true
+object_store = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 io-uring = { workspace = true, optional = true }
@@ -359,38 +357,39 @@ tempfile = "3"
 Feature flags control optional functionality. Library crates expose features; the binary crate enables them.
 
 ```toml
-# In a library crate (crates/vector/Cargo.toml):
+# In a library crate (crates/hgdb-server/Cargo.toml):
 [features]
-default = []
-simd = []                       # Enable hand-tuned SIMD distance functions
-quantization = []               # Product quantization support
-wasm-plugins = ["dep:wasmtime"] # WASM UDF execution
-serde = ["dep:serde"]           # Serialize index metadata
+default = ["pgwire"]
+pgwire = []
+http = ["dep:axum"]
 
-# In the root binary Cargo.toml:
+# In the binary crate (crates/hgdb/Cargo.toml):
 [dependencies]
-mydb-vector = { path = "crates/vector", features = ["simd", "quantization"] }
+hgdb-server = { path = "../hgdb-server", default-features = false, features = ["pgwire"] }
 ```
 
 ## Key Crate Ecosystem
 
 | Crate | Version | Purpose | Notes |
 |---|---|---|---|
-| `tokio` | 1.43 | Async runtime | `rt-multi-thread`, `io-util`, `net`, `sync`, `macros`, `signal`, `fs` |
+| `tokio` | 1.x | Async runtime | `rt-multi-thread`, `io-util`, `net`, `sync`, `macros`, `signal`, `fs` |
 | `memmap2` | 0.9 | Memory-mapped files | Segment reads, vector storage, read-only mmap for hot data |
-| `datafusion` | 44 | SQL query engine | `TableProvider` for custom storage, UDFs, vectorized execution |
-| `arrow` | 54 | Columnar memory format | Zero-copy IPC, compute kernels, record batches |
-| `tantivy` | 0.22 | Full-text search | BM25, custom tokenizers, faceted search, concurrent indexing |
-| `pgwire` | 0.28 | Postgres wire protocol | Server-side implementation, extended query protocol |
-| `axum` | 0.8 | HTTP framework | REST endpoints, WebSocket upgrade, Tower middleware |
+| `datafusion` | verify latest stable | SQL execution framework | `TableProvider`, `ExecutionPlan`, `SessionContext`, Arrow-native execution |
+| `arrow` | verify latest stable | Columnar memory format | RecordBatch, compute kernels, Arrow IPC |
+| `tantivy` | verify latest stable | Full-text search | Future-phase FTS integration |
+| `pgwire` | verify latest stable | Postgres wire protocol | `SimpleQueryHandler`, `ExtendedQueryHandler`, ORM compatibility |
+| `axum` | verify latest stable | HTTP framework | Optional REST/health endpoints in `hgdb-server` |
 | `bumpalo` | 3.16 | Arena allocator | Graph nodes, temp per-query allocations, zero-drop arenas |
 | `rstar` | 0.12 | R-tree spatial index | Nearest neighbor, envelope queries, bulk loading |
-| `crossbeam` | 0.8 | Lock-free structures | Channels, skip lists, epoch-based reclamation |
+| `crossbeam` | 0.8 | Concurrency primitives | Channels, epoch-based reclamation, coordination |
+| `crossbeam-skiplist` | 0.1 | Ordered concurrent map | Memtable backing structure in Phase 1 |
 | `bytes` | 1.9 | Byte buffer abstraction | Network I/O, zero-copy slicing, `BytesMut` for building frames |
 | `thiserror` | 2 | Derive `Error` | Library crates only |
 | `anyhow` | 1 | Dynamic `Error` | Binary crate and tests only |
 | `proptest` | 1 | Property-based testing | Round-trip encoding, invariant checking, fuzz-like coverage |
 | `criterion` | 0.5 | Benchmarking | Statistical benchmarks with regression detection |
+| `sqllogictest` | verify latest stable | SQL regression testing | `.slt` harness in `hgdb-testing` |
+| `tokio-postgres` | verify latest stable | pgwire integration tests | Real prepared-statement / portal behavior |
 | `serde` + `serde_json` | 1 | Serialization | Config files, JSON wire format, always behind feature flag in libs |
 | `tracing` | 0.1 | Structured logging | Spans, events, per-request trace IDs |
 | `tracing-subscriber` | 0.3 | Log output | `env-filter` for per-module levels, `json` for production |
@@ -413,11 +412,11 @@ mydb-vector = { path = "crates/vector", features = ["simd", "quantization"] }
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter("mydb=debug,tower_http=debug")
+        .with_env_filter("hgdb=debug,hgdb_storage=debug,hgdb_server=debug,warn")
         .json()
         .init();
 
-    let config = MyDbConfig::load("config.toml")?;
+    let config = HgdbConfig::load("config.toml")?;
     let server = Server::bind(&config).await?;
     server.run().await
 }
@@ -531,7 +530,7 @@ use zerocopy::{FromBytes, IntoBytes, KnownLayout, Immutable};
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Debug, Clone, Copy)]
 #[repr(C, packed)]
 pub struct SegmentHeader {
-    pub magic: [u8; 4],      // b"MYDB"
+    pub magic: [u8; 4],      // b"HGDB"
     pub version: u8,
     pub _reserved: [u8; 3],
     pub entry_count: u64,
@@ -542,7 +541,7 @@ pub struct SegmentHeader {
 }
 
 impl SegmentHeader {
-    pub const MAGIC: [u8; 4] = *b"MYDB";
+    pub const MAGIC: [u8; 4] = *b"HGDB";
     pub const SIZE: usize = std::mem::size_of::<Self>();
 
     pub fn from_bytes(bytes: &[u8]) -> Option<&Self> {
@@ -611,13 +610,13 @@ use datafusion::logical_expr::Expr;
 use datafusion::physical_plan::ExecutionPlan;
 use std::sync::Arc;
 
-pub struct MyTableProvider {
+pub struct HgdbTableProvider {
     schema: SchemaRef,
-    // ... storage layer handle
+    // ... handle to hgdb-storage
 }
 
 #[async_trait::async_trait]
-impl TableProvider for MyTableProvider {
+impl TableProvider for HgdbTableProvider {
     fn as_any(&self) -> &dyn std::any::Any { self }
     fn schema(&self) -> SchemaRef { self.schema.clone() }
     fn table_type(&self) -> TableType { TableType::Base }
@@ -630,7 +629,7 @@ impl TableProvider for MyTableProvider {
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         // Push down filters to storage layer, respect projection and limit
-        todo!("Build execution plan from storage segments")
+        todo!("Build execution plan from hgdb-storage readers and scans")
     }
 }
 ```
@@ -645,10 +644,10 @@ use pgwire::api::{ClientInfo, MakeHandler, StatelessMakeHandler, Type};
 use pgwire::error::{PgWireError, PgWireResult};
 use pgwire::tokio::process_socket;
 
-pub struct MyQueryHandler;
+pub struct HgdbSimpleQueryHandler;
 
 #[async_trait::async_trait]
-impl SimpleQueryHandler for MyQueryHandler {
+impl SimpleQueryHandler for HgdbSimpleQueryHandler {
     async fn do_query<'a, C>(
         &self,
         _client: &mut C,
@@ -659,12 +658,12 @@ impl SimpleQueryHandler for MyQueryHandler {
     {
         tracing::info!(query, "executing simple query");
         // Parse SQL, plan, execute, return results as Response
-        todo!("Route to DataFusion or custom engine")
+        todo!("Route to DataFusion SessionContext and hgdb execution")
     }
 }
 
 pub async fn start_pgwire(addr: &str) -> anyhow::Result<()> {
-    let handler = Arc::new(StatelessMakeHandler::new(Arc::new(MyQueryHandler)));
+    let handler = Arc::new(StatelessMakeHandler::new(Arc::new(HgdbSimpleQueryHandler)));
     let startup_handler = Arc::new(StatelessMakeHandler::new(Arc::new(NoopStartupHandler)));
     let extended_handler = Arc::new(StatelessMakeHandler::new(Arc::new(
         PlaceholderExtendedQueryHandler,
@@ -775,7 +774,7 @@ pub fn init_tracing() {
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
             // Default: info for our crates, warn for dependencies
-            "mydb=debug,mydb_storage=debug,mydb_server=debug,tower_http=debug,warn".into()
+            "hgdb=debug,hgdb_storage=debug,hgdb_server=debug,warn".into()
         }))
         .with(fmt::layer().json())  // JSON for production
         .init();
@@ -801,7 +800,7 @@ All dependency versions are declared once in the workspace root `Cargo.toml` und
 [workspace.dependencies]
 tokio = { version = "1.43", features = ["rt-multi-thread", "io-util", "net", "sync", "macros"] }
 
-# crates/storage/Cargo.toml
+# crates/hgdb-storage/Cargo.toml
 [dependencies]
 tokio.workspace = true
 ```
@@ -877,7 +876,7 @@ protocol = "sparse"
 
 ### Library crates vs binary crate
 
-| Rule | Library crate (`crates/*`) | Binary crate (root `src/main.rs`) |
+| Rule | Library crate (`crates/*`) | Binary crate (`crates/hgdb/src/main.rs`) |
 |---|---|---|
 | Error handling | `thiserror` — typed, specific errors | `anyhow` — erase and propagate |
 | `serde` | Behind `serde` feature flag | Direct dependency |
@@ -888,7 +887,7 @@ protocol = "sparse"
 ### `serde` behind feature flag in library crates
 
 ```toml
-# crates/types/Cargo.toml
+# crates/hgdb-types/Cargo.toml
 [features]
 default = []
 serde = ["dep:serde"]
@@ -898,7 +897,7 @@ serde = { workspace = true, optional = true }
 ```
 
 ```rust
-// crates/types/src/schema.rs
+// crates/hgdb-types/src/schema.rs
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TableSchema {
@@ -939,18 +938,18 @@ let mmap = unsafe { Mmap::map(&file)? };
 
 ```
 # Unit tests — in the same file as the code
-crates/storage/src/wal.rs        # #[cfg(test)] mod tests { ... }
+crates/hgdb-storage/src/wal.rs   # #[cfg(test)] mod tests { ... }
 
 # Integration tests — separate files, test public API
 tests/integration/sql_test.rs
 tests/integration/pgwire_test.rs
 
 # Property tests — alongside unit tests or in dedicated files
-crates/storage/src/wal.rs        # proptest! { ... } inside #[cfg(test)]
+crates/hgdb-storage/src/wal.rs   # proptest! { ... } inside #[cfg(test)]
 
-# Benchmarks — top-level benches/ directory
-benches/storage_bench.rs
-benches/vector_bench.rs
+# Benchmarks — per-crate benches/ directories
+crates/hgdb-storage/benches/wal_write.rs
+crates/hgdb-storage/benches/segment_scan.rs
 ```
 
 Run specific test suites:
@@ -960,14 +959,17 @@ Run specific test suites:
 cargo test --workspace --all-features
 
 # Single crate
-cargo test -p mydb-storage
+cargo test -p hgdb-storage
 
 # Single test function
-cargo test -p mydb-storage wal_frame_roundtrip
+cargo test -p hgdb-storage wal_frame_roundtrip
 
 # Integration tests only
 cargo test --test sql_test
 
-# Benchmarks
-cargo bench --bench storage_bench
+# Benchmarks for one crate
+cargo bench -p hgdb-storage
+
+# One benchmark target
+cargo bench -p hgdb-storage --bench wal_write
 ```

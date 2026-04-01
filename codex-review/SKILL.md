@@ -1,192 +1,147 @@
 ---
 name: codex-review
-version: 1.0.0
-description: Run OpenAI Codex CLI to review code changes made in the current session or branch. Invokes `codex review` with focused instructions derived from the actual changes. Use when the user says "codex review", "second opinion", "rival review", "cross-review", or "/codex-review".
+version: 2.0.0
+description: |
+  Run OpenAI Codex CLI as an independent reviewer over the current branch, a specific commit, or
+  uncommitted changes. Builds a focused instruction file from the real diff and returns a compact
+  review summary.
+allowed-tools:
+  - Bash
+  - Read
+disable-model-invocation: true
+user-invocable: true
+argument-hint: "[branch review, uncommitted, or specific commit]"
+arguments:
+  - request
+when_to_use: |
+  Use only when the user explicitly asks for a Codex review or cross-review. Examples:
+  "/codex-review", "run codex on this branch", "get a second opinion from codex". Do not use for
+  direct code editing or when the user asked for Claude or Kiro instead.
+effort: high
 ---
+
+<EXTREMELY-IMPORTANT>
+This skill orchestrates an external reviewer and must stay disciplined.
+
+Non-negotiable rules:
+1. Read the real diff before writing Codex instructions.
+2. Make the instructions specific to the changed areas and likely risks.
+3. Never pass secrets or credential values into review instructions.
+4. Carry forward exclusion lists on later rounds.
+5. Verify returned findings before acting on them.
+</EXTREMELY-IMPORTANT>
 
 # Codex Review
 
-Use OpenAI Codex CLI to get an independent AI review of code changes.
+## Inputs
 
-## When to Use
+- `$request`: Optional scope hint such as `last commit`, `uncommitted`, `auth focus`, or `round 2`
 
-- User explicitly asks for a codex review, second opinion, or cross-review
-- User says "run codex", "codex review", "/codex-review"
-- User wants an independent AI to verify Claude's work before merging
+## Goal
 
-## Prerequisites
+Use `codex review` to get an external review pass that:
 
-- `codex` CLI must be installed (`which codex`)
-- An OpenAI API key must be configured for codex
+- reads the right diff scope
+- focuses on the actual risk areas in the change set
+- returns structured findings instead of generic commentary
 
-## Workflow
+## Step 0: Verify Codex availability
 
-### Step 1: Determine the Review Scope
+Check:
 
-Identify what to review:
+- `which codex`
+- whatever minimal auth or environment check is needed for the current setup
 
-```bash
-# Option A: Review current branch against main
-git log --oneline main..HEAD | head -20
+If the CLI is unavailable or not authenticated, explain the blocker and stop.
 
-# Option B: Review uncommitted changes
-git diff --stat
+**Success criteria**: Codex can be invoked successfully from the current repository.
 
-# Option C: Review a specific commit
-git show --stat <sha>
-```
+## Step 1: Resolve review scope
 
-Pick the right `codex review` flag:
-- **Branch review**: `--base main` (or whatever the base branch is)
-- **Uncommitted changes**: `--uncommitted`
-- **Single commit**: `--commit <sha>`
+Determine whether to review:
 
-### Step 2: Analyze the Changes and Build Instructions
+- the full branch against its base
+- uncommitted changes
+- a specific commit
 
-Read the diff to understand what areas need review focus. Build a
-focused instruction file based on the actual code changes.
+Read the real diff summary and changed-file list before building instructions.
 
-```bash
-# Get the diff summary
-git diff --stat <base>..HEAD
+If there is no diff, stop and say so explicitly.
 
-# Identify key areas
-git diff --name-only <base>..HEAD | sed 's|/[^/]*$||' | sort -u
-```
+**Success criteria**: The exact review target is explicit and backed by a real diff.
 
-Write a focused instruction file to `/tmp/codex-review-instructions.md`:
+## Step 2: Write focused review instructions
 
-```markdown
-You are reviewing [brief description of what changed].
+Build a small temporary instruction file that includes:
 
-Focus your review on:
-1. [Area 1 based on actual changes]
-2. [Area 2 based on actual changes]
-3. [Area 3 based on actual changes]
+- what changed
+- the most relevant risk areas
+- any previously fixed issues to exclude on later rounds
+- an instruction to verify findings against the actual code
+- a compact expected output format
 
-Verify each finding against the actual code. Read the relevant
-source files before reporting.
-```
+Keep the instructions concrete. Generic prompts produce weak reviews.
 
-**Key principles for instructions:**
-- Be specific about what changed — generic instructions get generic results
-- List previously known issues so codex doesn't re-report them
-- Focus on the areas where bugs are most likely (security, concurrency, edge cases)
-- Tell codex to verify findings against actual code before reporting
+**Success criteria**: The instruction file is specific to the actual change set.
 
-### Step 3: Run Codex Review
+## Step 3: Run `codex review`
 
-```bash
-codex review \
-  --base <base-branch> \
-  --title "<descriptive title>" \
-  -c 'sandbox_permissions=["disk-full-read-access","disk-full-write-access","network-full-access"]' \
-  -c 'instructions="/tmp/codex-review-instructions.md"' \
-  2>&1
-```
+Use the right invocation shape for the selected scope:
 
-**Important flags:**
-- `sandbox_permissions` — codex needs read access to verify findings against source
-- `instructions` — points to the focused review file from Step 2
-- Always capture stderr with `2>&1` (codex logs to stderr)
+- `--base <branch>` for branch review
+- `--uncommitted` for working-tree review
+- `--commit <sha>` for a single commit
 
-Run this in the background if the review is expected to take long:
-- Use `run_in_background` on the Bash tool
-- The output will be available when the command completes
+Key flags:
 
-### Step 4: Parse and Report Findings
+- `sandbox_permissions` -- codex needs disk read access to verify findings:
+  `-c 'sandbox_permissions=["disk-full-read-access","disk-full-write-access","network-full-access"]'`
+- `instructions` -- point to the focused instruction file from Step 2:
+  `-c 'instructions="/tmp/codex-review-instructions.md"'`
+- `--title "<description>"` -- descriptive review title
 
-Read the codex output and extract findings. Look for lines matching:
-- `[P1]`, `[P2]`, `[P3]` — prioritized findings
-- `Full review comments:` — start of findings section
-- File paths with line numbers — specific locations
+Always capture stderr with `2>&1` (codex logs to stderr).
 
-Report findings to the user in a clear table:
+If the review is expected to be long-running, background execution is acceptable.
 
-```
-| # | Priority | Description | File:Line |
-|---|----------|-------------|-----------|
-| 1 | P1       | ...         | ...       |
-```
+**Success criteria**: Codex runs against the intended scope and returns parseable output.
 
-### Step 5: Fix Findings (if requested)
+## Step 4: Summarize findings
 
-If the user wants to fix the findings:
-1. Read each cited file to verify the finding is real
-2. Apply fixes
-3. Run tests and typecheck
-4. Commit the fixes
+Report:
 
-### Step 6: Iterate (if requested)
+- review scope
+- findings by priority
+- file and line references when available
+- explicit clean result when no material findings are returned
 
-For thorough review, run multiple rounds:
-1. Fix findings from round N
-2. Update instructions to list all previously fixed issues
-3. Run round N+1 with the updated instructions
-4. Repeat until findings converge to zero
+If the user wants fixes, verify each finding locally before changing code.
 
-**Critical for iteration:** Always add previously fixed issues to the
-instruction file's exclusion list. Otherwise codex will re-report the
-same issues every round, wasting time and API costs.
+**Success criteria**: The user gets a clear, scoped review summary instead of raw CLI output.
 
-## Example: Branch Review
+## Step 5: Iterate only with exclusions
 
-```bash
-# 1. Write instructions
-cat > /tmp/codex-review-instructions.md << 'EOF'
-You are reviewing a new authentication module.
+On later rounds:
 
-Focus on:
-1. SECURITY: JWT validation, token expiry, session management
-2. CORRECTNESS: Error handling, edge cases, missing null checks
-3. TESTING: Are there tests for error paths?
+- add fixed findings to the exclusion section
+- narrow the scope to new changes where possible
+- avoid paying for repeated generic full-branch reviews
 
-Verify each finding against the actual code before reporting.
-EOF
+**Success criteria**: Follow-up rounds look for new issues rather than re-reporting old ones.
 
-# 2. Run review
-codex review \
-  --base main \
-  --title "feat(auth): security review" \
-  -c 'sandbox_permissions=["disk-full-read-access"]' \
-  -c 'instructions="/tmp/codex-review-instructions.md"' \
-  2>&1
-```
+## Guardrails
 
-## Example: Iterative Deep Review
+- Do not run this skill proactively; it is explicit-user-only.
+- Do not put secrets, tokens, or private config values in the instruction file.
+- Do not trust findings blindly without local verification.
+- Do not use Codex review as a substitute for reading the diff first.
 
-```bash
-# Round 2 instructions (after fixing round 1 findings)
-cat > /tmp/codex-review-instructions.md << 'EOF'
-Round 2 review. Prior fixes (do NOT re-report):
-- SQL injection in user query (parameterized)
-- Missing auth check on /api/admin (added middleware)
-- XSS in profile page (escaped output)
+## Output Contract
 
-Focus on genuinely NEW issues only.
-EOF
+Report:
 
-codex review --base main \
-  --title "feat(auth): review round 2" \
-  -c 'sandbox_permissions=["disk-full-read-access"]' \
-  -c 'instructions="/tmp/codex-review-instructions.md"' \
-  2>&1
-```
-
-## Safety Rules
-
-| Rule | Reason |
-|------|--------|
-| Never run codex without sandbox permissions | It needs file read access to verify findings |
-| Always list prior fixes in iterative reviews | Prevents wasting rounds on already-fixed issues |
-| Always verify findings before fixing | Codex can produce false positives |
-| Run from the correct directory | Codex reviews the repo it's invoked in |
-| Never pass secrets in instructions | The instruction file may be logged |
-
-## Failure Modes
-
-- **Codex not installed**: Check `which codex` first, tell user to install
-- **No API key**: Codex will fail with auth error — user needs to configure
-- **Too large diff**: Codex may truncate; break into smaller review scopes
-- **Repeated findings**: Always maintain the exclusion list between rounds
-- **False positives**: Always read the cited code before acting on findings
+1. the review scope
+2. the main focus areas given to Codex
+3. findings by priority with locations when available
+4. explicit clean result if nothing material was found
+5. whether a next round should exclude previously fixed issues

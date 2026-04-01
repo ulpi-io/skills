@@ -1,490 +1,197 @@
 ---
 name: update-claude-learnings
-version: 1.0.0
-description: Extract learnings about Claude Code behavior from a session and add them to the project's CLAUDE.md file. Use for behavioral rules, workflow patterns, and project-specific instructions that apply to the main Claude Code agent. Invoke via /update-claude-learnings after sessions revealing behavioral patterns.
+version: 2.0.0
+description: |
+  Extract a validated learning about Claude Code behavior from the current session and add it to
+  the project's CLAUDE.md memory file. User-only maintenance workflow for updating durable
+  main-agent instructions after a session reveals a rule that should persist.
+allowed-tools:
+  - AskUserQuestion
+  - Read
+  - Edit
+  - Write
+  - Glob
+  - Grep
+disable-model-invocation: true
+user-invocable: true
+argument-hint: "[learning candidate or session focus]"
+arguments:
+  - request
+when_to_use: |
+  Use only when the user explicitly asks to record a Claude Code behavior or workflow learning in
+  the project's CLAUDE.md. Examples: "/update-claude-learnings", "add this Claude behavior to
+  CLAUDE.md", or "record this workflow rule for future sessions". Do not use for application-code
+  patterns, agent instructions, or skill-authoring learnings.
 ---
 
 <EXTREMELY-IMPORTANT>
-Before adding ANY learning to CLAUDE.md, you **ABSOLUTELY MUST**:
+This skill updates durable Claude memory and must stay disciplined.
 
-1. Verify the learning is about Claude Code behavior (not application code or skill structure)
-2. Verify it applies to the main agent (not subagents or skill creation)
-3. Check for duplicates in existing CLAUDE.md sections
-4. Get user confirmation before writing
-
-**Adding learnings without verification = cluttered CLAUDE.md, conflicting rules**
-
-This is not optional. Every learning requires disciplined validation.
+Non-negotiable rules:
+1. Only record learnings about Claude Code behavior or workflow in this project.
+2. Reject application-code, subagent, or skill-authoring learnings and route them to the proper maintenance workflow instead.
+3. Check for duplicates or near-duplicates before writing.
+4. Get explicit user confirmation before modifying `CLAUDE.md`.
+5. Preserve existing structure and only add the smallest correct instruction.
 </EXTREMELY-IMPORTANT>
 
 # Update Claude Learnings
 
-## MANDATORY FIRST RESPONSE PROTOCOL
+## Inputs
 
-Before adding ANY learning to CLAUDE.md, you **MUST** complete this checklist:
+- `$request`: Optional learning candidate, category hint, or reminder about what the session revealed
 
-1. ☐ Identify the specific behavioral pattern from the session
-2. ☐ Verify this is about Claude Code behavior (not application code or skills)
-3. ☐ Verify it applies to main agent (not subagents)
-4. ☐ Categorize: Workflow Rules, Session Management, Scope Control, or Behavioral Patterns
-5. ☐ Check CLAUDE.md for existing related rules
-6. ☐ Formulate as actionable directive (imperative mood)
-7. ☐ Present learning to user for confirmation
-8. ☐ Announce: "Adding to CLAUDE.md: [category] - [brief description]"
+## Goal
 
-**Adding learnings WITHOUT completing this checklist = noise in project config.**
+Add one validated Claude-behavior learning to project memory by:
 
-## Purpose
+- extracting the right rule from the session
+- verifying it belongs in `CLAUDE.md`
+- placing it in the correct section
+- preserving the surrounding memory structure
+- reporting exactly what changed
 
-This skill captures learnings about **Claude Code's own behavior** in this project.
+## Step 0: Confirm the learning belongs here
 
-**What it captures:**
-- Workflow rules (use skills, command patterns)
-- Session management (checkpoints, timeouts, focus)
-- Scope control (expansion rules, confirmation patterns)
-- Behavioral patterns (project-specific behaviors)
+This skill is only for persistent Claude Code behavior in this project.
 
-**Output:** Updates to project's `CLAUDE.md` file
+Valid examples:
 
-**Does NOT:**
-- Capture application code patterns (use `/update-agent-learnings`)
-- Capture skill creation patterns (use `/update-skill-learnings`)
-- Apply to subagents (they don't read CLAUDE.md during task execution)
+- workflow rules for when Claude should use a specific skill
+- scope-control rules for how Claude should ask before expanding work
+- session-management rules for checkpoints, progress updates, or stopping conditions
+- project-specific Claude behavior that improves future sessions
 
-## When to Use
+Invalid examples:
 
-- After discovering Claude Code should use a skill instead of manual commands
-- After session management issues (lost context, premature endings)
-- After scope control problems (over-engineering, tangential work)
-- After discovering project-specific behavioral needs
-- Invoke via `/update-claude-learnings`
+- application implementation rules better suited for agent files
+- skill-authoring patterns better suited for skill learnings
+- transient one-off notes that do not deserve durable memory
 
-**Never add learnings proactively.** Only when session revealed concrete patterns.
+Load `references/learning-scope.md` for routing, category placement, and failure modes.
 
-## Decision Guide: Which Skill to Use?
+If the learning does not belong in `CLAUDE.md`, stop and say where it should go instead.
 
-```
-Is the learning about...
+**Success criteria**: The learning clearly belongs in persistent Claude project memory.
 
-Application code patterns?
-├── Applies to subagents writing code
-└── Use: /update-agent-learnings
+## Step 1: Extract one concrete learning from the session
 
-Skill creation/improvement?
-├── Structural patterns, quality signals
-└── Use: /update-skill-learnings
+Review the session and identify the smallest useful rule.
 
-Claude Code's own behavior?
-├── Workflow rules, session management, scope control
-└── Use: /update-claude-learnings (this skill)
-```
+Rules:
 
-| Learning Type | Example | Correct Skill |
-|---------------|---------|---------------|
-| Testing patterns | "Run tsc --noEmit after TypeScript edits" | update-agent-learnings |
-| Skill structure | "Include EXTREMELY-IMPORTANT block" | update-skill-learnings |
-| Workflow behavior | "Use /commit instead of git commit" | update-claude-learnings |
-| Session behavior | "Checkpoint every 3-5 edits" | update-claude-learnings |
+- prefer one precise learning over several vague ones
+- write it in imperative mood
+- tie it to a concrete behavior, not a general aspiration
+- avoid duplicating rules that are already implied by stronger existing guidance
 
-## Step 1: Session Analysis
+Good shape:
 
-**Gate: Identify at least one concrete behavioral pattern before proceeding to Step 2.**
+- "Use `/commit` instead of manual git commit flows when the user explicitly asks to commit."
+- "Ask before expanding a bugfix into adjacent refactors."
 
-Review the current conversation/session for Claude Code behavioral patterns:
+Bad shape:
 
-1. **Workflow discoveries:**
-   - Should Claude Code have used a skill instead of manual commands?
-   - Are there command patterns that should be standardized?
-   - Are there tools that should always/never be used?
+- "Be more careful."
+- "Use better workflows."
 
-2. **Session management discoveries:**
-   - Did context get lost?
-   - Did the session end prematurely?
-   - Were checkpoints needed but missing?
+**Success criteria**: You have a single actionable learning candidate with a clear rationale.
 
-3. **Scope control discoveries:**
-   - Did Claude Code over-engineer?
-   - Was confirmation needed before expanding scope?
-   - Did tangential work distract from the main task?
+## Step 2: Check the current CLAUDE memory and choose placement
 
-4. **Project-specific discoveries:**
-   - Are there project conventions Claude Code should follow?
-   - Are there paths/files that need special handling?
-   - Are there commands specific to this project?
+Read the project `CLAUDE.md`. If it does not exist, use
+`references/claude-md-template.md` as the structural fallback.
 
-## Step 2: Learning Extraction
+Choose the correct section:
 
-**Gate: User confirms extracted learning before proceeding to Step 3.**
+- `Workflow Rules`
+- `Session Management`
+- `Scope Control`
+- `Behavioral Patterns`
 
-Present findings to user and ask for confirmation:
+Before writing:
 
-```
-I identified the following Claude Code behavioral learning from this session:
+- search for duplicates or near-duplicates
+- merge with existing wording if a similar rule already exists
+- keep the new instruction small and local
 
-**Category:** [Workflow Rules / Session Management / Scope Control / Behavioral Patterns]
+Load `references/learning-scope.md` for placement and duplicate-handling guidance.
 
-**Learning:** [Description in imperative mood]
+**Success criteria**: The target section is known and duplication risk has been checked.
 
-**Why:** [Brief explanation of what happened]
+## Step 3: Confirm with the user
 
-Should I add this to CLAUDE.md?
-```
+Before editing `CLAUDE.md`, present:
 
-Use AskUserQuestion to:
-- Confirm the extracted learning is accurate
-- Allow user to refine the wording
-- Get approval before making changes
+- category
+- final wording
+- reason this learning was extracted
+- intended section placement
 
-### Learning Classification
+Use `AskUserQuestion` if confirmation or wording refinement is needed.
 
-| Category | What It Covers | Section in CLAUDE.md |
-|----------|---------------|---------------------|
-| **Workflow Rules** | Skill usage, command patterns, tool preferences | `## Workflow Rules` |
-| **Session Management** | Checkpoints, timeouts, progress tracking | `## Workflow Rules > ### Session Management` |
-| **Scope Control** | Expansion rules, confirmation patterns | `## Workflow Rules > ### Scope Control` |
-| **Behavioral Patterns** | Project-specific behaviors, conventions | `## Behavioral Patterns` |
+Do not write until the user explicitly approves the learning.
 
-## Step 3: Update CLAUDE.md
+**Success criteria**: The user has approved the learning and its placement.
 
-**Gate: CLAUDE.md updated successfully before proceeding to Step 4.**
+## Step 4: Update CLAUDE.md
 
-1. Read current `CLAUDE.md` from project root
-2. Locate the appropriate section based on category
-3. Add new learning in imperative mood
-4. Preserve existing structure and content
-5. Update "Last updated" timestamp
-6. Write updated file
+Apply the minimal correct edit:
 
-### CLAUDE.md Structure
+- preserve file structure
+- insert the learning in the chosen section
+- avoid deleting unrelated content
+- update the "Last updated" marker only if the file already uses one
 
-```markdown
-# Claude Code Project Configuration
+Rules:
 
----
+- if `CLAUDE.md` is missing, create it using the provided template and then add the learning
+- if the section is missing, create the smallest compatible section rather than restructuring the whole file
+- keep formatting consistent with the existing document
 
-## Workflow Rules
+**Success criteria**: `CLAUDE.md` contains the approved learning in the right place without collateral churn.
 
-### Use Available Skills
-- [skill usage rules...]
+## Step 5: Verify and report
 
-### Session Management
-- [checkpoint rules, timeout handling...]
+Verify:
 
-### Scope Control
-- [expansion rules, confirmation patterns...]
+- the learning was added exactly once
+- the file structure still makes sense
+- the instruction remains actionable and specific
+- the update did not drift into agent or skill memory territory
 
----
+Report:
 
-## Project Context
+- category
+- section path
+- final wording
+- whether the file was created or updated
 
-### Repository Purpose
-[project description]
+**Success criteria**: The user can see exactly what durable Claude memory changed.
 
-### Key Directories
-[important paths]
+## Guardrails
 
----
+- Do not let the model invoke this skill proactively; it mutates durable memory.
+- Do not add `context: fork`; this workflow edits the active repository.
+- Do not add `paths:`; this is a generic maintenance skill.
+- Do not keep routing matrices, quality scorecards, or long failure catalogs inline in `SKILL.md`.
+- Do not add a learning without explicit user approval.
+- Do not rewrite large parts of `CLAUDE.md` when a small targeted insertion is enough.
 
-## Behavioral Patterns
+## When To Load References
 
-[project-specific behaviors derived from sessions]
+- `references/learning-scope.md`
+  Use for deciding whether the learning belongs in Claude memory, choosing section placement, handling duplicates, and checking common failure modes.
 
----
+- `references/claude-md-template.md`
+  Use only when `CLAUDE.md` is missing or its structure needs a minimal compatible fallback.
 
-*Last updated: [date]*
-```
+## Output Contract
 
-## Step 4: Verification
+Report:
 
-**Gate: All checks pass before marking complete.**
-
-### Check 1: Learning Added
-
-- [ ] New learning appears in correct section
-- [ ] No duplicate entries created
-- [ ] Timestamp updated
-
-### Check 2: Learning Quality
-
-- [ ] Learning is actionable (imperative mood)
-- [ ] Learning is specific (not vague)
-- [ ] Learning applies to main Claude Code agent
-
-### Check 3: File Integrity
-
-- [ ] File structure preserved
-- [ ] No sections accidentally removed
-- [ ] Markdown formatting valid
-
-### Check 4: Correct Scope
-
-- [ ] Learning is NOT about application code (would go to agent-learnings)
-- [ ] Learning is NOT about skill structure (would go to skill-learnings)
-- [ ] Learning IS about Claude Code behavior in this project
-
-## Pre-Update Checklist
-
-Before updating, verify:
-- [ ] Learning is about Claude Code behavior
-- [ ] Learning applies to main agent, not subagents
-- [ ] Category assignment is correct
-- [ ] No duplicates exist in CLAUDE.md
-- [ ] User confirmed the learning
-
-## Error Handling
-
-| Situation | Action |
-|-----------|--------|
-| Learning is about application code | Redirect to `/update-agent-learnings` |
-| Learning is about skill structure | Redirect to `/update-skill-learnings` |
-| CLAUDE.md doesn't exist | Create with standard structure |
-| Category unclear | Ask user to clarify |
-| Duplicate exists | Merge or skip, inform user |
-| File structure broken | Fix structure before adding |
-
-## Safety Rules
-
-| Rule | Reason |
-|------|--------|
-| Always get user confirmation | Ensures learnings are accurate and desired |
-| Never delete existing content | Preserve project configuration |
-| Keep learnings actionable | Vague rules don't help |
-| Use imperative mood | Clearer directives |
-| Preserve file structure | Maintains organization |
-| Verify scope before adding | Wrong file = wrong audience |
-
----
-
-## Quality Checklist (Must Score 8/10)
-
-Score yourself honestly before marking update complete:
-
-### Learning Identification (0-2 points)
-- **0 points:** Vague observation, not actionable
-- **1 point:** Somewhat specific but could be clearer
-- **2 points:** Concrete, actionable behavioral rule
-
-### Scope Verification (0-2 points)
-- **0 points:** Wrong scope (should be agent or skill learning)
-- **1 point:** Correct scope but borderline
-- **2 points:** Clearly Claude Code behavior, correct scope
-
-### User Confirmation (0-2 points)
-- **0 points:** Added without showing to user
-- **1 point:** Showed but didn't wait for confirmation
-- **2 points:** Full confirmation before writing
-
-### File Integrity (0-2 points)
-- **0 points:** Broke file structure
-- **1 point:** Minor formatting issues
-- **2 points:** Clean update, structure preserved
-
-### Category Placement (0-2 points)
-- **0 points:** Wrong section
-- **1 point:** Correct section but awkward placement
-- **2 points:** Perfect section and placement
-
-**Minimum passing score: 8/10**
-
----
-
-## Common Rationalizations (All Wrong)
-
-These are excuses. Don't fall for them:
-
-- **"This is obvious behavior"** → STILL document it explicitly
-- **"It's in the other learnings files"** → Check scope - CLAUDE.md is for main agent
-- **"The user knows the workflow"** → Future sessions need this documented
-- **"It's a small thing"** → Small rules compound into consistent behavior
-- **"CLAUDE.md is already long"** → Organization matters more than brevity
-
----
-
-## Failure Modes
-
-### Failure Mode 1: Wrong Scope
-
-**Symptom:** Added "Run tsc --noEmit after edits" to CLAUDE.md
-**Why Wrong:** This is for subagents writing TypeScript, not main Claude Code
-**Fix:** Use `/update-agent-learnings` instead
-
-### Failure Mode 2: Skill Pattern in CLAUDE.md
-
-**Symptom:** Added "Include EXTREMELY-IMPORTANT block in skills"
-**Why Wrong:** This is about skill structure, not Claude Code behavior
-**Fix:** Use `/update-skill-learnings` instead
-
-### Failure Mode 3: Vague Rule
-
-**Symptom:** Added "Be more careful with commits"
-**Why Wrong:** Not actionable - what specific behavior?
-**Fix:** Make specific: "Use /commit skill instead of manual git commit"
-
-### Failure Mode 4: Duplicate Added
-
-**Symptom:** Same rule exists in multiple sections
-**Fix:** Search CLAUDE.md before adding, merge if similar exists
-
----
-
-## Quick Workflow Summary
-
-```
-STEP 1: SESSION ANALYSIS
-├── Review session for behavioral patterns
-├── Identify workflow issues
-├── Identify session management issues
-├── Identify scope control issues
-└── Gate: Concrete pattern identified
-
-STEP 2: LEARNING EXTRACTION
-├── Categorize the learning
-├── Verify correct scope (not agent/skill learning)
-├── Formulate as actionable directive
-├── Check for duplicates
-├── Present to user
-├── Get confirmation
-└── Gate: User approved
-
-STEP 3: UPDATE CLAUDE.MD
-├── Read current CLAUDE.md
-├── Locate correct section
-├── Add new learning
-├── Update timestamp
-├── Write file
-└── Gate: File updated
-
-STEP 4: VERIFICATION
-├── Verify learning added correctly
-├── Verify learning quality
-├── Verify file integrity
-├── Verify correct scope
-└── Gate: All checks pass
-```
-
----
-
-## Completion Announcement
-
-When update is complete, announce:
-
-```
-CLAUDE.md updated.
-
-**Quality Score: X/10**
-- Learning Identification: X/2
-- Scope Verification: X/2
-- User Confirmation: X/2
-- File Integrity: X/2
-- Category Placement: X/2
-
-**Learning Added:**
-- Category: [category]
-- Section: [section path]
-- Learning: [brief description]
-
-**File Updated:** CLAUDE.md
-
-**Next steps:**
-The learning will be active in future sessions.
-```
-
----
-
-## Integration with Other Skills
-
-The `update-claude-learnings` skill completes the learning system:
-
-| Skill | Target | Audience |
-|-------|--------|----------|
-| `update-agent-learnings` | agent-learnings.md → agent files | Subagents writing code |
-| `update-skill-learnings` | skill-learnings.md | Skill creators |
-| `update-claude-learnings` | CLAUDE.md | Main Claude Code agent |
-
-**Complete Learning System:**
-
-```
-Session reveals pattern
-         │
-    ┌────┼────────────────┐
-    ▼    ▼                ▼
-Subagent  Skill        Claude Code
-pattern?  pattern?     behavior?
-    │        │             │
-    ▼        ▼             ▼
-/update-  /update-     /update-
-agent-    skill-       claude-
-learnings learnings    learnings
-    │        │             │
-    ▼        ▼             ▼
-agent-    skill-       CLAUDE.md
-learnings learnings
-.md       .md
-    │
-    ▼
-Synced to
-agent files
-```
-
-**Workflow Chain:**
-
-```
-Session reveals behavioral pattern
-              │
-              ▼
-update-claude-learnings skill (this skill)
-              │
-              ▼
-CLAUDE.md updated
-              │
-              ▼
-Future sessions benefit from the rule
-```
-
----
-
-## Examples
-
-### Example 1: Workflow Rule - Use Skills
-
-**Session Issue:** Used `git add && git commit` instead of `/commit` skill.
-
-**Learning Extraction:**
-- Category: Workflow Rules
-- Section: Use Available Skills
-- Learning: "Use `/commit` instead of manual `git add && git commit`"
-
-**Result:**
-Added to CLAUDE.md under `## Workflow Rules > ### Use Available Skills`
-
-### Example 2: Session Management
-
-**Session Issue:** Complex task completed but no checkpoints provided.
-
-**Learning Extraction:**
-- Category: Session Management
-- Section: Session Management
-- Learning: "Provide checkpoint summaries every 3-5 edits on complex tasks"
-
-**Result:**
-Added to CLAUDE.md under `## Workflow Rules > ### Session Management`
-
-### Example 3: Project-Specific Behavior
-
-**Session Issue:** Edited files in `.claude/agents/` without running learnings sync.
-
-**Learning Extraction:**
-- Category: Behavioral Patterns
-- Section: Behavioral Patterns
-- Learning: "After editing agent files, run `/update-agent-learnings` to sync global learnings"
-
-**Result:**
-Added to CLAUDE.md under `## Behavioral Patterns`
-
-### Example 4: Scope Redirect
-
-**Session Issue:** User suggests adding "Run tests after code changes"
-
-**Analysis:** This applies to subagents writing code, not main Claude Code behavior.
-
-**Action:** Redirect to `/update-agent-learnings` instead of adding to CLAUDE.md.
+1. whether the learning was accepted or redirected elsewhere
+2. the chosen category and section
+3. the final approved wording
+4. whether `CLAUDE.md` was created or updated
+5. any duplicate merge or placement decisions

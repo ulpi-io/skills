@@ -1,44 +1,76 @@
 ---
 name: laravel
-version: 1.1.0
+version: 2.0.0
 description: |
-  Laravel 12 API development — API-only, Actions pattern, Sanctum/Passport auth,
-  Eloquent strict mode, Redis caching/queues, Horizon, Filament admin, Pest testing.
-  Also covers Laravel AI ecosystem: AI SDK (agents, embeddings, image/audio generation),
-  Boost (AI-assisted development), and MCP (exposing your app to AI clients).
-  Use when working on any Laravel route, controller, model, action, migration,
-  job, notification, test, API endpoint, AI agent, or MCP server task.
+  Laravel API and backend reference skill: thin controllers, Form Requests, Action-driven business
+  logic, API Resources, strict Eloquent usage, queues, caching, auth, observability, and the
+  Laravel AI ecosystem. Use for Laravel application code, routes, models, jobs, tests, and related
+  backend workflow changes.
 allowed-tools:
   - Bash
   - Read
+  - Write
+  - Edit
+  - Grep
+paths:
+  - "app/**/*.php"
+  - "bootstrap/**/*.php"
+  - "config/**/*.php"
+  - "database/**/*.php"
+  - "routes/**/*.php"
+  - "tests/**/*.php"
+  - "resources/views/**/*.blade.php"
+  - "artisan"
+  - "composer.json"
+argument-hint: "[Laravel task or subsystem]"
+arguments:
+  - request
+when_to_use: |
+  Use when the task touches Laravel application code, routes, controllers, models, actions,
+  requests, resources, jobs, notifications, tests, or Laravel AI/MCP integrations. Examples:
+  "add a Laravel API endpoint", "fix this model validation", "create a queued job", "wire up a
+  Laravel MCP server". Do not use for Filament-specific admin work when the Filament skill is the
+  better match.
+effort: high
 ---
 
 <EXTREMELY-IMPORTANT>
-These rules apply to ALL Laravel code you write. Violating any of them produces broken, insecure, or unmaintainable output.
+This skill is a routing shell over the reference set, not a place to retype the whole Laravel playbook.
 
-1. **No business logic in controllers.** Controllers validate (Form Request), delegate (Action), return (API Resource). Nothing else.
-2. **No returning Eloquent models directly.** Every response goes through an API Resource. Never `return $user`.
-3. **No inline validation.** All validation lives in Form Request classes. Never `$request->validate([...])` in controllers.
-4. **No `$guarded = []`.** Every model uses explicit `$fillable`. Mass-assignment protection is non-negotiable.
-5. **No raw queries.** Use Eloquent or the query builder with parameter bindings. Never concatenate user input into SQL.
-6. **No bare `queue:work`.** All queue processing uses Horizon — in development and production.
-7. **`Model::shouldBeStrict()` must be enabled** in `AppServiceProvider::boot()`. This prevents lazy loading, silently discarded attributes, and access to missing attributes.
+Non-negotiable rules:
+1. Load `references/stack.md` first, then only the task-relevant references.
+2. **No business logic in controllers.** Controllers validate (Form Request), delegate (Action), return (API Resource). Nothing else.
+3. **No returning Eloquent models directly.** Every response goes through an API Resource.
+4. **No inline validation.** All validation lives in Form Request classes.
+5. **No `$guarded = []`.** Every model uses explicit `$fillable`.
+6. **No raw queries.** Use Eloquent or query builder with parameter bindings.
+7. **No bare `queue:work`.** All queue processing uses Horizon.
+8. **`Model::shouldBeStrict()`** must be enabled in `AppServiceProvider::boot()`.
 </EXTREMELY-IMPORTANT>
 
-# Laravel 12 API
+# laravel
 
-## MANDATORY FIRST RESPONSE PROTOCOL
+## Inputs
 
-Before writing ANY code, you **MUST** complete this checklist:
+- `$request`: The Laravel task, bug, feature, or subsystem being worked on
 
-1. Read `references/stack.md` to understand locked decisions (runtime, packages, patterns)
-2. Identify the task type from the routing table below
-3. Read the matching reference file(s) — they contain the patterns, code examples, and anti-patterns
-4. Only then begin implementation
+## Goal
 
-**Writing code without reading the reference = wrong patterns, wasted time, rework.**
+Route Laravel work through the correct project conventions so the implementation follows the existing backend architecture instead of generic framework defaults.
 
-## Routing Table
+## Step 0: Read the stack contract
+
+Always start with:
+
+- `references/stack.md`
+
+That establishes the locked runtime, package, and architecture choices for this Laravel surface.
+
+**Success criteria**: The project's Laravel stack choices are explicit before implementation starts.
+
+## Step 1: Load only the relevant references
+
+Use the routing table to pick reference files that match the actual task. Do not bulk-load the full reference tree.
 
 | Task | Read |
 |------|------|
@@ -69,16 +101,53 @@ Before writing ANY code, you **MUST** complete this checklist:
 | AI-assisted development, Boost setup, guidelines, skills | `references/boost.md` |
 | MCP servers, exposing app to AI clients, tools/resources/prompts | `references/mcp.md` |
 
-Multiple tasks? Read multiple files. The references are self-contained — no need to consult external docs.
+Multiple tasks? Read multiple files. The references are self-contained.
 
-## Quick Rules
+**Success criteria**: Only the task-relevant Laravel conventions are in play.
 
-These repeat the critical guardrails for context-window resilience:
+## Step 2: Implement with the core Laravel guardrails
 
-1. Controllers are thin — validate via Form Request, delegate to Action, return API Resource.
-2. All mutations in Actions wrapped in `DB::transaction()`.
-3. All list endpoints paginated — never return unbounded collections.
-4. All responses via API Resources — never return Eloquent models directly.
-5. `$fillable` on every model — never `$guarded = []`.
-6. `Model::shouldBeStrict()` in `AppServiceProvider::boot()`.
-7. Horizon for all queue processing — never bare `queue:work`.
+Keep these rules active:
+
+- controllers validate, delegate, and return
+- responses go through API Resources
+- list endpoints paginate
+- models use explicit `$fillable`
+- mutations use the correct Action or transaction pattern
+- queues use the project's queue and Horizon conventions
+
+**Success criteria**: The change matches the project’s Laravel architecture instead of framework-default shortcuts.
+
+## Step 3: Verify with the narrowest relevant checks
+
+Use the smallest verification loop that matches the task:
+
+- PHPUnit or Pest tests
+- focused artisan or framework checks
+- static analysis or linting if already part of the repo workflow
+
+**Success criteria**: The change is validated in the way this Laravel project expects.
+
+## Guardrails
+
+- Do not inline the whole Laravel handbook in `SKILL.md`.
+- Do not skip `references/stack.md`.
+- Do not return raw Eloquent models directly.
+- Do not put business logic in controllers.
+- Do not add `disable-model-invocation`; this is a normal domain skill.
+
+## When To Load References
+
+- `references/stack.md`
+  Always.
+
+- then only the task-relevant files under `references/`
+
+## Output Contract
+
+Report:
+
+1. which Laravel references were loaded
+2. the architecture pattern chosen
+3. the change made
+4. the verification run

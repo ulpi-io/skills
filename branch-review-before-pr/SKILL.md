@@ -1,73 +1,112 @@
 ---
 name: branch-review-before-pr
-version: 1.0.0
+version: 2.0.0
 description: |
-  Pre-landing PR review. Analyzes diff against main for structural issues that
-  tests don't catch: query safety, race conditions, trust boundary violations,
-  conditional side effects, and more. Critical findings block /ship and /create-pr.
-  Invoke via /branch-review-before-pr or when integrated as a gate in ship workflows.
+  Pre-landing diff review against the default branch for structural defects that tests often miss:
+  unsafe queries, race conditions, trust-boundary mistakes, conditional side effects, and similar
+  branch risks. Use as a branch gate before shipping or creating a PR.
+allowed-tools:
+  - AskUserQuestion
+  - Bash
+  - Read
+  - Edit
+  - Write
+argument-hint: "[review focus or branch risk hint]"
+arguments:
+  - request
+when_to_use: |
+  Use when the user explicitly asks for a pre-PR review, when a ship workflow needs a blocking
+  branch gate, or when a PR draft needs a fast structural audit. Examples: "/branch-review-before-pr",
+  "review this branch before PR", "check for blocking issues before I ship". Do not use for
+  full-repository audits or style-only review.
+effort: high
 ---
 
-# Pre-Landing Branch Review
+<EXTREMELY-IMPORTANT>
+This skill is review-first and only becomes mutating after explicit user approval.
 
-You are running the `/branch-review-before-pr` workflow. Analyze the current branch's diff against main for structural issues that tests don't catch.
+Non-negotiable rules:
+1. Read the full diff before reporting any issue.
+2. Load and respect `checklist.md`, including suppressions.
+3. Stay scoped to the diff against the review base.
+4. Stay read-only unless the user explicitly picks "Fix it now" for a blocking issue.
+5. Keep findings terse, evidenced, and specific.
+</EXTREMELY-IMPORTANT>
 
----
+# Branch Review Before PR
 
-## Step 1: Check branch
+## Inputs
 
-1. Run `git branch --show-current` to get the current branch.
-2. If on `main` (or `master`), output: **"Nothing to review — you're on main or have no changes against main."** and stop.
-3. Run `git fetch origin main --quiet && git diff origin/main --stat` to check if there's a diff. If no diff, output the same message and stop.
+- `$request`: Optional focus area, branch risk hint, or review scope clarification
 
----
+## Goal
 
-## Step 2: Read the checklist
+Review the current branch against the default base and:
 
-Read the checklist file located alongside this skill at the relative path `checklist.md` (same directory as this SKILL.md).
+- find structural defects that survive context checks
+- separate blocking issues from non-blocking issues
+- ask the user how to handle each blocking issue
+- optionally apply only the fixes the user explicitly approves
 
-**If the file cannot be read, STOP and report the error.** Do not proceed without the checklist.
+## Step 0: Resolve the review base
 
----
+Determine:
 
-## Step 3: Get the diff
+- the current branch
+- the default review base, usually `origin/main` or `origin/master`
+- whether the user wants full-branch review or a narrower scope
 
-Fetch the latest main to avoid false positives from a stale local main:
+If the current branch is already the base branch, or there is no diff, stop and say so clearly.
 
-```bash
-git fetch origin main --quiet
-```
+**Success criteria**: There is an explicit diff base and actual branch delta to review.
 
-Run `git diff origin/main` to get the full diff. This includes both committed and uncommitted changes against the latest main.
+## Step 1: Load the checklist and diff surface
 
-If the diff is very large, also get the file list and read changed files individually:
+Read:
 
-```bash
-git diff origin/main --name-only
-```
+- `checklist.md`
+- the full diff against the base branch
+- changed-file list when the diff is large
 
-**Read the FULL diff before commenting.** Do not flag issues already addressed in the diff.
+Rules:
 
----
+- do not review from `--stat` alone
+- do not report checklist items that are suppressed
+- when the diff is large, read changed files individually with enough surrounding context to verify claims
 
-## Step 4: Two-pass review
+**Success criteria**: The checklist is loaded and every changed file that matters has been read.
 
-Apply the checklist against the diff in two passes:
+## Step 2: Run the two-pass review
 
-1. **Pass 1 (CRITICAL):** Query & Data Safety, Race Conditions & Concurrency, Auth & Trust Boundaries
-2. **Pass 2 (INFORMATIONAL):** All remaining categories from the checklist
+Pass 1 is blocking-only:
 
-Follow the output format specified in the checklist. Respect the suppressions — do NOT flag items listed in the suppressions section.
+- query and data safety
+- race conditions and concurrency
+- auth and trust boundaries
 
----
+Pass 2 is non-blocking:
 
-## Step 5: Output findings
+- all remaining checklist categories
 
-**Always output ALL findings** — both critical and informational. The user must see every issue.
+For each candidate issue, verify:
 
-**Output format:**
+- it is actually in scope
+- it is not already fixed elsewhere in the diff
+- surrounding code does not already mitigate it
 
-```
+**Success criteria**: All meaningful checklist categories were evaluated and false positives were filtered out.
+
+## Step 3: Report all findings
+
+Always report the full result set:
+
+- blocking issues first
+- then non-blocking issues
+- explicit clean result if none were found
+
+Use this structure:
+
+```text
 Branch Review: N issues (X critical, Y informational)
 
 CRITICAL (blocking):
@@ -79,30 +118,61 @@ Issues (non-blocking):
   Fix: suggested fix
 ```
 
-**If no issues found:** `Branch Review: No issues found.`
+**Success criteria**: The user can tell immediately whether the branch is blocked and why.
 
-**If CRITICAL issues found:** Output all findings, then for EACH critical issue use a separate `AskUserQuestion` with:
-- The problem (`file:line` + description)
-- Your recommended fix
-- Options:
-  - **(A) Fix it now** — apply the recommended fix
-  - **(B) Acknowledge** — ship anyway, you understand the risk
-  - **(C) False positive** — skip, this isn't actually a problem
+## Step 4: Handle blocking issues one by one
 
-After all critical questions are answered, output a summary of what the user chose for each issue.
+For each blocking issue, use a separate `AskUserQuestion` with:
 
-- If the user chose **(A)** on any issue: apply the recommended fixes to those files. Do NOT commit — the user or `/ship` will handle that.
-- If only **(B)** or **(C)** were chosen: no action needed.
+- the issue and location
+- the recommended fix
+- these options:
+  - `Fix it now`
+  - `Acknowledge`
+  - `False positive`
 
-**If only informational issues found:** Output findings. No further action needed. These go into the PR body when used with `/create-pr`.
+If the user chooses:
 
----
+- `Fix it now`: apply only the approved fix
+- `Acknowledge`: leave code unchanged and record the acceptance
+- `False positive`: leave code unchanged and note the dismissal
 
-## Important Rules
+Do not batch multiple blocking issues into one question.
 
-- **Read the FULL diff before commenting.** Do not flag issues already addressed in the diff.
-- **Read-only by default.** Only modify files if the user explicitly chooses "Fix it now" on a critical issue. Never commit, push, or create PRs.
-- **Be terse.** One line problem, one line fix. No preamble, no summaries, no "looks good overall."
-- **Only flag real problems.** Skip anything that's fine. A clean review is a valid outcome.
-- **Respect suppressions.** If the checklist says don't flag it, don't flag it.
-- **Scope to the diff.** Do not review unchanged code. Only the branch diff is in scope.
+**Success criteria**: Each blocking issue has an explicit user decision.
+
+## Step 5: Apply approved fixes only
+
+When the user chooses `Fix it now`:
+
+- make the smallest correct code change
+- keep changes scoped to the approved issue
+- do not commit, push, or create a PR
+- summarize what changed after the fixes are applied
+
+If the user only acknowledges or dismisses issues, make no edits.
+
+**Success criteria**: Only explicitly approved fixes were applied.
+
+## When To Load References
+
+- `checklist.md`
+  Use for the detailed review matrix, suppressions, and issue categories.
+
+## Guardrails
+
+- Do not add `disable-model-invocation`; this skill must remain usable inside PR/ship workflows.
+- Do not review unchanged files beyond what is needed to verify context.
+- Do not report style preferences as issues.
+- Do not fix anything unless the user explicitly approved that issue.
+- Do not commit, push, or open a PR from this skill.
+
+## Output Contract
+
+Report:
+
+1. the review base and branch scope
+2. blocking findings
+3. non-blocking findings
+4. per-blocker user decisions if questions were asked
+5. any fixes actually applied

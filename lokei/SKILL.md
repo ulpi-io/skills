@@ -1,245 +1,131 @@
 ---
 name: lokei
+version: 2.0.0
 description: |
-  Local dev proxy that gives projects named HTTPS domains on .test with valid TLS.
-  Use when setting up local development environments, running dev servers, sharing localhost
-  publicly via tunnels, or managing Docker Compose services with HTTPS. Handles framework
-  detection (30+ frameworks), port management, DNS, certificates, and public tunnels.
-  Trigger on: "run my dev server", "set up HTTPS locally", "share localhost", "expose my app",
-  "local dev proxy", "tunnel", ".test domain", or when helping users start/configure web projects.
-version: 1.0.0
+  Run local web and app development surfaces behind named HTTPS `.test` domains with `lokei`, and
+  optionally expose them through tunnels. Use for local HTTPS setup, framework-aware dev-server
+  startup, tunnel sharing, Docker Compose HTTPS, and lokei diagnostics.
 allowed-tools:
+  - AskUserQuestion
   - Bash
   - Read
+argument-hint: "[run, share, docker, diagnose, or tunnel request]"
+arguments:
+  - request
+when_to_use: |
+  Use when the user asks to run a project on a `.test` domain, set up local HTTPS, expose a local
+  server publicly, or debug `lokei` setup. Examples: "run my dev server with HTTPS", "give this
+  app a .test domain", "share localhost", "why is lokei broken?".
+effort: high
 ---
+
+<EXTREMELY-IMPORTANT>
+`lokei` affects the local networking environment and can trigger setup flows.
+
+Non-negotiable rules:
+1. Verify `lokei` availability before relying on it.
+2. Do not auto-run one-time setup or uninstall flows without approval.
+3. Resolve whether the user wants local-only HTTPS, a public tunnel, or multi-service orchestration.
+4. Prefer the simplest command that matches the job.
+5. Report the resulting URLs and diagnostic blockers clearly.
+</EXTREMELY-IMPORTANT>
 
 # lokei
 
-Local dev proxy with HTTPS and named `.test` domains. Run `lokei run next dev` and get `https://myapp.test` automatically — with valid TLS, DNS resolution, and port forwarding.
+## Inputs
 
-## Setup
+- `$request`: The local HTTPS, share, Docker, service, or diagnostics task
 
-Before using lokei, confirm it is installed:
+## Goal
 
-```bash
-lokei --version
-```
+Use `lokei` to:
 
-If not installed, tell the user:
+- run a local project behind a named HTTPS `.test` domain
+- expose a local service through a tunnel when requested
+- orchestrate Docker or multi-service local environments
+- diagnose and explain local proxy/setup problems
 
-> `lokei` is not installed. Install it with:
->
+## Step 0: Verify installation and setup health
+
+Check:
+
+- `lokei --version`
+- `lokei doctor`
+
+If `lokei` is missing, tell the user:
+
+> `lokei` is not installed. Install with:
 > ```bash
 > npm i -g lokei && lokei setup
 > ```
->
-> `lokei setup` runs once — it generates a local CA, trusts it in your OS keychain, configures DNS resolution for `.test` domains, and sets up port forwarding.
+> `lokei setup` runs once -- generates a local CA, trusts it in the OS keychain, configures DNS for `.test`, and sets up port forwarding.
 
-**Do NOT install or run setup automatically.** Wait for the user to confirm before proceeding.
+Do not install or run setup automatically. Wait for user confirmation.
 
-After installation, verify setup is complete:
+If setup is unhealthy:
 
-```bash
-lokei doctor
-```
+- explain the failing component
+- common fixes: CA not trusted or DNS resolver missing -> re-run `lokei setup`
+- ask before suggesting or running one-time setup actions
 
-If `lokei doctor` reports issues, guide the user through fixing them. Common issues:
-- CA not trusted → re-run `lokei setup`
-- DNS resolver missing → re-run `lokei setup`
-- Port forwarding inactive → re-run `lokei setup` (requires sudo)
+**Success criteria**: `lokei` is available and its setup state is understood.
 
-## Core Commands
+## Step 1: Resolve the requested mode
 
-### Run a dev server with HTTPS
+Determine whether the user wants:
 
-```bash
-lokei run <command>
-```
+- `lokei run` for one local app
+- `lokei share` or `lokei run --expose` for public access
+- `lokei docker up` for Docker Compose
+- `lokei up` for `.test.yaml` orchestration
+- `lokei routes ls`, `inspect`, or `logs` for diagnosis
 
-This is the primary command. It:
-1. Starts the daemon if not running
-2. Reads `package.json`, detects the framework (Next.js, Vite, Rails, Django, etc.)
-3. Reserves a sticky port from the 4000–5999 range
-4. Spawns the dev server with the correct PORT and host flags injected
-5. Waits for TCP bind (30s timeout)
-6. Generates a TLS certificate for `<name>.test` signed by the local CA
-7. Registers the route — `https://<name>.test` is live
+Also resolve whether the project name, command, or port needs to be overridden.
 
-**Examples:**
-```bash
-lokei run                    # Auto-detects: reads package.json scripts
-lokei run next dev           # Explicit command
-lokei run --name myapp       # Override project name → myapp.test
-lokei run --port 3000        # Use specific port instead of auto-assigned
-lokei run --expose           # Also create a public tunnel
-```
+**Success criteria**: The correct lokei mode is chosen before execution.
 
-The project name is inferred from (in order): `--name` flag, `package.json` name, git remote, or directory name.
+## Step 2: Run the smallest correct command
 
-### Share localhost publicly
+Prefer:
 
-```bash
-lokei share --port <port>
-```
+- `lokei run` for normal local development
+- `lokei share --port <port>` for ad-hoc sharing
+- `lokei run --expose` when the same session needs local HTTPS and a public tunnel
+- `lokei docker up` or `lokei up` only when the project structure actually calls for them
 
-Creates an ad-hoc public tunnel. No login required for random subdomain URLs.
+Avoid service-install and uninstall flows unless the user explicitly asked for those operations.
 
-```bash
-lokei share --port 3000                          # Random URL at lokei.dev
-lokei share --port 3000 --subdomain myapp        # Request specific subdomain
-lokei share --port 3000 --password secret123     # Password-protected
-lokei share --port 3000 --ttl 3600               # Expires in 1 hour
-```
+**Success criteria**: The executed command matches the requested workflow without overreaching.
 
-### Run with public tunnel
+## Step 3: Report URLs and health clearly
 
-```bash
-lokei run --expose
-```
+After execution, report:
 
-Combines local HTTPS and public tunnel. Gives you both:
-- `https://myapp.test` (local)
-- `https://<username>.lokei.dev/myapp` (public, if logged in)
+- local `.test` URL
+- public tunnel URL if one was created
+- project name and route details if relevant
+- any doctor/setup blockers if the command failed
 
-### Docker Compose integration
+**Success criteria**: The user knows exactly where the app is reachable and what failed if it is not.
 
-```bash
-lokei docker up              # HTTPS domains for all Compose services
-lokei docker down            # Tear down
-```
+## Guardrails
 
-Each Compose service gets `<service>.test` with HTTPS. No port mapping needed.
+- Do not auto-run `lokei setup`, `service install`, or `uninstall` without approval.
+- Do not guess that the user wants a public tunnel when local-only HTTPS is enough.
+- Do not hide diagnostics behind generic "setup failed" summaries.
+- Do not add `disable-model-invocation`; this is a normal environment workflow skill.
 
-### Multi-service orchestration
+## When To Load References
 
-```bash
-lokei up                     # Start services from .test.yaml
-lokei down                   # Stop all services
-```
+- `references/command-reference.md`
+  Use for the full command catalog, framework detection table, architecture details, `.test.yaml` examples, git worktree behavior, and scenario quick reference.
 
-Define services in `.test.yaml`:
-```yaml
-services:
-  web:
-    cmd: next dev
-    name: myapp
-  api:
-    cmd: node server.js
-    name: api
-    port: 3001
-```
+## Output Contract
 
-### Manage routes and tunnels
+Report:
 
-```bash
-lokei routes ls              # List active .test routes
-lokei tunnel list            # List active tunnels
-lokei tunnel close <id>      # Close a tunnel
-lokei inspect                # Open traffic inspector at inspect.test
-```
-
-### Authentication (for stable tunnel URLs)
-
-```bash
-lokei login                  # Device-code auth → opens browser
-```
-
-After login, tunnels get stable URLs at `<username>.lokei.dev`.
-
-### OS service mode
-
-```bash
-lokei service install        # Install as launchd/systemd service
-lokei service start          # Start the service
-lokei service stop           # Stop the service
-lokei service status         # Check service state
-lokei service logs           # View daemon logs
-```
-
-### Diagnostics
-
-```bash
-lokei doctor                 # Check CA, DNS, ports, trust store
-lokei logs                   # View traffic logs
-lokei logs --follow          # Stream logs in real-time
-```
-
-### Cleanup
-
-```bash
-lokei uninstall              # Remove everything: certs, DNS, ports, trust
-```
-
-## Framework Detection
-
-lokei detects 30+ frameworks and injects the correct port and host flags:
-
-| Framework | Detection | Flags injected |
-|-----------|-----------|---------------|
-| Next.js | `next dev` | `--port PORT` |
-| Vite | `vite`, `vite dev` | `--port PORT --host 127.0.0.1` |
-| Astro | `astro dev` | `--port PORT --host 127.0.0.1` |
-| Rails | `rails server` | `-p PORT -b 127.0.0.1` |
-| Django | `python manage.py runserver` | `127.0.0.1:PORT` |
-| Laravel | `php artisan serve` | `--port=PORT --host=127.0.0.1` |
-| Flask | `flask run` | `--port PORT --host 127.0.0.1` |
-| Angular | `ng serve` | `--port PORT` |
-| Nuxt | `nuxt dev` | `--port PORT` |
-| Hugo | `hugo server` | `--port PORT` |
-| npm/yarn/pnpm/bun | Script runner | `PORT` env var |
-
-For unlisted frameworks, lokei sets `PORT` environment variable and the dev server should respect it.
-
-## Git Worktree Support
-
-When using git worktrees:
-- Main branch → `myapp.test`
-- Feature branch in worktree → `fix-ui.myapp.test`
-
-The prefix is added automatically when multiple worktrees exist.
-
-## Key Architecture Details
-
-- **State directory**: `~/.lokei/` — CA certs, leaf certs, routes.json, ports.json, daemon socket
-- **Port range**: 4000–5999 (sticky across restarts, file-locked ledger)
-- **TLD**: `.test` (RFC 2606 reserved)
-- **DNS**: Local resolver on 127.0.0.1:15353, wired via `/etc/resolver/test` on macOS
-- **Port forwarding**: 80→15080, 443→15443 via pfctl (macOS), iptables (Linux)
-- **TLS**: Per-host exact-match certs via SNI (no wildcards)
-- **IPC**: JSON over Unix socket (macOS/Linux), Named Pipe (Windows)
-- **Tunnel relay**: WebSocket + MessagePack at `relay.lokei.dev`
-
-## When to Use Each Command
-
-| Scenario | Command |
-|----------|---------|
-| Start working on a project | `lokei run` |
-| Start with explicit command | `lokei run next dev` |
-| Share with a teammate | `lokei share --port 3000` or `lokei run --expose` |
-| Docker project | `lokei docker up` |
-| Multiple services | `lokei up` (requires `.test.yaml`) |
-| Debug network issues | `lokei inspect` |
-| Check what's running | `lokei routes ls` |
-| Something broken | `lokei doctor` |
-| Run on boot | `lokei service install` |
-| Remove everything | `lokei uninstall` |
-
-## Common Patterns for AI Agents
-
-When helping a user set up a project for local development:
-
-1. Check if lokei is installed (`lokei --version`)
-2. Check if setup is complete (`lokei doctor`)
-3. Run the dev server: `lokei run` (auto-detects framework)
-4. The URL will be `https://<project-name>.test`
-
-When the user wants to share their work:
-1. If already running with `lokei run`, suggest `lokei run --expose` next time
-2. For quick sharing: `lokei share --port <port>`
-3. For stable URLs: `lokei login` first, then `lokei run --expose`
-
-When debugging:
-1. Run `lokei doctor` to check system health
-2. Check `lokei routes ls` for active routes
-3. Use `lokei inspect` to view traffic
-4. Check `lokei logs` for daemon output
+1. mode chosen
+2. command run
+3. resulting local or public URLs
+4. any detected setup or networking blocker
+5. next action if user approval is required

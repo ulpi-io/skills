@@ -1,446 +1,210 @@
 ---
 name: update-skill-learnings
-version: 1.0.0
-description: Extract learnings about skill creation/improvement from a session and propagate them to the central skill learnings file, then sync to appropriate skills. Use when a session revealed patterns, anti-patterns, or insights about structuring skills. Invoke via /update-skill-learnings or after skill creation/improvement sessions.
+version: 2.0.0
+description: |
+  Extract a validated learning about skill design or skill quality from the current session and
+  add it to the central skill learnings file. User-only maintenance workflow for updating durable
+  skill-authoring guidance after a session reveals a pattern worth preserving.
+allowed-tools:
+  - AskUserQuestion
+  - Read
+  - Edit
+  - Write
+  - Glob
+  - Grep
+disable-model-invocation: true
+user-invocable: true
+argument-hint: "[learning candidate or session focus]"
+arguments:
+  - request
+when_to_use: |
+  Use only when the user explicitly asks to record a skill-design learning, anti-pattern, or
+  skill-specific improvement rule. Examples: "/update-skill-learnings", "record this skill
+  pattern", or "add this anti-pattern to the skill learnings". Do not use for application-code
+  learnings, agent behavior, or direct skill rewrites.
 ---
 
 <EXTREMELY-IMPORTANT>
-Before adding ANY skill learning, you **ABSOLUTELY MUST**:
+This skill updates durable skill-authoring guidance and must stay disciplined.
 
-1. Identify a concrete, actionable pattern (not vague observation)
-2. Verify the pattern is about skill structure/content (not application code)
-3. Categorize correctly: Structural Pattern, Content Pattern, Anti-Pattern, or Skill-Specific
-4. Get user confirmation before writing
-
-**Adding learnings without verification = cluttered, unhelpful knowledge base**
-
-This is not optional. Every learning requires disciplined validation.
+Non-negotiable rules:
+1. Only record learnings about skill structure, skill content, anti-patterns, or one skill's design.
+2. Reject application-code and agent-behavior learnings and route them to the right maintenance workflow.
+3. Update exactly one canonical learnings file instead of creating parallel copies.
+4. Check for duplicates or near-duplicates before writing.
+5. Get explicit user confirmation before modifying the learnings file.
 </EXTREMELY-IMPORTANT>
 
 # Update Skill Learnings
 
-## MANDATORY FIRST RESPONSE PROTOCOL
+## Inputs
 
-Before adding ANY skill learning, you **MUST** complete this checklist:
+- `$request`: Optional learning candidate, skill name, category hint, or reminder about what the session revealed
 
-1. ☐ Identify the specific pattern or anti-pattern from the session
-2. ☐ Verify this is about skill creation/improvement (not application code)
-3. ☐ Categorize: Structural, Content, Anti-Pattern, or Skill-Specific
-4. ☐ Formulate as actionable guidance (imperative mood)
-5. ☐ Check for duplicates in existing learnings
-6. ☐ Present learning to user for confirmation
-7. ☐ Announce: "Adding skill learning: [category] - [brief description]"
+## Goal
 
-**Adding learnings WITHOUT completing this checklist = noise in the knowledge base.**
+Add one validated skill-authoring learning to the central learnings store by:
 
-## Purpose
+- confirming the learning belongs in skill memory
+- choosing the right category
+- updating the canonical learnings file
+- preserving file structure and avoiding duplicates
+- reporting exactly what changed
 
-This skill captures learnings about **creating and improving Claude Code skills**.
+## Step 0: Confirm the learning belongs here
 
-**What it captures:**
-- Structural patterns (required sections, quality signals)
-- Content patterns (clarity, user interaction)
-- Anti-patterns to avoid
-- Skill-specific learnings
+This skill is only for persistent guidance about creating, reviewing, or improving skills.
 
-**Output:** Updates to `.claude/learnings/skill-learnings.md` → synced to appropriate skills
+Valid examples:
 
-**Does NOT:**
-- Capture learnings about application code (use update-agent-learnings instead)
-- Modify existing skills without user confirmation
+- structural patterns for better skills
+- content patterns that improve clarity or usability
+- anti-patterns that repeatedly cause confusion
+- one skill's specific design rule that should be remembered centrally
 
-## When to Use
+Invalid examples:
 
-- After creating a new skill
-- After improving an existing skill
-- After reviewing skill quality (like the ulpi-generate-hooks review)
-- When discovering patterns that make skills more effective
-- Invoke via `/update-skill-learnings`
+- application implementation rules
+- agent-behavior rules for the main Claude conversation
+- direct requests to rewrite a skill right now
+- one-off notes that do not deserve durable memory
 
-**Never add learnings proactively.** Only when session revealed concrete patterns.
+Load `references/learning-scope.md` for routing, category placement, and failure modes.
 
-## Step 1: Session Analysis
+If the learning does not belong in the skill learnings system, stop and say where it should go instead.
 
-**Gate: Identify at least one concrete skill pattern before proceeding to Step 2.**
+**Success criteria**: The learning clearly belongs in persistent skill-authoring guidance.
 
-Review the current conversation/session for skill-related patterns:
+## Step 1: Extract one concrete learning
 
-1. **Structural discoveries:**
-   - What sections were missing from a skill?
-   - What structural patterns made skills more effective?
-   - What formatting improved clarity?
+Review the session and identify the smallest useful rule.
 
-2. **Content discoveries:**
-   - What made instructions clearer?
-   - What examples helped understanding?
-   - What error handling was missing?
+Rules:
 
-3. **Anti-patterns discovered:**
-   - What caused confusion or errors?
-   - What was missing that caused problems?
-   - What patterns should be avoided?
+- prefer one precise learning over a long list of vague observations
+- write it in imperative mood
+- tie it to a concrete pattern, anti-pattern, or skill-specific rule
+- avoid documenting advice that is already implied by stronger existing guidance
 
-## Step 2: Learning Extraction
+Good shape:
 
-**Gate: User confirms extracted learnings before proceeding to Step 3.**
+- "Keep heavy checklists in references instead of inline in `SKILL.md`."
+- "Mark durable-memory maintenance skills as `disable-model-invocation: true`."
 
-Present findings to user and ask for confirmation:
+Bad shape:
 
-```
-I identified the following skill learnings from this session:
+- "Skills should be better."
+- "Use clearer instructions."
 
-**Structural Patterns:**
-1. [Pattern description]
+**Success criteria**: You have a single actionable learning candidate with a clear rationale.
 
-**Content Patterns:**
-1. [Pattern description]
+## Step 2: Resolve the canonical learnings file and choose placement
 
-**Anti-Patterns:**
-1. [Pattern description]
+Locate the canonical central learnings file.
 
-**Skill-Specific (if any):**
-1. [Skill name]: [Learning description]
+Path policy:
 
-Should I add these to the skill learnings file?
-```
+- if the repo already has a single existing skill learnings file, use it
+- if both `.agents` and `.claude` variants exist, update the canonical authoring surface and do not create a second source of truth
+- in this canonical `.agents` tree, prefer `.agents/learnings/skill-learnings.md`
+- if the repo still uses `.claude/learnings/skill-learnings.md` as its only learnings store, use that instead
 
-Use AskUserQuestion to:
-- Confirm the extracted learnings are accurate
-- Allow user to refine or add additional learnings
-- Get approval before making changes
+Choose the correct category:
 
-### Learning Classification
+- `Structural Patterns`
+- `Content Patterns`
+- `Anti-Patterns`
+- `Skill-Specific Learnings`
 
-Each learning should specify:
+Before writing:
 
-| Field | Options | Description |
-|-------|---------|-------------|
-| **Category** | Structural Patterns, Content Patterns, Anti-Patterns, Skill-Specific | Where does this learning fit? |
-| **Subcategory** | Required Sections, Quality Signals, Clarity, User Interaction, Structure, Content | More specific placement |
+- search for duplicates or near-duplicates
+- merge with existing wording if a similar rule already exists
+- keep the new instruction small and local
 
-### Classification Guide
+Load:
 
-| Category | What It Covers | Examples |
-|----------|---------------|----------|
-| **Structural Patterns** | Required sections, file organization, quality signals | EXTREMELY-IMPORTANT block, Gate checkpoints, Quality Checklist |
-| **Content Patterns** | Writing style, clarity, examples, user interaction | Imperative mood, concrete examples, error handling |
-| **Anti-Patterns** | Things to avoid in skills | Missing gates, vague instructions, no failure modes |
-| **Skill-Specific** | Learnings about one particular skill | ulpi-generate-hooks needs same patterns as commit |
+- `references/learning-scope.md` for routing, categories, and duplicate handling
+- `references/skill-learnings-template.md` only if the canonical learnings file does not exist yet
 
-## Step 3: Update Central Learnings File
+**Success criteria**: The target file and section are known and duplication risk has been checked.
 
-**Gate: Learnings file updated successfully before proceeding to Step 4.**
+## Step 3: Confirm with the user
 
-1. Read current `.claude/learnings/skill-learnings.md`
-2. Locate the appropriate section:
-   - Structural patterns go under `## Structural Patterns` → appropriate subsection
-   - Content patterns go under `## Content Patterns` → appropriate subsection
-   - Anti-patterns go under `## Anti-Patterns` → appropriate subsection
-   - Skill-specific learnings go under `## Skill-Specific Learnings` → appropriate skill
-3. Add new learnings to the appropriate section
-4. Update the "Last updated" timestamp
-5. Write updated file
+Before editing the learnings file, present:
 
-### File Structure
+- category
+- final wording
+- target file
+- reason this learning was extracted
 
-The learnings file follows this structure:
+Use `AskUserQuestion` if confirmation or wording refinement is needed.
 
-```markdown
-# Skill Learnings
+Do not write until the user explicitly approves the learning.
 
-## Structural Patterns
-### Required Sections
-- [learning items...]
+**Success criteria**: The user has approved the learning, placement, and target file.
 
-### Quality Signals
-- [learning items...]
+## Step 4: Update the learnings file
 
----
+Apply the minimal correct edit:
 
-## Content Patterns
-### Clarity
-- [learning items...]
+- preserve file structure
+- insert the learning in the chosen section
+- avoid deleting unrelated content
+- update the "Last updated" marker only if the file already uses one
 
-### User Interaction
-- [learning items...]
+Rules:
 
----
+- if the canonical learnings file is missing, create it from `references/skill-learnings-template.md`
+- if the section is missing, create the smallest compatible section rather than restructuring the whole file
+- keep formatting consistent with the existing document
+- do not sync or rewrite actual skill files as part of this workflow
 
-## Anti-Patterns
-### Structure
-- [learning items...]
+**Success criteria**: The approved learning is present in the right section of the canonical learnings file.
 
-### Content
-- [learning items...]
+## Step 5: Verify and report
 
----
+Verify:
 
-## Skill-Specific Learnings
+- the learning was added exactly once
+- the category placement is correct
+- the file structure still makes sense
+- the update did not drift into application-code or agent-behavior territory
 
-### [skill-name]
-- [learning specific to this skill...]
+Report:
 
----
+- category
+- target file
+- section path
+- final wording
+- whether the file was created or updated
 
-*Last updated: [date]*
-```
+**Success criteria**: The user can see exactly what durable skill-authoring memory changed.
 
-## Step 4: Verification
+## Guardrails
 
-**Gate: All checks pass before marking complete.**
+- Do not let the model invoke this skill proactively; it mutates durable learnings.
+- Do not add `context: fork`; this workflow edits the active repository.
+- Do not add `paths:`; this is a generic maintenance skill.
+- Do not keep routing matrices, quality scorecards, or long failure catalogs inline in `SKILL.md`.
+- Do not add a learning without explicit user approval.
+- Do not create both `.agents/learnings/skill-learnings.md` and `.claude/learnings/skill-learnings.md`.
+- Do not rewrite actual skill files as part of this learnings update.
 
-### Check 1: Learning Added
+## When To Load References
 
-- [ ] New learning appears in correct section
-- [ ] No duplicate entries created
-- [ ] Timestamp updated
+- `references/learning-scope.md`
+  Use for deciding whether the learning belongs in skill memory, choosing the right category, handling duplicates, and checking common failure modes.
 
-### Check 2: Learning Quality
+- `references/skill-learnings-template.md`
+  Use only when the canonical central learnings file is missing and a minimal compatible file must be created.
 
-- [ ] Learning is actionable (imperative mood)
-- [ ] Learning is specific (not vague)
-- [ ] Learning includes context if needed
+## Output Contract
 
-### Check 3: File Integrity
+Report:
 
-- [ ] File structure preserved
-- [ ] No sections accidentally removed
-- [ ] Markdown formatting valid
-
-## Pre-Update Checklist
-
-Before updating, verify:
-- [ ] Learning is concrete and actionable
-- [ ] Learning is about skills (not application code)
-- [ ] Category assignment is correct
-- [ ] No duplicates exist
-- [ ] User confirmed the learning
-
-## Error Handling
-
-| Situation | Action |
-|-----------|--------|
-| Learning is vague | Refine to be actionable before adding |
-| Learning is about application code | Redirect to update-agent-learnings |
-| Category unclear | Ask user to clarify |
-| Duplicate exists | Merge or skip, inform user |
-| File structure broken | Fix structure before adding |
-
-## Safety Rules
-
-| Rule | Reason |
-|------|--------|
-| Always get user confirmation | Ensures learnings are accurate and desired |
-| Never delete existing learnings | Preserve institutional knowledge |
-| Keep learnings actionable | Vague observations don't help |
-| Use imperative mood | Clearer instructions |
-| Preserve file structure | Maintains organization |
-
----
-
-## Quality Checklist (Must Score 8/10)
-
-Score yourself honestly before marking update complete:
-
-### Learning Identification (0-2 points)
-- **0 points:** Vague observation, not actionable
-- **1 point:** Somewhat specific but could be clearer
-- **2 points:** Concrete, actionable pattern
-
-### Classification (0-2 points)
-- **0 points:** Wrong category
-- **1 point:** Correct category, wrong subcategory
-- **2 points:** Correct category and subcategory
-
-### User Confirmation (0-2 points)
-- **0 points:** Added without showing to user
-- **1 point:** Showed but didn't wait for confirmation
-- **2 points:** Full confirmation before writing
-
-### File Integrity (0-2 points)
-- **0 points:** Broke file structure
-- **1 point:** Minor formatting issues
-- **2 points:** Clean update, structure preserved
-
-### Duplicate Check (0-2 points)
-- **0 points:** Added duplicate without checking
-- **1 point:** Checked but not thoroughly
-- **2 points:** Verified no duplicates exist
-
-**Minimum passing score: 8/10**
-
----
-
-## Common Rationalizations (All Wrong)
-
-These are excuses. Don't fall for them:
-
-- **"This pattern is obvious"** → STILL document it explicitly
-- **"It's just a small insight"** → Small insights compound into quality
-- **"The learnings file is already comprehensive"** → STILL check for gaps
-- **"The user knows what they want"** → STILL confirm before adding
-- **"This is similar to an existing learning"** → Check if it's a duplicate or refinement
-
----
-
-## Failure Modes
-
-### Failure Mode 1: Vague Learnings
-
-**Symptom:** Learnings like "skills should be clear"
-**Fix:** Be specific - "Use imperative mood, provide concrete examples"
-
-### Failure Mode 2: Wrong Category
-
-**Symptom:** Structural pattern filed under Anti-Patterns
-**Fix:** Review category definitions before filing
-
-### Failure Mode 3: Duplicate Added
-
-**Symptom:** Same learning exists in multiple places
-**Fix:** Search existing learnings before adding
-
-### Failure Mode 4: Application Code Learning
-
-**Symptom:** Learning about TypeScript patterns added to skill learnings
-**Fix:** Redirect to update-agent-learnings skill
-
----
-
-## Quick Workflow Summary
-
-```
-STEP 1: SESSION ANALYSIS
-├── Review session for skill patterns
-├── Identify structural discoveries
-├── Identify content discoveries
-├── Identify anti-patterns
-└── Gate: Concrete pattern identified
-
-STEP 2: LEARNING EXTRACTION
-├── Categorize the learning
-├── Formulate as actionable guidance
-├── Check for duplicates
-├── Present to user
-├── Get confirmation
-└── Gate: User approved
-
-STEP 3: UPDATE LEARNINGS FILE
-├── Read current skill-learnings.md
-├── Locate correct section
-├── Add new learning
-├── Update timestamp
-├── Write file
-└── Gate: File updated
-
-STEP 4: VERIFICATION
-├── Verify learning added correctly
-├── Verify learning quality
-├── Verify file integrity
-└── Gate: All checks pass
-```
-
----
-
-## Completion Announcement
-
-When update is complete, announce:
-
-```
-Skill learning added.
-
-**Quality Score: X/10**
-- Learning Identification: X/2
-- Classification: X/2
-- User Confirmation: X/2
-- File Integrity: X/2
-- Duplicate Check: X/2
-
-**Learning Added:**
-- Category: [category]
-- Subcategory: [subcategory]
-- Learning: [brief description]
-
-**File Updated:** .claude/learnings/skill-learnings.md
-
-**Next steps:**
-Review the skill-learnings.md file to see all captured patterns.
-```
-
----
-
-## Integration with Other Skills
-
-The `update-skill-learnings` skill integrates with:
-
-- **`update-agent-learnings`** — Use for application code learnings, not skill learnings
-- **`commit`** — Commit skill-learnings.md changes after update
-- **`skill-creator` (example-skills)** — Reference skill-learnings.md when creating new skills
-
-**Workflow Chain:**
-
-```
-Session reveals skill pattern
-         │
-         ▼
-update-skill-learnings skill (this skill)
-         │
-         ▼
-skill-learnings.md updated
-         │
-         ▼
-Future skill creation benefits from learnings
-```
-
-**Decision Guide:**
-
-```
-Is the learning about...
-         │
-    ┌────┴────┐
-    ▼         ▼
-Skills?   Application Code?
-    │         │
-    ▼         ▼
-This skill   update-agent-learnings
-```
-
----
-
-## Examples
-
-### Example 1: Adding a Structural Pattern Learning
-
-**Session Issue:** Created a skill without EXTREMELY-IMPORTANT block.
-
-**Learning Extraction:**
-- Category: Structural Patterns
-- Subcategory: Required Sections
-- Learning: "Always include `<EXTREMELY-IMPORTANT>` block after frontmatter with verification requirements"
-
-**Result:**
-1. Added to `.claude/learnings/skill-learnings.md` under Structural Patterns → Required Sections
-
-### Example 2: Adding an Anti-Pattern
-
-**Session Issue:** Skill had bash code blocks that looked executable but were meant as instructions.
-
-**Learning Extraction:**
-- Category: Anti-Patterns
-- Subcategory: Content
-- Learning: "Avoid bash code blocks that look executable but are meant as agent instructions - rephrase as prose"
-
-**Result:**
-1. Added to `.claude/learnings/skill-learnings.md` under Anti-Patterns → Content
-
-### Example 3: Adding a Skill-Specific Learning
-
-**Session Issue:** ulpi-generate-hooks was missing patterns that commit/create-pr/start have.
-
-**Learning Extraction:**
-- Category: Skill-Specific
-- Skill: ulpi-generate-hooks
-- Learning: "Apply same structural patterns as commit/create-pr/start for consistency"
-
-**Result:**
-1. Added to `.claude/learnings/skill-learnings.md` under Skill-Specific Learnings → ulpi-generate-hooks
+1. whether the learning was accepted or redirected elsewhere
+2. the chosen category and target file
+3. the final approved wording
+4. whether the learnings file was created or updated
+5. any duplicate merge or canonical-path decisions

@@ -1,88 +1,126 @@
 ---
 name: laravel-filament
-version: 1.0.0
+version: 2.0.0
 description: |
-  Filament v5 admin panel — resources, schemas, tables, actions, relation managers,
-  widgets, navigation, and panels. Use when working on any Filament resource, form,
-  table, action, filter, widget, page, or panel configuration task.
+  Filament v5 admin-panel reference skill: resources, forms, tables, actions, filters, relation
+  managers, widgets, panels, and testing. Use when the task touches Filament-specific admin code
+  and needs the v5 namespace and API conventions rather than generic Laravel patterns.
 allowed-tools:
   - Bash
   - Read
+  - Write
+  - Edit
+  - Grep
+paths:
+  - "app/Filament/**/*.php"
+  - "app/Providers/Filament/**/*.php"
+  - "resources/views/filament/**/*.blade.php"
+  - "config/filament.php"
+  - "tests/**/*.php"
+  - "composer.json"
+argument-hint: "[Filament resource, form, table, widget, or panel task]"
+arguments:
+  - request
+when_to_use: |
+  Use when the task is specifically about Filament resources, forms, tables, actions, filters,
+  relation managers, widgets, navigation, or panel configuration. Examples: "fix this Filament
+  table action", "create a Resource", "update Filament filters", "add an admin widget". Do not use
+  for general Laravel API work when the main Laravel skill is the better match.
+effort: high
 ---
 
 <EXTREMELY-IMPORTANT>
-These rules apply to ALL Filament code you write. Violating any produces broken admin panels.
+This skill exists to keep Filament work aligned with v5, not to duplicate the entire reference library.
 
-1. **Unified action namespace.** ALL actions import from `Filament\Actions\*` — never `Filament\Tables\Actions\*` or `Filament\Forms\Actions\*`. These old namespaces DO NOT EXIST in v5.
-2. **Table methods changed.** Use `->recordActions()` not `->actions()`. Use `->toolbarActions()` not `->bulkActions()`. The v3 method names DO NOT EXIST in v5.
-3. **No BadgeColumn.** Use `TextColumn::make('status')->badge()->color(...)`. `BadgeColumn` was removed.
-4. **Schemas package.** Layout components come from `Filament\Schemas\Components\*` (Section, Grid, Tabs, Wizard). Form fields stay in `Filament\Forms\Components\*`. Infolist entries stay in `Filament\Infolists\Components\*`.
-5. **No business logic in Resources.** Custom actions delegate to project Action classes: `->action(fn ($record) => app(SomeAction::class)->execute($record))`.
-6. **Schema/Table class extraction.** Resources delegate to separate schema and table classes for maintainability. Keep `form()` and `table()` methods as one-liners that call `SomeForm::configure($schema)`.
-7. **Filters stay in Tables namespace.** `Filament\Tables\Filters\*` is correct. Only actions moved to the unified namespace.
+Non-negotiable rules:
+1. Read `references/namespaces.md` first.
+2. Then load only the reference files the task actually needs.
+3. Keep business logic out of Resources.
+4. Use the v5 action and table APIs, not old v3 patterns.
+5. Keep the heavy Filament cookbook in `references/`, not inline here.
 </EXTREMELY-IMPORTANT>
 
-# Filament v5 Admin Panel
+# laravel-filament
 
-## MANDATORY FIRST RESPONSE PROTOCOL
+## Inputs
 
-Before writing ANY Filament code, you **MUST** complete this checklist:
+- `$request`: The Filament admin task or component to modify
 
-1. Read `references/namespaces.md` to understand the v5 import map
-2. Identify the task type from the routing table below
-3. Read the matching reference file(s)
-4. Only then begin implementation
+## Goal
 
-**Writing Filament code without reading the reference = wrong namespaces, wrong methods, rework.**
+Route Filament work through the correct v5 conventions so the implementation uses the right namespaces, table APIs, and admin-panel composition patterns.
 
-## Routing Table
+## Step 0: Read the v5 namespace contract
 
-| Task | Read |
-|------|------|
-| Understanding v5 namespace changes from v3 | `references/namespaces.md` |
-| Creating or editing a Resource | `references/resources.md` |
-| Form fields, validation, layout | `references/forms.md` |
-| Table columns, sorting, searching | `references/tables.md` |
-| Table/page/bulk actions, modals, confirmations | `references/actions.md` |
-| Filters (select, ternary, custom) | `references/filters.md` |
-| Relation managers, relationships in forms | `references/relationships.md` |
-| Widgets (stats, charts) | `references/widgets.md` |
-| Navigation, panels, theming | `references/panels.md` |
-| Notifications (flash, database, broadcast) | `references/notifications.md` |
-| Testing Filament resources and pages | `references/testing.md` |
-| Infolists (read-only detail views) | `references/infolists.md` |
+Always start with:
 
-Multiple tasks? Read multiple files.
+- `references/namespaces.md`
 
-## Quick Rules
+That establishes the namespace and API changes that commonly break Filament work.
 
-These repeat the critical guardrails for context-window resilience:
+**Success criteria**: The task is grounded in the correct Filament v5 surface before editing.
 
-1. ALL actions: `use Filament\Actions\{Action, EditAction, DeleteAction, BulkAction, BulkActionGroup, ...}` — one namespace.
-2. Table methods: `->recordActions([...])`, `->toolbarActions([...])`, `->headerActions([...])` — never `->actions()` or `->bulkActions()`.
-3. Badge columns: `TextColumn::make('field')->badge()->color(fn ($state) => ...)` — no `BadgeColumn` class.
-4. Layout: `Filament\Schemas\Components\{Section, Grid, Tabs, Wizard}`.
-5. Form fields: `Filament\Forms\Components\{TextInput, Select, Toggle, ...}`.
-6. Infolist entries: `Filament\Infolists\Components\{TextEntry, IconEntry, ...}`.
-7. Table columns: `Filament\Tables\Columns\{TextColumn, IconColumn, ImageColumn, ...}`.
-8. Filters: `Filament\Tables\Filters\{Filter, SelectFilter, TernaryFilter}`.
-9. Custom actions delegate to Action classes — no business logic in Resources.
-10. Policies are auto-detected — no manual authorization wiring needed.
+## Step 1: Load only the relevant admin references
 
-## v5 Breaking Changes from v3 (Quick Summary)
+Pick the reference files that match the task:
 
-| v3 | v5 | Notes |
-|----|-----|-------|
-| `Tables\Actions\EditAction` | `Filament\Actions\EditAction` | Unified action namespace |
-| `Tables\Actions\Action` | `Filament\Actions\Action` | Same class, different namespace |
-| `Tables\Actions\BulkActionGroup` | `Filament\Actions\BulkActionGroup` | Unified |
-| `Tables\Actions\DeleteBulkAction` | `Filament\Actions\DeleteBulkAction` | Unified |
-| `->actions([...])` | `->recordActions([...])` | Table method renamed |
-| `->bulkActions([...])` | `->toolbarActions([BulkActionGroup::make([...])])` | Bulk actions live in toolbar |
-| `->headerActions([...])` | `->headerActions([...])` | Unchanged |
-| `Tables\Columns\BadgeColumn` | `TextColumn::make()->badge()` | BadgeColumn removed |
-| `Forms\Components\Section` | `Filament\Schemas\Components\Section` | Layout → Schemas package |
-| `Forms\Components\Grid` | `Filament\Schemas\Components\Grid` | Layout → Schemas package |
-| `Forms\Components\Tabs` | `Filament\Schemas\Components\Tabs` | Layout → Schemas package |
-| `Form $form` (in resource) | `Schema $schema` | Type hint changed |
-| `$form->schema([...])` | `$schema->components([...])` | Method renamed |
+- resources
+- forms
+- tables
+- actions
+- filters
+- relationships
+- widgets
+- panels
+- notifications
+- testing
+- infolists
+
+Do not bulk-load everything.
+
+**Success criteria**: Only the task-relevant Filament conventions are in the active context.
+
+## Step 2: Implement with the core Filament guardrails
+
+Keep these rules active:
+
+- actions come from `Filament\\Actions\\*`
+- tables use the v5 record/toolbar/header action methods
+- badge presentation uses `TextColumn->badge()`
+- layout components come from the Schemas package
+- Resource classes delegate real business work to application Actions
+
+**Success criteria**: The change uses valid v5 APIs and stays maintainable.
+
+## Step 3: Verify the admin surface
+
+Use the narrowest relevant verification:
+
+- focused feature tests
+- Filament page/resource tests
+- lightweight UI smoke coverage if the repo already has it
+
+**Success criteria**: The Filament surface still behaves correctly after the change.
+
+## Guardrails
+
+- Do not inline the whole Filament handbook in `SKILL.md`.
+- Do not skip `references/namespaces.md`.
+- Do not use v3 action namespaces or deprecated table methods.
+- Do not put business logic directly in Resource classes.
+
+## When To Load References
+
+- `references/namespaces.md`
+  Always.
+
+- then only the task-relevant files under `references/`
+
+## Output Contract
+
+Report:
+
+1. which Filament references were loaded
+2. the v5 pattern applied
+3. the change made
+4. the verification run

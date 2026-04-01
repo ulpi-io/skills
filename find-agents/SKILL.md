@@ -1,163 +1,111 @@
 ---
 name: find-agents
-description: Find, install, and manage AI agents across 43+ coding IDEs. Search the agentshq registry, install agents from GitHub repos or URLs, list/remove/update installed agents. Invoke via /find-agents or when user says "find an agent", "install agent", "search agents", "list agents", "remove agent", "update agents".
+version: 2.0.0
+description: |
+  Search, install, list, remove, update, or scaffold AI agents with the `agentshq` CLI across many
+  coding CLIs and IDEs. Use when the user wants to discover agents, install them into specific
+  clients, or manage an existing agent catalog.
+allowed-tools:
+  - AskUserQuestion
+  - Bash
+  - Read
+disable-model-invocation: true
+user-invocable: true
+argument-hint: "[search query, source repo, or management action]"
+arguments:
+  - request
+when_to_use: |
+  Use only when the user explicitly asks to find, install, list, remove, update, or scaffold
+  agents. Examples: "/find-agents react reviewer", "install agents from owner/repo", "list my
+  installed agents", "update all agents". Do not use proactively.
+effort: high
 ---
+
+<EXTREMELY-IMPORTANT>
+This skill changes the user's agent inventory and must stay explicit-user-only.
+
+Non-negotiable rules:
+1. Verify `agentshq` availability before relying on it.
+2. Be explicit about scope: project vs global, specific IDEs vs auto-detect.
+3. Do not install or remove agents the user did not ask for.
+4. Confirm ambiguous install targets before making changes.
+5. Report exactly what was added, removed, or updated.
+</EXTREMELY-IMPORTANT>
 
 # Find Agents
 
-Full CLI wrapper for [agentshq](https://agentshq.sh) -- the package manager for AI coding agents.
+## Inputs
 
-## When to Use
+- `$request`: Search terms, repo source, or management intent such as `list`, `remove`, or `update`
 
-Activate this skill when the user:
+## Goal
 
-- Wants to find or search for agents ("find me a React agent", "search for testing agents")
-- Wants to install agents ("install the laravel expert agent", "add agents from owner/repo")
-- Wants to manage agents ("list my agents", "remove web-design", "update all agents", "check for updates")
-- Mentions agentshq, agent definitions, or AGENT.md files
-- Asks what agents are available or installed
+Use `agentshq` to help the user:
 
-## Prerequisites
+- discover relevant agents
+- install agents into one or more CLIs or IDEs
+- list current inventory
+- remove or update installed agents
+- scaffold a new agent when asked
 
-The `agentshq` CLI must be available. If it's not installed globally, use `npx agentshq` to run commands on-the-fly (no install needed).
+## Step 0: Verify runtime prerequisites
 
-Check availability:
+Check:
 
-```bash
-npx agentshq --version
-```
+- Node.js availability
+- `npx agentshq --version`
 
-## Commands Reference
+If the CLI is unavailable, explain the blocker and stop.
 
-### Search for agents
+**Success criteria**: `agentshq` can be invoked from the current environment.
 
-```bash
-# Interactive search (opens fzf-style picker)
-npx agentshq find
+## Step 1: Resolve the user's intent
 
-# Search by keyword
-npx agentshq find <query>
-```
+Determine whether the user wants to:
 
-When the user asks to find agents, run the search and present results. If they pick one, install it.
+- search
+- install
+- list
+- remove
+- update
+- scaffold
 
-### Install agents
+Also resolve:
 
-```bash
-# From a GitHub repo (discovers all agents in the repo)
-npx agentshq add <owner>/<repo>
+- project vs global scope
+- target IDEs/CLIs if specified
+- source repo, URL, or local path if installing
 
-# Install a specific agent from a repo
-npx agentshq add <owner>/<repo>@<agent-name>
+If those details are ambiguous, ask before mutating anything.
 
-# From any git URL
-npx agentshq add https://github.com/owner/repo
+**Success criteria**: The exact `agentshq` action is clear before execution.
 
-# From a local directory
-npx agentshq add ./path/to/agents
+## Step 2: Run the narrowest relevant command
 
-# Install globally (user-level, available in all projects)
-npx agentshq add <source> -g
+### Command Reference
 
-# Install to specific IDEs
-npx agentshq add <source> --ide claude-code cursor windsurf
+| Action | Command | Key Flags |
+|--------|---------|-----------|
+| Search | `npx agentshq find [query]` | interactive picker when no query given |
+| Install from repo | `npx agentshq add <owner>/<repo>` | `@<agent-name>` for specific agent |
+| Install from URL | `npx agentshq add <url>` | also works with local paths |
+| Install scope | | `-g` for global, `--ide <name> ...` for specific IDEs |
+| Install options | | `--all` for all agents to all IDEs, `--list` to preview |
+| List installed | `npx agentshq list` | `-g` for global, `--ide <name>`, `--json` |
+| Remove | `npx agentshq remove [name]` | `-g` for global, `--all` for all agents |
+| Check updates | `npx agentshq check` | |
+| Apply updates | `npx agentshq update` | |
+| Scaffold new | `npx agentshq init [name]` | |
 
-# Install all agents to all IDEs without prompts
-npx agentshq add <source> --all
+When installing, respect:
 
-# List available agents in a repo without installing
-npx agentshq add <source> --list
-```
+- explicit `--ide ...` choices when the user gave them
+- `-g` only when the user asked for global scope
+- `--list` when the user wants to inspect a source before installing
 
-### List installed agents
+### Supported IDEs
 
-```bash
-# List project-level agents
-npx agentshq list
-
-# List global agents
-npx agentshq list -g
-
-# Filter by IDE
-npx agentshq list --ide claude-code
-
-# Machine-readable output
-npx agentshq list --json
-```
-
-### Remove agents
-
-```bash
-# Interactive removal (shows picker)
-npx agentshq remove
-
-# Remove specific agent
-npx agentshq remove <agent-name>
-
-# Remove from global scope
-npx agentshq remove <agent-name> -g
-
-# Remove all agents
-npx agentshq remove --all
-```
-
-### Check for updates
-
-```bash
-# Check which agents have updates available
-npx agentshq check
-
-# Update all agents to latest versions
-npx agentshq update
-```
-
-### Create a new agent
-
-```bash
-# Scaffold a new AGENT.md
-npx agentshq init <name>
-
-# Create in current directory
-npx agentshq init
-```
-
-## Behavior Guidelines
-
-### When searching for agents
-
-1. Run `npx agentshq find <query>` with the user's keywords
-2. Present the results clearly -- name, description, source
-3. Ask which agent(s) to install
-4. Run the install command with appropriate flags
-
-### When installing agents
-
-1. Run `npx agentshq add <source>` with the appropriate source
-2. If the user doesn't specify IDEs, the CLI will auto-detect installed IDEs and prompt
-3. For non-interactive installs (CI, scripts), suggest `-y` or `--all` flags
-4. After install, confirm what was installed and where
-
-### When the user is unsure what they need
-
-1. Ask what kind of task they're working on (React, Laravel, testing, DevOps, etc.)
-2. Search with relevant keywords: `npx agentshq find <keyword>`
-3. Recommend agents based on the results
-4. Offer to install their picks
-
-### Private repos
-
-The CLI works with private repos using the same syntax. Privacy is automatic -- no telemetry or audit data is sent for private repos. The user just needs git access (SSH keys or `GITHUB_TOKEN`).
-
-### Error handling
-
-- If `npx agentshq` fails, check if Node.js >= 18 is available
-- If a git clone fails, check network connectivity and repo access
-- If no agents are found in a repo, suggest checking the repo has AGENT.md files
-- If IDE detection finds nothing, suggest `--ide <name>` to specify manually
-
-## Supported IDEs
-
-The CLI supports 43+ IDEs. The most common ones:
+The CLI supports 43+ IDEs. Common ones:
 
 | IDE | Format |
 |-----|--------|
@@ -172,3 +120,36 @@ The CLI supports 43+ IDEs. The most common ones:
 | Roo Code | `AGENTS.md` sections |
 
 Agents are automatically translated to each IDE's native format on install.
+
+**Success criteria**: The command matches the user's intent and scope exactly.
+
+## Step 3: Report the result clearly
+
+After execution, report:
+
+- what command ran
+- which agents matched or changed
+- which clients/IDEs were targeted
+- any next steps such as authentication, reload, or restart
+
+When searching, present the most relevant results instead of dumping raw output.
+
+**Success criteria**: The user can immediately decide what to do next.
+
+## Guardrails
+
+- Do not run this skill proactively.
+- Do not install globally unless the user asked for global scope.
+- Do not remove or update agents without explicit user intent.
+- Do not guess target IDE names when the user clearly cares about a specific client.
+- Remember that `agentshq` can translate one source agent into multiple client formats; report that clearly.
+
+## Output Contract
+
+Report:
+
+1. the resolved action
+2. project/global scope
+3. target IDEs or CLIs
+4. the agents found or changed
+5. any follow-up steps the user should know about

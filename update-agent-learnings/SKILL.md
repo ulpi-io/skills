@@ -1,441 +1,222 @@
 ---
 name: update-agent-learnings
-version: 1.0.0
-description: Extract learnings from a session and propagate them to appropriate agent files based on scope (Global for all subagents, Claude Code Only for main agent, or Agent-Specific). Use when a session revealed patterns, mistakes, or insights. Invoke via /update-agent-learnings or after challenging sessions.
+version: 2.0.0
+description: |
+  Extract a validated learning from the current session, store it in the central agent learnings
+  file, and sync the resulting Learnings section into the agent definitions used by the supported
+  CLIs. User-only maintenance workflow for durable agent guidance.
+allowed-tools:
+  - AskUserQuestion
+  - Read
+  - Edit
+  - Write
+  - Glob
+  - Grep
+disable-model-invocation: true
+user-invocable: true
+argument-hint: "[learning candidate or session focus]"
+arguments:
+  - request
+when_to_use: |
+  Use only when the user explicitly asks to record an agent-behavior learning, a subagent coding
+  rule, or an agent-specific pattern from the current session. Examples: "/update-agent-learnings",
+  "record this agent learning", or "sync this rule into the agents". Do not use for skill-design
+  learnings, Claude project-memory rules, or direct agent rewrites.
 ---
+
+<EXTREMELY-IMPORTANT>
+This skill updates durable agent guidance and live agent prompt files.
+
+Non-negotiable rules:
+1. Only record learnings that belong in agent memory.
+2. Keep one central learnings source of truth; do not invent parallel central files.
+3. Sync approved learnings into every relevant agent surface that exists for the supported CLIs.
+4. Do not propagate "Claude Code Only" learnings into engineer/reviewer agent prompts.
+5. Get explicit user confirmation before modifying the learnings file or any agent file.
+</EXTREMELY-IMPORTANT>
 
 # Update Agent Learnings
 
-## Overview
+## Inputs
 
-Extract learnings from the current session and systematically propagate them to:
-1. The central learnings repository (`.claude/learnings/agent-learnings.md`)
-2. Appropriate agent files based on learning scope
+- `$request`: Optional learning candidate, scope hint, agent name, or reminder about what the session revealed
 
-**IMPORTANT: Not all learnings apply to all agents.**
+## Goal
 
-- **Subagent learnings** (Global, Agent-Specific): Apply to specialized engineer agents that write application code
-- **Claude Code learnings**: Apply only to the main Claude Code agent, NOT propagated to subagents
+Add one validated agent learning to the central learnings store and sync it into the matching agent
+files by:
 
-This creates a feedback loop that improves agent behavior over time based on real-world session outcomes.
+- confirming the learning belongs in agent memory
+- classifying the scope correctly
+- updating one canonical learnings file
+- regenerating the relevant `## Learnings` sections
+- syncing those sections into all agent surfaces that exist
 
-## When to Use
+## Step 0: Confirm the learning belongs here
 
-- After a challenging session where things went wrong
-- When patterns emerge that should inform future behavior
-- After discovering anti-patterns or better approaches
-- When user provides feedback about agent behavior
-- Invoke via `/update-learnings` command
+This skill is only for durable learnings that should shape agent behavior.
 
-## Phase 1: Session Analysis
+Valid examples:
 
-**Gate: Identify at least one concrete learning before proceeding.**
+- global coding-agent rules such as scope control, testing, or iteration
+- agent-specific rules for one technology or role
+- "Claude Code Only" learnings that belong in the central learnings store but should not be pushed into subagent prompts
 
-Review the current conversation/session:
+Invalid examples:
 
-1. **Identify challenges encountered:**
-   - What problems occurred during the session?
-   - What mistakes were made?
-   - What took multiple attempts to get right?
+- skill-design rules
+- main `CLAUDE.md` workflow rules
+- one-off implementation notes
+- direct requests to rewrite an agent prompt right now
 
-2. **Look for patterns:**
-   - Over-scoping (changing more than requested)
-   - Session management issues (premature endings, lost context)
-   - Coordination problems (subagent noise, focus issues)
-   - Testing gaps (missing validation, broken tests)
-   - Scope creep (tangential work)
+Load `references/learning-scope.md` for routing and scope classification.
 
-3. **Categorize findings:**
-   - Is this a global learning (applies to ALL agents)?
-   - Is this agent-specific (only relevant to one type of agent)?
+If the learning does not belong in agent memory, stop and say where it should go instead.
 
-## Phase 2: Learning Extraction
+**Success criteria**: The learning clearly belongs in the agent learnings system.
 
-**Gate: User confirms extracted learnings before proceeding.**
+## Step 1: Extract one concrete learning
 
-Present findings to user and ask for confirmation:
+Review the session and identify the smallest useful rule.
 
-```
-I identified the following learnings from this session:
+Classify it as one of:
 
-**Global Learnings:**
-1. [Category]: [Learning description]
-   - Action type: Always/Never/Prefer
+- `Global`
+- `Claude Code Only`
+- `Agent-Specific`
 
-**Agent-Specific Learnings (if any):**
-1. [Agent name]: [Learning description]
+Rules:
 
-Should I add these to the learnings system?
-```
+- write it in imperative mood
+- prefer one precise learning over a vague bundle
+- only mark it `Global` if it truly applies across coding agents
+- use `Claude Code Only` for meta-work about skills, orchestration, configs, or project setup
 
-Use AskUserQuestion to:
-- Confirm the extracted learnings are accurate
-- Allow user to refine or add additional learnings
-- Get approval before making changes
+**Success criteria**: You have one actionable learning candidate with a correct scope.
 
-### Learning Classification
+## Step 2: Resolve the central learnings file and agent sync targets
 
-Each learning should specify:
+Locate the canonical central learnings file.
 
-| Field | Options | Description |
-|-------|---------|-------------|
-| **Category** | Scope Control, Session Management, Multi-Agent Coordination, Autonomous Iteration, Testing Integration, Other | Where does this learning fit? |
-| **Scope** | Global, Claude Code Only, or [Agent Name] | Who does this learning apply to? |
-| **Action Type** | Always, Never, Prefer | How strong is the directive? |
+Path policy:
 
-### Scope Decision Guide
+- if one central agent learnings file already exists, use it
+- if both `.agents/learnings/agent-learnings.md` and `.claude/learnings/agent-learnings.md` exist, pick one canonical source and do not maintain both by hand
+- in this `.agents`-first repo, prefer `.agents/learnings/agent-learnings.md`
+- if the repo only has `.claude/learnings/agent-learnings.md`, use that instead
 
-**CRITICAL: Choose the correct scope. Not all learnings belong in subagent files.**
+Then discover agent sync targets:
 
-| Scope | When to Use | Propagate to Subagents? |
-|-------|-------------|------------------------|
-| **Global** | Learnings about writing code, testing, debugging, scope control | ✅ Yes - all subagents |
-| **Claude Code Only** | Learnings about skills, agents, configuration files, orchestration | ❌ No - main agent only |
-| **[Agent Name]** | Learnings specific to one technology/framework | ✅ Yes - that agent only |
+- sync into `.agents/agents/*/AGENT.md` when that tree exists
+- sync into `.claude/agents/*` when that tree exists
+- treat both trees as live CLI surfaces when both are present
 
-**Examples of Claude Code Only learnings (DO NOT propagate to subagents):**
-- Improving skills or configuration files
-- Creating or modifying agent definitions
-- Orchestrating multiple subagents
-- Working with CLAUDE.md or project setup
-- Meta-level patterns about how Claude Code works
+Load:
 
-**Examples of Global learnings (DO propagate to subagents):**
-- Scope control when writing application code
-- Testing practices for code changes
-- Session management and checkpointing
-- Multi-agent coordination as a subagent
+- `references/learning-scope.md` for scope and duplicate handling
+- `references/agent-learnings-template.md` only if the canonical learnings file does not exist yet
+- `references/agent-sync-contract.md` for Learnings-section generation and placement
 
-**Ask yourself:** "Would a nodejs-cli-senior-engineer or fastapi-senior-engineer need this learning while writing application code?" If no, it's Claude Code Only.
+**Success criteria**: The canonical learnings file and all sync target trees are known.
 
-## Phase 3: Update Central Learnings File
+## Step 3: Confirm with the user
 
-**Gate: Learnings file updated successfully before proceeding.**
+Before editing anything, present:
 
-1. Read current `.claude/learnings/agent-learnings.md`
-2. Locate the appropriate section:
-   - Global learnings go under `## Global Learnings` → appropriate category
-   - Agent-specific learnings go under `## Agent-Specific Learnings` → appropriate agent
-3. Add new learnings to the appropriate section
-4. Write updated file
+- scope classification
+- final wording
+- canonical learnings file
+- sync targets that will be touched
 
-### File Structure
+Use `AskUserQuestion` if confirmation or wording refinement is needed.
 
-The learnings file should follow this structure:
+Do not write until the user explicitly approves the update.
 
-```markdown
-# Agent Learnings
+**Success criteria**: The user has approved the learning and the sync surface.
 
-## Global Learnings
+## Step 4: Update the central learnings file
 
-These learnings apply to ALL subagents and should be synced to every agent file.
+Apply the minimal correct edit:
 
-### Scope Control
-- [learning items...]
+- preserve file structure
+- insert the learning in the correct section
+- avoid deleting unrelated content
+- update the "Last updated" marker only if the file already uses one
 
-### Session Management
-- [learning items...]
+Rules:
 
-### Multi-Agent Coordination
-- [learning items...]
+- if the canonical learnings file is missing, create it from `references/agent-learnings-template.md`
+- if the section is missing, create the smallest compatible section rather than restructuring the whole file
+- keep formatting consistent with the existing document
 
-### Autonomous Iteration
-- [learning items...]
+**Success criteria**: The central learnings file contains the approved learning exactly once.
 
-### Testing Integration
-- [learning items...]
+## Step 5: Regenerate and sync Learnings sections into agent files
 
----
+Use the central learnings file to build the `## Learnings` section for each target agent file.
 
-## Claude Code Only Learnings
+Sync rules:
 
-These learnings apply ONLY to the main Claude Code agent. DO NOT propagate to subagent files.
+- global learnings go to all coding/reviewer agent files
+- agent-specific learnings go only to the matching agent files
+- "Claude Code Only" learnings stay in the central learnings file and are not pushed into subagent prompts
+- if an agent file already has a `## Learnings` section, replace that section cleanly
+- if it does not, insert the section in the location defined by `references/agent-sync-contract.md`
 
-### Skills & Configuration
-- [learnings about creating/improving skills, agents, configs...]
+Important:
 
-### Orchestration
-- [learnings about coordinating subagents, workflows...]
+- when both `.agents` and `.claude` agent trees exist, update both surfaces
+- do not assume filename parity; resolve the actual paths present
+- do not rewrite unrelated prompt sections while syncing learnings
 
-### Project Setup
-- [learnings about CLAUDE.md, project initialization...]
+**Success criteria**: Every relevant agent file in every present CLI tree has the correct synced Learnings section.
 
----
+## Step 6: Verify and report
 
-## Agent-Specific Learnings
+Verify:
 
-### nodejs-cli-senior-engineer
-- [learning specific to this agent...]
+- the learning exists once in the central learnings file
+- sync targets were updated as intended
+- agent Learnings sections contain the right global and agent-specific content
+- "Claude Code Only" learnings did not leak into subagent prompts
 
-### nextjs-senior-engineer
-- [learning specific to this agent...]
+Report:
 
-[...other agents as needed...]
-```
+- scope classification
+- canonical learnings file
+- sync target trees updated
+- final wording
+- whether files were created or updated
 
-## Phase 4: Propagate to Agents
+**Success criteria**: The user can see exactly what changed centrally and across agent surfaces.
 
-**Gate: All agent files updated before proceeding.**
+## Guardrails
 
-**CRITICAL: This phase requires a FULL SYNC of the `## Learnings` section, not just adding new learnings.**
+- Do not let the model invoke this skill proactively; it mutates durable learnings and agent prompt files.
+- Do not add `context: fork`; this workflow edits the active repository.
+- Do not add `paths:`; this is a generic maintenance skill.
+- Do not keep routing matrices, scorecards, or giant Learnings examples inline in `SKILL.md`.
+- Do not add a learning without explicit user approval.
+- Do not maintain two divergent central learnings files.
+- Do not skip one CLI tree when both `.agents` and `.claude` agent surfaces are present.
 
-**IMPORTANT: Only propagate learnings that apply to subagents. Skip "Claude Code Only" learnings.**
+## When To Load References
 
-### Step 4.1: Read Central Learnings
+- `references/learning-scope.md`
+  Use for deciding whether the learning belongs in agent memory, choosing the right scope, and handling duplicates.
 
-First, read `.claude/learnings/agent-learnings.md` and extract:
-1. All content under `## Global Learnings` (all categories: Scope Control, Session Management, etc.) → **Propagate to ALL subagents**
-2. All content under `## Agent-Specific Learnings` (per-agent subsections) → **Propagate to THAT agent only**
-3. All content under `## Claude Code Only Learnings` → **DO NOT propagate to any subagent files**
+- `references/agent-learnings-template.md`
+  Use only when the canonical central learnings file is missing and a minimal compatible file must be created.
 
-### Step 4.2: Process Each Agent File
+- `references/agent-sync-contract.md`
+  Use for generating the Learnings section and placing it correctly in agent files across the supported CLI trees.
 
-For each agent in `.claude/agents/`:
+## Output Contract
 
-1. **Read the agent file completely**
+Report:
 
-2. **Check if `## Learnings` section exists** by searching for the heading `## Learnings`
-
-3. **If `## Learnings` section is MISSING:**
-   - Find the `## Examples` section
-   - Insert a complete `## Learnings` section BEFORE `## Examples`
-   - The section must contain ALL global learnings from the central file
-   - Include any agent-specific learnings for this agent
-
-4. **If `## Learnings` section EXISTS:**
-   - Replace the ENTIRE section content with fresh sync from central file
-   - Do NOT just append - regenerate the full section to ensure consistency
-
-5. **Verify the edit was successful** before moving to next agent
-
-### Step 4.3: Section Placement
-
-The `## Learnings` section MUST be placed:
-- AFTER `## Rules` (and any subsections like `### AWS Security Best Practices`)
-- BEFORE `## Examples`
-
-Use this pattern to locate insertion point:
-```
----
-
-## Examples
-```
-
-Insert the Learnings section just before this pattern.
-
-### Agent Learnings Section Format
-
-**IMPORTANT: Generate this COMPLETE section for each agent. Do not skip any categories.**
-
-```markdown
----
-
-## Learnings
-
-> Auto-synced from `.claude/learnings/agent-learnings.md`
-
-### Global Learnings
-
-#### Scope Control
-
-**Always:**
-- Confirm scope before making changes: "I'll modify X. Should I also update Y?"
-- Make minimal, targeted edits for bug fixes - don't refactor adjacent code
-- Stop after completing the stated task - don't continue to "improve" things
-- Ask before expanding scope: "I noticed Z could also be improved. Want me to address it?"
-
-**Never:**
-- Make changes beyond the explicitly requested scope
-- Refactor working code while fixing a bug
-- Add "improvements" that weren't requested
-- Continue with tangential work after completing the main task
-
-#### Session Management
-
-- Provide checkpoint summaries every 3-5 edits on complex tasks
-- Before session timeout risk, summarize progress and provide continuation notes
-- Prioritize delivering a working solution over exploring alternatives
-- If time is short, deliver partial working solution rather than incomplete exploration
-- Don't get stuck in exploration mode - propose a concrete fix
-
-**Prefer:**
-- When editing multiple similar files, prefer sequential edits over parallel to avoid 'file modified since read' conflicts
-
-#### Multi-Agent Coordination
-
-- When spawned as a subagent, focus exclusively on the delegated task
-- Don't spawn additional subagents without explicit permission
-- Report completion status clearly: "Task complete. Ready for next instruction."
-- Acknowledge and dismiss stale notifications rather than context-switching
-- Maintain focus on parent agent's primary request
-
-#### Autonomous Iteration
-
-- For test failures: run tests -> analyze -> fix -> re-run (up to 5 cycles)
-- For type errors: run tsc --noEmit -> fix -> re-run until clean
-- For lint errors: run linter -> fix -> re-run until clean
-- Report back only when: task complete, or stuck after N attempts
-- Document iteration attempts for debugging
-
-#### Testing Integration
-
-- After any code change, run the relevant test file if it exists
-- For TypeScript files, run tsc --noEmit to catch type errors
-- Validate changes work before marking task complete
-- Mock stdin/stdout for interactive prompt tests in CLI tools
-
-### Agent-Specific Learnings
-
-- [Include learnings from central file for this specific agent]
-- [If no agent-specific learnings exist, write: "No agent-specific learnings yet."]
-```
-
-### Agent Files to Update
-
-Process these files in order (sequentially, not in parallel):
-
-1. `devops-aws-senior-engineer.md`
-2. `devops-docker-senior-engineer.md`
-3. `expo-react-native-engineer.md`
-4. `express-senior-engineer.md`
-5. `fastapi-senior-engineer.md`
-6. `laravel-senior-engineer.md`
-7. `nextjs-senior-engineer.md`
-8. `nodejs-cli-senior-engineer.md`
-9. `python-senior-engineer.md`
-
-### Agent-Specific Learnings Reference
-
-Copy these from the central learnings file:
-
-| Agent | Specific Learnings |
-|-------|-------------------|
-| nodejs-cli-senior-engineer | Test --help output after commander.js changes; Validate exit codes; Use Pino logger |
-| TypeScript agents (nextjs, express, expo) | Run tsc --noEmit after edits; Prefer explicit types; Use strict mode |
-| DevOps agents (aws, docker) | Validate with dry-run; Document resource changes; Test locally first |
-| python-senior-engineer | No agent-specific learnings yet |
-| laravel-senior-engineer | No agent-specific learnings yet |
-| fastapi-senior-engineer | No agent-specific learnings yet |
-
-## Phase 5: Verification
-
-**Gate: All checks pass before marking complete.**
-
-### Step 5.1: Verify Learnings Section Exists
-
-Run this command to verify ALL agent files have the `## Learnings` section:
-
-```bash
-grep -l "^## Learnings" .claude/agents/*.md | wc -l
-```
-
-**Expected result: 9** (one for each agent file)
-
-If the count is less than 9, identify which files are missing and fix them.
-
-### Step 5.2: Verify Section Content
-
-For each agent file, verify the Learnings section contains:
-- `### Global Learnings` header
-- `#### Scope Control` subsection
-- `#### Session Management` subsection
-- `#### Multi-Agent Coordination` subsection
-- `#### Autonomous Iteration` subsection
-- `#### Testing Integration` subsection
-- `### Agent-Specific Learnings` header
-
-### Step 5.3: Display Summary
-
-```
-Learnings Update Complete
-
-**Central Learnings File:**
-- Added X global learning(s)
-- Added Y agent-specific learning(s)
-
-**Agent Files Updated:**
-- [agent-name.md]: ✓ Learnings section verified
-- [agent-name.md]: ✓ Learnings section verified
-[...for each agent...]
-
-**Verification Results:**
-- grep "^## Learnings" count: 9/9 ✓
-- Central file structure valid ✓
-- All agent files have complete Learnings section ✓
-```
-
-## Quality Checklist
-
-Before marking the update complete, verify:
-
-- [ ] Learnings are actionable (not vague observations)
-- [ ] Learnings use imperative mood ("Do X" not "Should do X")
-- [ ] Category assignment is appropriate
-- [ ] Global vs agent-specific classification is correct
-- [ ] No duplicate learnings added
-- [ ] Central file structure is preserved
-- [ ] **CRITICAL: Run `grep "^## Learnings" .claude/agents/*.md` to verify ALL agent files have the `## Learnings` section**
-- [ ] Each agent's Learnings section contains ALL global learning categories (Scope Control, Session Management, Multi-Agent Coordination, Autonomous Iteration, Testing Integration)
-- [ ] Agent-specific learnings are included where applicable
-
-## Examples
-
-### Example 1: Adding a Global Scope Control Learning
-
-**Session Issue:** Agent modified test files when only asked to fix production code.
-
-**Learning Extraction:**
-- Category: Scope Control
-- Scope: Global
-- Action Type: Never
-- Learning: "Never modify test files unless explicitly requested, even if tests are failing due to production changes"
-
-**Result:**
-1. Added to `.claude/learnings/agent-learnings.md` under Global Learnings → Scope Control
-2. Synced to all 8 agent files under their `## Learnings` section
-
-### Example 2: Adding an Agent-Specific Learning
-
-**Session Issue:** Node.js CLI agent used console.log instead of Pino logger.
-
-**Learning Extraction:**
-- Category: Testing Integration
-- Scope: nodejs-cli-senior-engineer
-- Action Type: Always
-- Learning: "Always verify Pino logger is used instead of console.log when reviewing CLI code changes"
-
-**Result:**
-1. Added to `.claude/learnings/agent-learnings.md` under Agent-Specific Learnings → nodejs-cli-senior-engineer
-2. Added only to `nodejs-cli-senior-engineer.md` under Agent-Specific Learnings
-
-### Example 3: Adding a Claude Code Only Learning (NOT propagated to subagents)
-
-**Session Issue:** Improved a skill without first reading a reference skill for quality patterns.
-
-**Learning Extraction:**
-- Category: Skills & Configuration
-- Scope: Claude Code Only
-- Action Type: Always
-- Learning: "When improving a skill or configuration file, read a reference example first to understand the quality bar and structural patterns expected"
-
-**Result:**
-1. Added to `.claude/learnings/agent-learnings.md` under Claude Code Only Learnings → Skills & Configuration
-2. **NOT propagated to any subagent files** (nodejs-cli, fastapi, etc. don't create skills)
-
-**Why Claude Code Only?** This learning is about meta-work (improving skills/configs) that only the main Claude Code agent does. The specialized engineer agents (nodejs-cli-senior-engineer, fastapi-senior-engineer, etc.) focus on writing application code, not on creating or improving Claude Code skills.
-
-## Integration with Other Skills
-
-This skill works well after:
-- **`commit`** — After committing, reflect on what went wrong during the session
-- **`create-pr`** — After PR creation, capture learnings about the implementation process
-- **`start`** — At session start, review existing learnings
-
-## Safety Rules
-
-| Rule | Reason |
-|------|--------|
-| Always get user confirmation before writing | Ensures learnings are accurate and desired |
-| Never delete existing learnings | Preserve institutional knowledge |
-| Preserve file structure when editing | Maintains compatibility with other tools |
-| Keep learnings concise and actionable | Prevents bloat and ensures usability |
+1. whether the learning was accepted or redirected elsewhere
+2. the chosen scope and canonical learnings file
+3. the final approved wording
+4. which CLI agent trees were updated
+5. any duplicate merge or sync-target decisions

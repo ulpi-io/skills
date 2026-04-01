@@ -1,317 +1,143 @@
 ---
 name: browse-qa
+version: 2.0.0
 description: |
-  AI QA agent powered by browse. Validates features, runs exploratory testing, and generates
-  automated regression tests across web, iOS, Android, and macOS. Accepts work from any source:
-  Jira stories, Linear tickets, GitHub issues, plain English descriptions, or acceptance criteria.
-  Outputs a reusable browse flow file that can be rerun for regression testing.
-  Use when the user says "QA this", "test this feature", "validate this story", "check this works",
-  or provides a ticket ID/URL to verify.
+  QA a web or app feature from a ticket, URL, acceptance criteria, or plain-language description,
+  then generate reusable browse flows for regression coverage. Uses the `browse` skill for the
+  actual browser or simulator interaction and keeps the QA loop focused on scenarios, evidence, and
+  report quality.
 allowed-tools:
+  - AskUserQuestion
   - Bash
   - Read
   - Write
+  - Skill
+argument-hint: "[feature, ticket, URL, or QA target]"
+arguments:
+  - request
+when_to_use: |
+  Use when the user asks to QA a feature, validate a story, test a page or app flow, or generate
+  reusable regression coverage. Examples: "QA this checkout flow", "validate LINEAR-123", "test
+  this localhost page", "turn this manual QA into rerunnable browse flows". Do not use for pure
+  static code review.
+effort: high
 ---
 
-# browse-qa: AI QA Agent
-
-QA any feature across web, iOS, Android, and macOS. Accept a spec from anywhere, test it live, generate automated regression tests.
-
-## When to Use
-
-- User says "QA this", "test this feature", "validate this story", "check this works"
-- User provides a Jira ticket, Linear issue, GitHub issue, or any feature description
-- User wants to verify acceptance criteria against a live app or website
-- User wants to generate automated tests from a manual QA session
-- User asks for exploratory testing of a feature or page
-
-## Input Sources
-
-The spec can come from:
-
-1. **Jira MCP** — if `mcp__jira__*` tools are available, fetch the ticket:
-   ```
-   mcp__jira__get_issue({ issueKey: "PROJ-123" })
-   ```
-2. **Linear MCP** — if `mcp__linear__*` tools are available
-3. **GitHub issue** — use browse to read the issue page
-4. **Plain text** — user describes what to test
-5. **File** — user points to a spec file
-6. **URL** — user provides a ticket URL (use browse to read it)
-
-## Workflow
-
-### Phase 1: Understand What to QA
-
-1. **Get the spec** — from MCP, user text, or URL
-2. **Break it down** into concrete, testable scenarios:
-   - What is the feature?
-   - Where does it live? (URL, app, platform)
-   - What are the acceptance criteria?
-   - What should happen? What should NOT happen?
-   - Edge cases: empty input, invalid data, boundary values
-3. **Present the QA plan**:
-   ```
-   QA plan for [feature]:
-
-   Target: [URL / app / platform]
-
-   Scenarios:
-   1. [Happy path] — expected: [outcome]
-   2. [Edge case] — expected: [outcome]
-   3. [Error case] — expected: [outcome]
-   4. [Boundary] — expected: [outcome]
-   ```
-4. **Confirm with user** before executing
-
-### Phase 2: Decide the Target
-
-| Spec mentions... | Target | Setup |
-|---|---|---|
-| URL, website, web page, localhost | **Browser** | `browse --headed goto <url>` |
-| iOS app, iPhone, iPad, Swift | **iOS Simulator** | `browse sim start --platform ios --app <id> --visible` |
-| Android app, Kotlin, phone | **Android Emulator** | `browse sim start --platform android --app <id> --visible` |
-| macOS app, desktop app | **macOS** | `browse --app <name>` |
-| User has a .app/.ipa build to test | **iOS Simulator** | `browse sim start --platform ios --app ./path/to/App.app --visible` |
-| User has an .apk build to test | **Android Emulator** | `browse sim start --platform android --app ./path/to/app.apk --visible` |
-| Ambiguous ("our app", "the app") | **Ask the user** | "Which platform? Do you have a build file (.app/.ipa/.apk)?" |
-
-**If unsure, always ask.** Don't guess the platform. If the user has a build artifact, ask for the file path.
-
-### Phase 3: Execute QA
-
-1. **Start recording** — every command becomes part of the regression test:
-   ```bash
-   browse record start
-   ```
-
-   **If the user asks for video recording**, also start video capture alongside command recording:
-   ```bash
-   browse video start
-   browse record start
-   ```
-   Video produces a `.webm` file capturing the actual browser/app visuals — useful for bug reports, demos, and stakeholder reviews. Stop video after the session with `browse video stop`.
-
-2. **For each scenario**, follow this pattern:
-
-   **Navigate:**
-   ```bash
-   browse goto <url>                    # web
-   browse wait --network-idle           # web
-   browse --platform ios --app <id> snapshot -i  # native
-   ```
-
-   **Interact:**
-   ```bash
-   browse snapshot -i                   # find elements
-   browse click @e3                     # click
-   browse fill @e4 "test value"         # fill
-   browse press Enter                   # submit
-   browse swipe up                      # scroll (native)
-   ```
-
-   **Verify — this is the critical part:**
-   ```bash
-   browse text                          # check visible text contains expected content
-   browse snapshot -i                   # check element exists/state
-   browse js "document.querySelector('.success')?.textContent"  # specific check
-   browse count ".error-message"        # check error count
-   browse screenshot .browse/sessions/default/scenario-1.png
-   ```
-
-3. **Report each scenario immediately:**
-   ```
-   ✓ Scenario 1: Valid discount code
-     Verified: price updated from AED 500 to AED 400
-     Screenshot: .browse/sessions/default/scenario-1.png
-
-   ✗ Scenario 2: Invalid discount code
-     Expected: error message "Invalid code"
-     Actual: no error shown, page unchanged
-     Screenshot: .browse/sessions/default/scenario-2.png
-   ```
-
-### Phase 4: Exploratory Testing
-
-After testing the stated scenarios, do exploratory testing:
-
-- **Try unexpected inputs** — special characters, very long text, HTML injection
-- **Test responsiveness** — `browse emulate "iPhone 14"` then recheck
-- **Check edge states** — empty cart, logged out, slow network (`browse offline on`)
-- **Verify error handling** — what happens when things go wrong?
-- **Check accessibility** — `browse a11y-audit` on key pages
-
-Report any additional findings as bugs, not scenario failures.
-
-### Phase 5: Generate Regression Tests
-
-For complex features, generate **multiple flow files** — one per logical scenario or user journey. Each should be independently runnable.
-
-**Strategy:** Start recording before each scenario group, stop and save after it completes. Then start a new recording for the next group.
-
-```bash
-# Scenario group 1: Happy path
-browse record start
-# ... execute happy path steps ...
-browse record stop
-browse flow save checkout-happy-path
-
-# With video recording (when user asks for it)
-browse video start
-browse record start
-# ... execute steps ...
-browse record stop
-browse video stop
-browse flow save checkout-with-video
-
-# Scenario group 2: Validation errors
-browse record start
-# ... execute validation error steps ...
-browse record stop
-browse flow save checkout-validation-errors
-
-# Scenario group 3: Discount codes
-browse record start
-# ... execute discount code steps ...
-browse record stop
-browse flow save checkout-discount-codes
-```
-
-**When to split into multiple flows:**
-- Different user journeys (login → browse → checkout is 3 flows, not 1)
-- Different personas (guest checkout vs logged-in checkout)
-- Different error scenarios (each error type gets its own flow)
-- Different platforms (web flow + iOS flow for the same feature)
-- When a single flow would exceed ~20 steps
-
-**When to keep as one flow:**
-- Simple feature with 1-5 steps
-- Linear flow with no branching
-- Single acceptance criterion
-
-Tell the user how to rerun:
-```
-Regression tests saved:
-  .browse/flows/checkout-happy-path.yaml
-  .browse/flows/checkout-validation-errors.yaml
-  .browse/flows/checkout-discount-codes.yaml
-
-Rerun all:
-  browse flow run checkout-happy-path
-  browse flow run checkout-validation-errors
-  browse flow run checkout-discount-codes
-
-Or run individually:
-  browse flow run checkout-happy-path
-```
-
-### Phase 6: QA Report
-
-```
-## QA Report: [Feature Name]
-
-**Source:** [Jira PROJ-123 / user description]
-**Target:** [https://example.com / com.example.app on iOS]
-**Tested:** [date]
-
-### Acceptance Criteria
-| # | Criteria | Result | Evidence |
-|---|----------|--------|----------|
-| 1 | [criteria from spec] | ✓ PASS | [what was verified] |
-| 2 | [criteria from spec] | ✗ FAIL | [expected vs actual] |
-
-### Exploratory Findings
-| # | Finding | Severity | Details |
-|---|---------|----------|---------|
-| 1 | [issue found] | High | [description + screenshot] |
-| 2 | [edge case] | Low | [description] |
-
-### Regression Tests
-| Flow | Steps | Rerun |
-|------|-------|-------|
-| .browse/flows/<name-1>.yaml | [N] | browse flow run <name-1> |
-| .browse/flows/<name-2>.yaml | [N] | browse flow run <name-2> |
-
-### Screenshots
-[list of screenshots taken during QA]
-
-### Video (if recorded)
-[path to .webm video file]
-
-### Verdict
-[PASS / FAIL / PASS WITH ISSUES]
-[Summary of what works, what doesn't, and recommended actions]
-```
-
-## Rules
-
-1. **Always record** — `browse record start` before any testing. Every QA session should produce a regression test. If the user asks for video, also run `browse video start` before and `browse video stop` after.
-2. **Verify, don't just navigate** — the value of QA is checking outcomes, not clicking around. Use `browse text`, `browse count`, `browse js` to verify.
-3. **Screenshot at every checkpoint** — evidence for the report and useful for debugging failures.
-4. **Test the unhappy path** — edge cases, errors, and boundaries are where bugs hide.
-5. **Ask when ambiguous** — if the spec doesn't say where to test or what "correct" looks like, ask.
-6. **Name flows after the feature** — `checkout-discount`, `user-registration`, `search-filters`. Not `test1`.
-7. **Split complex features into multiple flows** — one flow per logical scenario or user journey. A checkout feature might produce `checkout-happy-path.yaml`, `checkout-discount-code.yaml`, `checkout-validation-errors.yaml`. Each flow should be independently runnable.
-8. **Report honestly** — if something doesn't work, say so clearly. Don't gloss over failures.
-
-## Native App QA
-
-Same workflow, native commands:
-
-```bash
-# iOS — from bundle ID (app already installed)
-browse sim start --platform ios --app com.example.myapp --visible
-
-# iOS — install from .app or .ipa build file
-browse sim start --platform ios --app ./build/MyApp.app --visible
-browse sim start --platform ios --app ./MyApp.ipa --visible
-
-# Android — install from .apk build file
-browse sim start --platform android --app ./app/build/outputs/apk/debug/app-debug.apk --visible
-
-# Then QA as normal
-browse record start
-browse --platform ios --app com.example.myapp snapshot -i
-browse --platform ios --app com.example.myapp tap @e3
-browse --platform ios --app com.example.myapp fill @e5 "test"
-browse --platform ios --app com.example.myapp press return
-browse --platform ios --app com.example.myapp screenshot .browse/sessions/default/ios-test.png
-browse record stop
-browse flow save ios-feature-qa
-```
-
-## Examples
-
-### Example 1: Jira Story
-
-**User:** "QA SHOP-789"
-
-**Agent:**
-1. `mcp__jira__get_issue({ issueKey: "SHOP-789" })` → "Add discount code field to checkout. Valid codes reduce price. Invalid codes show error."
-2. Plans: happy path (valid code), error path (invalid), edge case (empty submit), boundary (expired code)
-3. Opens checkout page in headed browser
-4. Tests each scenario, screenshots at each step
-5. Finds: valid code works, invalid code works, BUT empty submit crashes the page
-6. Reports: 3/4 PASS, 1 FAIL (empty submit bug), flow saved as `checkout-discount-qa`
-
-### Example 2: Plain English
-
-**User:** "QA the search on mumzworld.com — make sure filters work"
-
-**Agent:**
-1. Plans: search text, apply price filter, apply brand filter, clear filters, empty search
-2. Opens mumzworld.com in headed browser
-3. Tests each filter combination
-4. Reports results with screenshots
-5. Saves flow: `mumzworld-search-filters-qa`
-
-### Example 3: Mobile App
-
-**User:** "QA the login flow on our iOS app, bundle is com.ourcompany.app"
-
-**Agent:**
-1. Boots iOS Simulator with the app
-2. Plans: valid login, invalid password, empty fields, forgot password link
-3. Tests each scenario in the simulator
-4. Reports with screenshots
-5. Saves flow: `ios-login-qa`
+<EXTREMELY-IMPORTANT>
+This skill owns the QA plan and report, not the low-level browser command encyclopedia.
+
+Non-negotiable rules:
+1. Turn the incoming spec into explicit scenarios before testing.
+2. Confirm ambiguous targets or platforms before execution.
+3. Use the `browse` skill for actual browser or simulator interaction.
+4. Capture evidence for each failed or important scenario.
+5. Save rerunnable flows only when they are cleanly scoped and valuable for regression.
+</EXTREMELY-IMPORTANT>
+
+# browse-qa
+
+## Inputs
+
+- `$request`: Ticket, URL, app target, acceptance criteria, or plain-language QA request
+
+## Goal
+
+Produce a credible QA run that:
+
+- turns a vague request into explicit scenarios
+- runs those scenarios against the real target
+- captures evidence for passes and failures
+- saves rerunnable browse flows when appropriate
+- returns a clean QA report the user can act on
+
+## Step 0: Resolve the target and spec
+
+Work out:
+
+- what feature is being tested
+- the platform: web, iOS simulator, Android emulator, or macOS app
+- the target URL, build artifact, or app identifier
+- the acceptance criteria or expected outcomes
+
+If the target or platform is ambiguous, ask before testing.
+
+**Success criteria**: The QA target and acceptance criteria are explicit.
+
+## Step 1: Build the scenario list
+
+Break the request into:
+
+- happy path
+- validation or error path
+- edge cases
+- exploratory probes worth trying after the stated acceptance criteria
+
+Keep the plan small enough to execute in one session unless the user asked for a broad QA sweep.
+
+**Success criteria**: There is a concrete scenario list with expected outcomes.
+
+## Step 2: Execute with the `browse` skill
+
+Use `Skill` to invoke `browse` for:
+
+- navigation
+- page stabilization
+- interactive element discovery
+- clicks, fills, and submissions
+- screenshots, console logs, and network inspection
+
+Rules:
+
+- keep the same browse session for one logical user journey unless isolation is intentional
+- use headed or handoff mode only for real blockers like CAPTCHA, MFA, or OAuth walls
+- save screenshots and flow artifacts under the browse session directories
+
+**Success criteria**: Each scenario is executed against the real target with enough evidence to judge pass or fail.
+
+## Step 3: Record reusable regression flows
+
+When the scenario is stable and worth rerunning:
+
+- record the flow
+- split unrelated user journeys into separate flow files
+- give each saved flow a descriptive name
+
+Do not save noisy or half-manual recordings as regression artifacts.
+
+**Success criteria**: Saved flows are independently rerunnable and map to clear scenarios.
+
+## Step 4: Report results
+
+For each scenario, record:
+
+- expected result
+- actual result
+- pass or fail
+- evidence such as screenshot path, console error, or network symptom
+
+Also report:
+
+- exploratory findings
+- regression flow files created
+- blockers that prevented full verification
+
+**Success criteria**: Another engineer can understand the QA outcome without replaying the whole session first.
+
+## Guardrails
+
+- Do not duplicate the full browse command manual inline; use the `browse` skill.
+- Do not guess a platform when the request is ambiguous.
+- Do not save low-signal flows just to say a regression asset was created.
+- Do not add `disable-model-invocation`; QA should stay available when the user asks for it.
+- Do not add `context: fork`; results are usually needed in the current execution flow.
+
+## Output Contract
+
+Report:
+
+1. target tested
+2. scenarios executed
+3. pass/fail result for each scenario
+4. evidence captured
+5. regression flow files created
+6. blockers or uncovered gaps

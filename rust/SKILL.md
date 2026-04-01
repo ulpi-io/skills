@@ -1,44 +1,78 @@
 ---
 name: rust
-version: 1.0.0
+version: 2.0.0
 description: |
-  Rust systems programming — storage engines, binary formats, SIMD, wire protocols,
-  DataFusion/Arrow, tantivy search, HNSW vectors, arena allocation, graph engines,
-  R-tree geo, async tokio, mmap, MVCC, zero-copy, io_uring.
-  Use when working on any Rust crate involving database internals, storage, query
-  execution, network protocols, search, vectors, or high-performance data structures.
+  Rust systems-programming reference skill for storage engines, binary formats, Arrow/DataFusion,
+  search and vectors, async concurrency, testing, and unsafe discipline. Use when the task touches
+  Rust crates and should follow the workspace's systems-level engineering conventions.
 allowed-tools:
   - Bash
   - Read
   - Write
   - Edit
+  - Grep
+paths:
+  - "**/*.rs"
+  - "Cargo.toml"
+  - "Cargo.lock"
+  - "rust-toolchain"
+  - "rust-toolchain.toml"
+  - ".cargo/config.toml"
+argument-hint: "[Rust crate, subsystem, or implementation task]"
+arguments:
+  - request
+when_to_use: |
+  Use when the task touches Rust crates, Cargo manifests, async/concurrency code, storage layers,
+  binary formats, Arrow/DataFusion, vector search, geo indexing, or systems-level testing. Examples:
+  "fix this Rust crate", "add a storage-engine feature", "update this async path", "review this
+  binary format code".
+effort: high
 ---
 
 <EXTREMELY-IMPORTANT>
-These rules apply to ALL Rust code you write. Violating any produces unsafe, slow, or unmaintainable output.
+This skill is the routing shell over the Rust reference set, not the whole systems handbook.
 
-1. **Safe Rust by default.** `unsafe` only in storage hot paths: mmap, SIMD intrinsics, arena internals. Every `unsafe` block gets a `// SAFETY:` comment explaining the invariant.
-2. **Zero-copy where possible.** mmap'd segments, `&str`/`&[u8]` references into pages, SIMD on contiguous arrays. Never copy data between storage and execution without reason.
-3. **Narrow on disk, wide in execution.** Store the tightest encoding. Widen to uniform register-sized types (I64, F64) for SIMD and branch-free processing.
-4. **Trait-based abstraction.** Pluggable backends, storage providers, distance metrics — all behind traits. Concrete types for hot paths, `dyn Trait` only at configuration boundaries.
-5. **Error types per crate.** `thiserror` enums. Never `anyhow` in library crates — only in binaries and tests. Never `unwrap()` in production code paths.
-6. **Async with tokio.** All I/O is async. CPU-bound work (SIMD, compression, hashing) runs on `spawn_blocking` or dedicated threads. Never block the tokio runtime.
-7. **Property tests for invariants.** `proptest` for serialization round-trips, type coercion, binary format parsing. Unit tests for logic. Integration tests for cross-crate behavior.
-8. **Workspace crate structure.** One crate per subsystem. Depend downward — never circular. Storage at the bottom, server at the top.
+Non-negotiable rules:
+1. Identify the subsystem before coding. Load only the relevant references.
+2. **Safe Rust by default.** `unsafe` only when justified — every `unsafe` block gets a `// SAFETY:` comment.
+3. **Zero-copy where possible.** mmap'd segments, `&str`/`&[u8]` references into pages. Never copy data without reason.
+4. **Error types per crate.** `thiserror` enums in library crates. Never `anyhow` in libraries — only in binaries/tests.
+5. **Async with tokio.** All I/O is async. CPU-bound work on `spawn_blocking`. Never block the tokio runtime.
+6. **Workspace crate structure.** One crate per subsystem. Depend downward — never circular.
+7. **Property tests for invariants.** `proptest` for round-trips, type coercion, binary parsing.
 </EXTREMELY-IMPORTANT>
 
-# Rust Systems Programming
+# rust
 
-## MANDATORY FIRST RESPONSE PROTOCOL
+## Inputs
 
-Before writing any Rust code:
+- `$request`: The crate, subsystem, bug, feature, or review target
 
-1. Identify which subsystem the task touches
-2. Read the matching reference file(s) from the routing table
-3. Check crate dependencies — is this a library crate (thiserror) or binary (anyhow)?
-4. State the approach before implementing
+## Goal
 
-## Routing Table
+Route Rust work through the right subsystem conventions so changes follow the workspace’s systems-programming patterns instead of generic Rust defaults.
+
+## Step 0: Identify the subsystem
+
+Decide which part of the Rust surface the task touches:
+
+- storage engine
+- binary formats
+- type system
+- Arrow or DataFusion
+- wire protocols
+- search or vectors
+- arena or graph code
+- geo indexing
+- async or concurrency
+- testing
+- unsafe or error design
+
+**Success criteria**: The task is mapped to the right subsystem before references are loaded.
+
+## Step 1: Load only the relevant references
+
+Use the routing table to pick the matching files. Do not bulk-load the full reference tree.
 
 | Task / Area | Read |
 |---|---|
@@ -57,15 +91,57 @@ Before writing any Rust code:
 
 Multiple tasks? Read multiple files.
 
-## Quick Rules
+**Success criteria**: Only the subsystem-relevant Rust guidance is active.
 
-1. `cargo fmt` before commit. `cargo clippy -- -D warnings` must pass.
-2. Explicit `use` imports — no glob imports except in test modules.
-3. `#[must_use]` on functions returning `Result` or computed values.
-4. `#[inline]` only on small functions called in hot loops — never on public API.
-5. Feature flags for optional crate dependencies — `#[cfg(feature = "tantivy")]`.
-6. `Send + Sync` bounds on all trait objects that cross async boundaries.
-7. Prefer `&[u8]` over `Vec<u8>` in function signatures. Own data at boundaries, borrow inside.
-8. `#[derive(Debug)]` on all public types. `#[derive(Clone)]` only when cheap.
-9. Document all public items. `//!` module docs. `///` item docs with examples.
-10. Integration tests in `tests/` directory. Unit tests in `#[cfg(test)] mod tests`.
+## Step 2: Implement with the core Rust guardrails
+
+Keep these rules active:
+
+- safe Rust by default; `unsafe` only when justified with `// SAFETY:`
+- error types match crate boundaries (`thiserror` in libs, `anyhow` only in bins/tests)
+- async code does not block the runtime; CPU work on `spawn_blocking`
+- owned vs borrowed data choices are deliberate; prefer `&[u8]` over `Vec<u8>` in signatures
+- explicit `use` imports — no glob imports except in test modules
+- `#[must_use]` on functions returning `Result` or computed values
+- `#[inline]` only on small functions in hot loops — never on public API
+- `Send + Sync` bounds on trait objects crossing async boundaries
+- `#[derive(Debug)]` on all public types; `#[derive(Clone)]` only when cheap
+- feature flags for optional crate deps — `#[cfg(feature = "...")]`
+- tests match the risk: unit, integration, property, snapshot, or domain-specific verification
+
+**Success criteria**: The implementation fits the workspace’s systems-level quality bar.
+
+## Step 3: Verify the change
+
+Use the narrowest relevant verification loop:
+
+- `cargo fmt`
+- `cargo clippy -- -D warnings`
+- focused crate tests
+- subsystem-specific tests such as proptest or snapshots when appropriate
+
+**Success criteria**: The Rust surface is validated the way this workspace expects.
+
+## Guardrails
+
+- Do not inline the whole Rust handbook in `SKILL.md`.
+- Do not skip subsystem identification.
+- Do not use `anyhow` in library crates unless the project specifically allows it there.
+- Do not add `disable-model-invocation`; this is a normal domain skill.
+- Do not leave unsafe invariants undocumented.
+
+## When To Load References
+
+- `references/stack.md`
+  Use for workspace/toolchain context.
+
+- then only the task-relevant subsystem files under `references/`
+
+## Output Contract
+
+Report:
+
+1. which Rust references were loaded
+2. the subsystem pattern applied
+3. the change made
+4. the verification run

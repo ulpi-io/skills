@@ -1,671 +1,201 @@
 ---
 name: code-simplify
-version: 1.0.1
+version: 2.0.0
 description: |
-  Review changed code for reuse, quality, and efficiency. Analyzes for unnecessary complexity,
-  redundant abstractions, deep nesting, and unclear naming, then applies targeted simplifications
-  while preserving all behavior. Invoke via /code-simplify or when user says "simplify this",
-  "clean up this code", "make this simpler", "reduce complexity".
+  Simplify existing code without changing behavior. Focus on local complexity reduction such as
+  flattening nesting, extracting readable helpers, removing dead code, consolidating obvious
+  duplication, and improving names. Use when the user explicitly asks to simplify, clean up, or
+  reduce complexity in existing code.
+allowed-tools:
+  - Read
+  - Edit
+  - Write
+  - Bash
+  - Glob
+  - Grep
+  - AskUserQuestion
+argument-hint: "[scope or simplification goal]"
+arguments:
+  - request
+when_to_use: |
+  Use only when the user explicitly asks to simplify or clean up existing code. Examples:
+  "simplify this", "clean up this file", "reduce complexity here", or "/code-simplify auth.ts".
+  Do not use proactively during unrelated implementation work, and do not use it for architectural
+  redesign, pure performance tuning, or generated code.
 ---
 
-<!--
-Based on Anthropic's code-simplifier subagent:
-https://github.com/anthropics/claude-plugins-official/blob/main/plugins/code-simplifier/agents/code-simplifier.md
--->
-
 <EXTREMELY-IMPORTANT>
-Before simplifying ANY code, you **ABSOLUTELY MUST**:
-
-1. Read the actual code and understand what it does
-2. Identify existing tests that cover the code
-3. Run existing tests to establish a passing baseline
-4. Confirm the scope of simplification with the user
-5. Never change what the code does — only how it is written
-
-**Simplifying without understanding = broken behavior, lost functionality, introduced bugs**
-
-This is not optional. Every simplification requires disciplined verification.
+This skill edits code. Non-negotiable rules:
+1. Read the target code, nearby callers, and relevant tests before changing anything.
+2. Establish the narrowest useful baseline check before edits when feasible.
+3. Preserve behavior, side effects, and error handling.
+4. Ask the user only when the scope is ambiguous, the simplification is risky, or there are real alternatives.
+5. Keep the invocation body focused on the simplification loop; load detailed patterns from references only when needed.
 </EXTREMELY-IMPORTANT>
 
 # Code Simplify
 
-## MANDATORY FIRST RESPONSE PROTOCOL
+## Inputs
 
-Before simplifying ANY code, you **MUST** complete this checklist:
+- `$request`: Optional scope or simplification guidance such as a file path, symbol name, or a note like `flatten nested conditionals`.
 
-1. ☐ Read the target code thoroughly (not just skim)
-2. ☐ Identify what the code does (inputs, outputs, side effects)
-3. ☐ Check for existing tests covering the target code
-4. ☐ Run existing tests to establish a passing baseline
-5. ☐ Read CLAUDE.md for project-specific standards (if it exists)
-6. ☐ Identify simplification opportunities (list them)
-7. ☐ Classify each opportunity by type (extract, flatten, rename, consolidate, eliminate)
-8. ☐ Announce: "Simplifying [scope]: [N] opportunities identified across [M] files"
+## Goal
 
-**Simplifying code WITHOUT completing this checklist = regressions and lost functionality.**
+Apply the smallest safe set of readability-focused changes that makes the target code easier to understand and maintain without changing what it does.
 
-## Overview
+## Step 0: Resolve scope and suitability
 
-Analyze code for unnecessary complexity and apply targeted simplifications that improve clarity, consistency, and maintainability — without changing behavior. The skill is language-agnostic: it works for any language and follows project-specific standards from CLAUDE.md when available.
+Determine:
 
-**What this skill does:**
-- Reduces nesting depth (flatten conditionals, extract early returns)
-- Eliminates redundant code (dead imports, unreachable branches, unused variables)
-- Improves naming (unclear abbreviations → descriptive names)
-- Consolidates duplicate logic (repeated patterns → shared functions)
-- Simplifies boolean and conditional expressions
-- Replaces clever code with readable code
+- the exact file, symbol, or diff scope to simplify
+- whether the user asked for a narrow cleanup or a broader pass
+- whether the target is application code, tests, generated code, or a performance-sensitive path
 
-**What this skill does NOT do:**
-- Change functionality or behavior
-- Add new features or capabilities
-- Refactor architecture (use a dedicated refactoring approach for that)
-- Optimize performance (simplification may happen to improve performance, but that is not the goal)
-- Add comments, documentation, or type annotations to unchanged code
+Stop or clarify if:
 
-## When to Use
+- the request is too vague to identify the target safely
+- the code is generated
+- the requested "simplification" is actually a redesign
+- the change would obviously alter public behavior or contracts
 
-- User says "simplify", "clean up", "make this simpler", "reduce complexity", "/code-simplify"
-- User asks to improve code clarity or readability
-- User points to specific code and asks to make it easier to understand
-- $ARGUMENTS provided as simplification guidance (e.g., `/code-simplify flatten the nested ifs in auth.ts`)
+Use `AskUserQuestion` only when ambiguity blocks safe progress or when there are multiple legitimate simplification directions.
 
-**Never simplify proactively.** Only when explicitly requested.
+**Success criteria**: The simplification scope is explicit and appropriate for a local cleanup workflow.
 
-## When NOT to Use
+## Step 1: Understand behavior and establish a baseline
 
-- **Code is already clear** — don't simplify code that is already readable and well-structured
-- **Changes require architectural decisions** — if simplification requires rethinking the design, discuss with the user first
-- **Test code** — don't simplify test code unless the user explicitly asks; test verbosity often aids debugging
-- **Generated code** — don't simplify auto-generated files (protobuf, GraphQL codegen, etc.)
-- **Performance-critical paths** — if code is complex for performance reasons, simplification may degrade performance
+Read the real code before editing:
 
-## Step 1: Gather Context
+- target file or files
+- nearby callers, exports, and adjacent helpers
+- existing tests covering the target behavior
 
-**Gate: Code read and understood before proceeding to Step 2.**
+Then identify:
 
-Read the target code and understand its purpose:
+- inputs and outputs
+- side effects and persistence boundaries
+- error handling and guard clauses
+- externally visible contracts that must not change
 
-1. Read the files the user wants simplified
-2. Read CLAUDE.md (if it exists) for project standards and conventions
-3. Check for existing tests covering the target code
-4. Run existing tests to confirm they pass:
+Verification baseline:
 
-```bash
-# Run project test suite (adapt command to project)
-# npm test / pytest / cargo test / go test ./...
-```
+- run the narrowest relevant tests, type check, lint target, or build step when feasible
+- if no narrow verification exists, state that explicitly and proceed more conservatively
 
-5. Check recent git history for the files to understand recent changes:
+Runtime-specific rule:
 
-```bash
-git log --oneline -10 -- <file paths>
-```
+- do not mechanically block on rereading `CLAUDE.md` every time
+- Claude Code already injects the `CLAUDE.md` hierarchy into conversation context via `getUserContext`
+- read extra local docs only when the target area has its own conventions or the surrounding code is ambiguous
 
-**Read the actual code.** Skimming file names is not enough. You must understand what every function does before deciding what to simplify.
+**Success criteria**: The current behavior and the verification baseline are clear before edits begin.
 
-## Step 2: Identify Simplification Targets
+## Step 2: Identify simplification candidates
 
-**Gate: All targets identified and classified before proceeding to Step 3.**
+Look for changes that reduce local complexity without turning into a redesign:
 
-Scan the code for simplification opportunities. Look for these signals:
+- flatten deep nesting with guard clauses or early returns
+- extract hard-to-read expressions into named variables or helpers
+- rename misleading or cryptic local symbols
+- eliminate dead code and unused branches
+- consolidate obvious duplication
+- simplify boolean logic and conditional branching
+- reduce parameter sprawl where call sites stay understandable
 
-| Signal | Indicates |
-|--------|-----------|
-| Nesting depth > 3 levels | Flatten with early returns or extraction |
-| Repeated code blocks (3+ occurrences) | Consolidate into shared function |
-| Function > 40 lines | Extract sub-functions |
-| Boolean expressions with > 2 operators | Extract into named variable or function |
-| Nested ternary operators | Replace with if/else or switch |
-| Unused imports, variables, or parameters | Eliminate dead code |
-| Unclear or abbreviated names | Rename for clarity |
-| Callback pyramids (3+ levels) | Flatten with async/await or pipeline |
-| `if (x === true)` / `if (x === false)` | Simplify boolean expressions |
-| Multiple parameters (> 4) | Use parameter object or defaults |
+For each candidate, record:
 
-For each opportunity found, note:
-- **Location** (file:line)
-- **Type** (flatten, extract, rename, consolidate, eliminate, simplify)
-- **Risk** (low: cosmetic, medium: structural, high: logic-adjacent)
+- location
+- category
+- risk: `low`, `medium`, or `high`
+- required verification
 
-## Step 3: Classify Each Simplification
+Load `references/simplification-patterns.md` for the detailed pattern catalog, anti-patterns, and risk guidance.
 
-**Gate: Each simplification classified with risk level before proceeding to Step 4.**
+**Success criteria**: A concrete candidate set exists, ordered by risk and expected value.
 
-Categorize every identified target:
+## Step 3: Choose the smallest safe change set
 
-| Category | Description | Risk Level |
-|----------|-------------|------------|
-| **Flatten** | Reduce nesting via early returns, guard clauses | Low-Medium |
-| **Extract** | Pull complex expressions into named variables or functions | Low |
-| **Rename** | Replace unclear names with descriptive ones | Low |
-| **Consolidate** | Merge duplicated code into shared functions | Medium |
-| **Eliminate** | Remove dead code (unused imports, unreachable branches) | Low |
-| **Simplify** | Reduce boolean/conditional complexity | Low-Medium |
-| **Restructure** | Flatten callbacks, reduce parameter counts | Medium |
+Default behavior:
 
-**High-risk simplifications (any that touch logic flow) require explicit user confirmation before applying.**
+- apply low-risk and clearly beneficial simplifications directly
+- batch related edits by file or tightly coupled call sites
+- prefer one small clean pass over a broad "cleanup everything" sweep
 
-## Step 4: Plan Changes
+Ask the user before proceeding when:
 
-**Gate: User has reviewed and approved the plan before proceeding to Step 5.**
+- the best simplification path is not obvious
+- the change is medium/high risk
+- multiple unrelated cleanup opportunities are present and scope needs a choice
+- a rename or extraction crosses a broad public surface
 
-Present the simplification plan to the user. For each change, show:
+Do not require a ceremonial before/after approval step for trivial, obviously safe cleanups.
 
-1. **File and location** — where the change will be made
-2. **Category** — what type of simplification (from Step 3)
-3. **Before** — the current code (abbreviated if long). **Never include actual secret values** (API keys, tokens, passwords) in code snippets — replace them with `<REDACTED>` placeholders.
-4. **After** — what the simplified code will look like
-5. **Why** — one sentence explaining why this is simpler
+**Success criteria**: The intended edits are limited, justifiable, and proportionate to the user request.
 
-Use AskUserQuestion if the user needs to choose between alternatives or approve scope.
+## Step 4: Apply the simplifications
 
-**Do NOT proceed to Step 5 without user confirmation.** The user must see and approve the plan.
+Make changes in the safest order:
 
-## Step 5: Apply Simplifications
+1. dead code removal and trivial boolean cleanup
+2. flattening and local extraction
+3. duplication consolidation
+4. broader renames or small helper extraction
 
-**Gate: All edits applied cleanly before proceeding to Step 6.**
+Rules during editing:
 
-Apply the approved simplifications:
+- preserve function signatures unless the user explicitly wants broader cleanup
+- preserve error handling and observable side effects
+- search for references before renaming shared symbols
+- if a helper file must be created, keep it adjacent and narrowly scoped
+- stop if the cleanup starts cascading into architecture work
 
-1. Make edits one file at a time using the Edit tool
-2. Apply changes in order from lowest-risk to highest-risk
-3. After each file, verify the edits are syntactically valid
-4. If a simplification creates an unexpected cascade (other code depends on renamed function, etc.), stop and inform the user
+**Success criteria**: The requested simplifications are implemented without unintended scope expansion.
 
-**Rules during application:**
-- Never change function signatures visible to external callers without user approval
-- Never change return values or side effects
-- Never remove error handling
-- Preserve all existing comments unless they describe removed code
-- Follow the project's existing code style (indentation, quotes, semicolons)
+## Step 5: Verify behavior is preserved
 
-## Step 6: Verify Behavior Preserved
+Rerun the narrowest relevant checks from Step 1:
 
-**Gate: All tests pass and no type errors before proceeding to Step 7.**
+- targeted tests first
+- type check or compile step if relevant
+- broader checks only if the touched area requires them
 
-After applying simplifications, verify nothing broke:
+Then confirm:
 
-1. Run the project's test suite:
+- the baseline still passes
+- no new type or syntax errors were introduced
+- the code is actually clearer, not just shorter
 
-```bash
-# Run tests (adapt to project)
-# npm test / pytest / cargo test / go test ./...
-```
+If a simplification causes regressions or ambiguous fallout:
 
-2. Run type checking (if applicable):
+- revert the last risky change
+- keep the safe improvements
+- report the blocked candidate instead of forcing it through
 
-```bash
-# TypeScript: npx tsc --noEmit
-# Python: mypy / pyright
-# Go: go vet ./...
-```
+**Success criteria**: Verification matches or improves on the baseline without behavior changes.
 
-3. Compare test results against the baseline from Step 1
-4. If any test fails, **revert the change that caused it** and report to the user
+## Guardrails
 
-**If tests fail after simplification, the simplification was wrong.** Do not adjust tests to match simplified code — the original behavior is correct.
+- Do not use this skill proactively for unrelated work.
+- Do not add features, comments, or architectural refactors under the label of simplification.
+- Do not simplify generated code.
+- Do not simplify tests unless the user asked for test cleanup specifically.
+- Do not optimize for fewer lines; optimize for lower cognitive load.
+- Do not add `disable-model-invocation`; the model must be able to invoke this skill when the user explicitly asks for simplification.
+- Do not add `context: fork`; this workflow edits the current working context and benefits from inline execution.
+- Do not add `paths:`; this is a generic workflow skill, not a path-activated domain reference.
+- Do not keep the full pattern catalog inline in `SKILL.md`.
 
-## Step 7: Report Results
+## When To Load References
 
-**Gate: Summary complete before marking skill done.**
+- `references/simplification-patterns.md`
+  Use for detailed pattern examples, risk guidance, anti-patterns, and escalation heuristics when the target code is non-trivial.
 
-Present a summary of what was simplified:
+## Output Contract
 
-For each change made:
-- **File:line** — location
-- **Category** — type of simplification
-- **Before → After** — brief description of the change
-- **Lines** — net change in line count (if relevant)
-
-Include overall metrics:
-- Total simplifications applied
-- Total files modified
-- Test results (all passing / any failures)
-- Net complexity change (qualitative assessment)
-
----
-
-## Simplification Patterns Reference
-
-Concrete patterns with before/after examples. Use these as a catalog when identifying targets.
-
-### Pattern 1: Flatten Nested Conditionals
-
-**Before:**
-```
-if (user) {
-  if (user.isActive) {
-    if (user.hasPermission('admin')) {
-      return doAdminAction(user);
-    }
-  }
-}
-return null;
-```
-
-**After:**
-```
-if (!user) return null;
-if (!user.isActive) return null;
-if (!user.hasPermission('admin')) return null;
-return doAdminAction(user);
-```
-
-### Pattern 2: Extract Complex Expressions
-
-**Before:**
-```
-if (items.length > 0 && items.every(i => i.status === 'ready') && !isProcessing && currentUser.role !== 'viewer') {
-  startBatch(items);
-}
-```
-
-**After:**
-```
-const hasReadyItems = items.length > 0 && items.every(i => i.status === 'ready');
-const canProcess = !isProcessing && currentUser.role !== 'viewer';
-
-if (hasReadyItems && canProcess) {
-  startBatch(items);
-}
-```
-
-### Pattern 3: Replace Nested Ternaries
-
-**Before:**
-```
-const label = status === 'active' ? 'Active' : status === 'pending' ? 'Pending' : status === 'disabled' ? 'Disabled' : 'Unknown';
-```
-
-**After:**
-```
-function getStatusLabel(status) {
-  switch (status) {
-    case 'active': return 'Active';
-    case 'pending': return 'Pending';
-    case 'disabled': return 'Disabled';
-    default: return 'Unknown';
-  }
-}
-const label = getStatusLabel(status);
-```
-
-### Pattern 4: Consolidate Duplicate Logic
-
-**Before:**
-```
-function createUser(data) {
-  validateName(data.name);
-  validateEmail(data.email);
-  validateAge(data.age);
-  return db.users.insert(data);
-}
-
-function updateUser(id, data) {
-  validateName(data.name);
-  validateEmail(data.email);
-  validateAge(data.age);
-  return db.users.update(id, data);
-}
-```
-
-**After:**
-```
-function validateUserData(data) {
-  validateName(data.name);
-  validateEmail(data.email);
-  validateAge(data.age);
-}
-
-function createUser(data) {
-  validateUserData(data);
-  return db.users.insert(data);
-}
-
-function updateUser(id, data) {
-  validateUserData(data);
-  return db.users.update(id, data);
-}
-```
-
-### Pattern 5: Eliminate Dead Code
-
-**Before:**
-```
-import { format, parse, isValid, addDays } from 'date-fns';  // parse and addDays unused
-
-function processDate(input) {
-  // Old implementation (kept for reference)
-  // const parsed = parse(input, 'yyyy-MM-dd', new Date());
-
-  if (isValid(new Date(input))) {
-    return format(new Date(input), 'MMM d, yyyy');
-  }
-  return 'Invalid date';
-}
-```
-
-**After:**
-```
-import { format, isValid } from 'date-fns';
-
-function processDate(input) {
-  if (isValid(new Date(input))) {
-    return format(new Date(input), 'MMM d, yyyy');
-  }
-  return 'Invalid date';
-}
-```
-
-### Pattern 6: Simplify Boolean Expressions
-
-**Before:**
-```
-if (isEnabled === true) { ... }
-if (items.length === 0 ? true : false) { ... }
-if (!!value) { ... }
-return condition ? true : false;
-```
-
-**After:**
-```
-if (isEnabled) { ... }
-if (items.length === 0) { ... }
-if (value) { ... }
-return condition;
-```
-
-### Pattern 7: Reduce Function Parameters
-
-**Before:**
-```
-function sendEmail(to, from, subject, body, cc, bcc, replyTo, isHtml) {
-  // ...
-}
-sendEmail('a@b.com', 'c@d.com', 'Hello', '<p>Hi</p>', null, null, null, true);
-```
-
-**After:**
-```
-function sendEmail({ to, from, subject, body, cc, bcc, replyTo, isHtml = false }) {
-  // ...
-}
-sendEmail({ to: 'a@b.com', from: 'c@d.com', subject: 'Hello', body: '<p>Hi</p>', isHtml: true });
-```
-
-### Pattern 8: Flatten Callback Pyramids
-
-**Before:**
-```
-getUser(id, function(err, user) {
-  if (err) return handleError(err);
-  getOrders(user.id, function(err, orders) {
-    if (err) return handleError(err);
-    getInvoices(orders, function(err, invoices) {
-      if (err) return handleError(err);
-      sendReport(user, invoices);
-    });
-  });
-});
-```
-
-**After:**
-```
-try {
-  const user = await getUser(id);
-  const orders = await getOrders(user.id);
-  const invoices = await getInvoices(orders);
-  await sendReport(user, invoices);
-} catch (err) {
-  handleError(err);
-}
-```
-
----
-
-## Safety Rules
-
-| Rule | Reason |
-|------|--------|
-| Never change behavior | Simplification must preserve all inputs, outputs, and side effects |
-| Never simplify without reading first | You must understand code before changing it |
-| Never simplify test assertions | Tests define expected behavior; changing them masks bugs |
-| Never remove error handling | Error handling exists for a reason, even if verbose |
-| Never simplify generated code | It will be overwritten on next generation |
-| Never apply changes without user approval | User must see the plan before edits are made |
-| Always run tests before AND after | Establishes baseline and catches regressions |
-| Always follow project conventions | Read CLAUDE.md; don't impose external style preferences |
-| Never add improvements beyond simplification | Scope is clarity, not features or performance |
-
----
-
-## Quick Reference: Simplification Decision
-
-```
-Is the code hard to understand?
-├── YES → Is it because of deep nesting?
-│          ├── YES → Flatten (early returns, guard clauses)
-│          └── NO → Is it because of complex expressions?
-│                    ├── YES → Extract (named variables/functions)
-│                    └── NO → Is it because of unclear names?
-│                              ├── YES → Rename
-│                              └── NO → Is it duplicated?
-│                                        ├── YES → Consolidate
-│                                        └── NO → Is there dead code?
-│                                                  ├── YES → Eliminate
-│                                                  └── NO → Leave it alone
-└── NO → Don't simplify it
-```
-
----
-
-## Step 8: Verification (MANDATORY)
-
-After simplifying, verify complete workflow:
-
-### Check 1: Behavior Preserved
-- [ ] All existing tests pass (same results as baseline)
-- [ ] No type errors introduced
-
-### Check 2: Scope Respected
-- [ ] Only approved simplifications were applied
-- [ ] No changes outside the agreed scope
-
-### Check 3: Code Quality
-- [ ] Simplified code is genuinely clearer than the original
-- [ ] No clever or obscure patterns introduced
-
-### Check 4: Project Standards
-- [ ] Changes follow CLAUDE.md conventions (if applicable)
-- [ ] No style inconsistencies with surrounding code
-
-### Check 5: Clean State
-- [ ] All files are saved
-- [ ] No partial edits or leftover debugging code
-
-**Gate:** Do NOT mark simplification complete until all 5 checks pass.
-
----
-
-## Quality Checklist (Must Score 8/10)
-
-Score yourself honestly before marking simplification complete:
-
-### Context Gathering (0-2 points)
-- **0 points:** Simplified without reading the code first
-- **1 point:** Read the code but skipped tests/standards check
-- **2 points:** Read code, ran tests, checked CLAUDE.md for conventions
-
-### Target Identification (0-2 points)
-- **0 points:** Applied random changes without systematic analysis
-- **1 point:** Found some opportunities but missed obvious ones
-- **2 points:** Systematically identified and classified all targets
-
-### User Communication (0-2 points)
-- **0 points:** Applied changes without showing the user
-- **1 point:** Showed partial plan, skipped some changes
-- **2 points:** Full plan shown with before/after for each change, user approved
-
-### Behavior Preservation (0-2 points)
-- **0 points:** Tests fail after simplification
-- **1 point:** Tests pass but didn't verify edge cases
-- **2 points:** All tests pass, type checks pass, behavior verified identical
-
-### Result Quality (0-2 points)
-- **0 points:** Code is not meaningfully clearer
-- **1 point:** Some improvements but inconsistent
-- **2 points:** Every change genuinely improves clarity without sacrificing readability
-
-**Minimum passing score: 8/10**
-
----
-
-## Common Rationalizations (All Wrong)
-
-These are excuses. Don't fall for them:
-
-- **"It's obvious what this code does"** → STILL read it thoroughly before simplifying
-- **"These tests are slow"** → STILL run them before and after changes
-- **"The user wants it simpler, not tested"** → STILL verify behavior is preserved
-- **"This is just renaming, it can't break anything"** → STILL check for all references
-- **"I'll show the user after I'm done"** → STILL present the plan before applying changes
-- **"The code style is bad everywhere"** → STILL only change what was requested
-- **"Fewer lines is always better"** → Clarity over brevity; explicit beats compact
-- **"This clever one-liner is equivalent"** → Readable code beats clever code every time
-
----
-
-## Failure Modes
-
-### Failure Mode 1: Behavior Changed
-
-**Symptom:** Tests fail after simplification, or code produces different outputs
-**Fix:** Revert the change immediately. Re-read the original code, understand the behavior you missed, and re-plan.
-
-### Failure Mode 2: Over-Simplification
-
-**Symptom:** Code is shorter but harder to understand (dense one-liners, nested ternaries, clever tricks)
-**Fix:** Revert and apply the principle: clarity over brevity. Explicit code is simpler than compact code.
-
-### Failure Mode 3: Scope Creep
-
-**Symptom:** Started simplifying one function, ended up refactoring the whole module
-**Fix:** Stop. Return to the approved scope. Only simplify what was agreed upon in Step 4.
-
-### Failure Mode 4: Broken References
-
-**Symptom:** Renamed a function or variable but missed some call sites
-**Fix:** Use project-wide search (Grep) to find all references before renaming. Apply renames with replace_all.
-
-### Failure Mode 5: Style Inconsistency
-
-**Symptom:** Simplified code follows different conventions than surrounding code
-**Fix:** Re-read CLAUDE.md and the surrounding code. Match the project's existing style, not your preferred style.
-
----
-
-## Quick Workflow Summary
-
-```
-STEP 1: GATHER CONTEXT
-├── Read target code thoroughly
-├── Run existing tests (baseline)
-├── Read CLAUDE.md for standards
-└── Gate: Code understood
-
-STEP 2: IDENTIFY TARGETS
-├── Scan for simplification signals
-├── Note location, type, risk for each
-└── Gate: All targets identified
-
-STEP 3: CLASSIFY
-├── Categorize: flatten, extract, rename, consolidate, eliminate, simplify
-├── Assign risk levels
-└── Gate: All targets classified
-
-STEP 4: PLAN CHANGES
-├── Show before/after for each change
-├── Get user approval
-└── Gate: User approved plan
-
-STEP 5: APPLY SIMPLIFICATIONS
-├── Edit files one at a time
-├── Low-risk first, high-risk last
-└── Gate: All edits applied cleanly
-
-STEP 6: VERIFY BEHAVIOR
-├── Run tests (compare to baseline)
-├── Run type checks
-└── Gate: All tests pass
-
-STEP 7: REPORT RESULTS
-├── Summarize changes made
-├── Show metrics
-└── Gate: Summary complete
-
-STEP 8: VERIFICATION (MANDATORY)
-├── Check 1: Behavior preserved
-├── Check 2: Scope respected
-├── Check 3: Code quality
-├── Check 4: Project standards
-├── Check 5: Clean state
-└── Gate: All 5 checks pass
-```
-
----
-
-## Completion Announcement
-
-When simplification is complete, announce:
-
-```
-Simplification complete.
-
-**Quality Score: X/10**
-- Context Gathering: X/2
-- Target Identification: X/2
-- User Communication: X/2
-- Behavior Preservation: X/2
-- Result Quality: X/2
-
-**Summary:**
-- Files modified: [count]
-- Simplifications applied: [count]
-- Categories: [list of categories used]
-- Net line change: [+/-N lines]
-
-**Verification:**
-- Tests pass: ✅
-- Type checks pass: ✅
-- Behavior preserved: ✅
-- Scope respected: ✅
-
-**Next steps:**
-[Commit changes, review further files, or continue work]
-```
-
----
-
-## Integration with Other Skills
-
-The `code-simplify` skill integrates with:
-
-- **`commit`** — After simplifying, invoke `commit` to commit the changes
-- **`create-pr`** — After committing, invoke `create-pr` to submit for review
-- **`plan-to-task-list-with-dag`** — For large-scale simplification spanning many files, use `plan-to-task-list-with-dag` first to design the approach
-
-**Workflow Chain:**
-
-```
-User requests simplification
-       │
-       ▼
-code-simplify skill (this skill)
-       │
-       ▼
-commit skill (commit the changes)
-       │
-       ▼
-create-pr skill (if submitting for review)
-```
+Report:
+
+1. resolved scope
+2. baseline checks run, or explicit verification gap
+3. simplifications applied by file and category
+4. verification results
+5. skipped or deferred opportunities and why

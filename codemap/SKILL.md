@@ -1,116 +1,91 @@
 ---
 name: codemap
-version: 1.0.1
+version: 2.0.0
 description: |
-  Hybrid vector+BM25 code search, symbol lookup, dependency analysis, PageRank importance scoring,
-  coupling metrics, and circular dependency detection via the codemap CLI. Use when the user asks to
-  search code, find symbols, analyze dependencies, find dependents, check coupling, view PageRank
-  importance, detect circular dependencies, index a project, get file summaries, or explore
-  architecture health. Wraps the @ulpi/codemap CLI (not MCP tools).
+  Search and analyze a codebase with the `codemap` CLI: semantic search, symbol lookup,
+  dependency tracing, file summaries, importance ranking, coupling metrics, and cycle detection.
+  Use when the user wants architecture-aware code discovery rather than plain text search.
+allowed-tools:
+  - Bash
+  - Read
+argument-hint: "[search query, symbol, file path, or analysis goal]"
+arguments:
+  - request
+when_to_use: |
+  Use when the user asks to search code semantically, find symbols, trace dependencies, inspect
+  file summaries, check coupling, rank important files, or detect cycles. Examples: "where is auth
+  handled", "find the UserService symbol", "what depends on this file", "show circular deps". Do
+  not use when exact `grep` or `glob` is enough.
+effort: high
 ---
 
 <EXTREMELY-IMPORTANT>
-Before running ANY codemap command, you **ABSOLUTELY MUST**:
+`codemap` only helps when the repo is indexed and the command matches the question.
 
-1. Run `codemap status` to check if the project is indexed
-2. If not indexed, run `codemap init` + `codemap index`
-3. Complete the MANDATORY FIRST RESPONSE PROTOCOL below
-
-**Running codemap commands without an index = errors and empty results**
+Non-negotiable rules:
+1. Check `codemap --version` and `codemap status` before relying on results.
+2. If the project has no codemap setup, ask before running `codemap init`.
+3. Prefer the narrowest codemap command that answers the question.
+4. Prefer machine-readable output when you need to interpret structured results.
+5. Do not auto-edit Claude or project settings just to enable codemap.
 </EXTREMELY-IMPORTANT>
 
-# codemap: Code Search & Architecture Analysis
+# codemap
 
-## MANDATORY FIRST RESPONSE PROTOCOL
+## Inputs
 
-Before running ANY codemap command, complete this checklist:
+- `$request`: The search or analysis goal
 
-### Step 1: Verify installation
+## Goal
 
-```bash
-codemap --version
-```
+Use the `codemap` CLI to answer architecture and discovery questions with better signal than plain-text search when:
 
-If not installed, tell the user:
+- intent is semantic rather than literal
+- symbol lookup matters
+- dependency direction matters
+- file importance or coupling matters
 
-> `codemap` CLI is not installed. Install it with:
->
-> ```bash
-> npm install -g @ulpi/codemap
-> ```
+## Step 0: Verify availability and index state
 
-**Do NOT install anything automatically.** Wait for the user to confirm they have installed it before proceeding.
+Check:
 
-### Step 2: Check index status
+- `codemap --version`
+- `codemap status`
 
-```bash
-codemap status
-```
+If `codemap` is missing, tell the user to install it with `npm install -g @ulpi/codemap` and stop. Do not install it automatically.
 
-**If no index exists:**
-```bash
-codemap init
-codemap index
-```
+If the repo is not configured:
 
-### Step 3: Permissions (optional)
+- explain that `codemap init` creates project config
+- ask before running `codemap init`
+- once configured, run `codemap index`
 
-To avoid being prompted on every codemap command, tell the user they can add codemap permissions to `.claude/settings.local.json` under `permissions.allow`:
+If the repo is configured but stale, re-index with `codemap index`.
 
-```json
-"Bash(codemap:*)",
-"Bash(codemap search:*)", "Bash(codemap symbols:*)",
-"Bash(codemap index:*)", "Bash(codemap status:*)",
-"Bash(codemap deps:*)", "Bash(codemap dependents:*)",
-"Bash(codemap rank:*)", "Bash(codemap cycles:*)",
-"Bash(codemap summary:*)", "Bash(codemap coupling:*)",
-"Bash(codemap graph-stats:*)", "Bash(codemap config:*)",
-"Bash(codemap init:*)", "Bash(codemap ignore:*)",
-"Bash(codemap watch:*)", "Bash(codemap rebuild-depgraph:*)",
-"Bash(codemap read:*)", "Bash(codemap serve:*)",
-"Bash(codemap statusline:*)", "Bash(codemap update:*)"
-```
+**Success criteria**: There is a working codemap index for the current repository.
 
-**Do NOT modify settings files automatically.** Show the user the permissions and let them decide whether to add them.
+## Step 1: Choose the right command
 
-## MCP Server (alternative to CLI)
-
-Codemap can also run as an MCP server, giving AI agents direct tool access without Bash:
-
-```bash
-claude mcp add codemap codemap serve
-```
-
-This exposes tools like `mcp__codemap__search_code`, `mcp__codemap__search_symbols`, `mcp__codemap__get_file_summary`, `mcp__codemap__get_dependencies`, etc.
-
-**CLI vs MCP:** The CLI skill (this file) uses Bash commands. MCP gives agents native tool calls. Both work — use whichever your agent setup prefers. The CLI skill works across all agents; MCP requires agent-specific configuration.
-
-## Command Reference
+### Command Reference
 
 | Command | What It Does | Key Flags |
 |---------|-------------|-----------|
 | `codemap search <query>` | Hybrid vector+BM25 code search | `-l N`, `--json` |
 | `codemap symbols <query>` | Find functions, classes, types by name | `-l N`, `--json` |
-| `codemap index` | Index project for search | `--full` |
-| `codemap status` | Show index stats | `--json` |
+| `codemap summary <file>` | File overview with symbols and size | `--json` |
 | `codemap deps <file>` | Outgoing imports (what this file uses) | `--json` |
 | `codemap dependents <file>` | Incoming imports (what uses this file) | `--json` |
 | `codemap rank [file]` | PageRank importance scores | `-l N`, `--json` |
+| `codemap coupling` | Afferent/efferent coupling and instability | `--module <path>`, `-l N`, `--json` |
 | `codemap cycles` | Detect circular dependencies | `--json` |
-| `codemap summary <file>` | File overview with symbols and size | `--json` |
-| `codemap coupling` | Afferent/efferent coupling & instability | `--module <path>`, `-l N`, `--json` |
 | `codemap graph-stats` | Aggregate dependency graph statistics | `--json` |
-| `codemap config list/get/set` | Manage configuration | |
-| `codemap init` | First-time setup | `--provider`, `--force` |
-| `codemap ignore` | Generate .codemapignore | `--force` |
+| `codemap index` | Index project for search | `--full` |
+| `codemap status` | Show index stats | `--json` |
 | `codemap watch` | Live index updates on file change | `--debounce <ms>` |
-| `codemap rebuild-depgraph` | Rebuild dep graph from scratch | `--json` |
-| `codemap read <file>` | Read full source of a file (or line range) | `--start`, `--end` |
+| `codemap read <file>` | Read full source (or line range) | `--start`, `--end` |
 | `codemap serve` | Start MCP server over stdio | |
-| `codemap statusline` | Install CodeMap status into Claude Code statusline | |
-| `codemap update` | Update codemap to latest version | |
 
-## When to Use Which Command
+### Quick Routing
 
 | What You Want | Command |
 |---------------|---------|
@@ -118,63 +93,71 @@ This exposes tools like `mcp__codemap__search_code`, `mcp__codemap__search_symbo
 | Find function/class named X | `codemap symbols "X"` |
 | What does this file depend on? | `codemap deps <file>` |
 | What depends on this file? | `codemap dependents <file>` |
-| Most important files in the project | `codemap rank` |
+| Most important files | `codemap rank` |
 | Circular dependencies? | `codemap cycles` |
 | Overview of a file | `codemap summary <file>` |
-| Architecture health / coupling | `codemap coupling` |
+| Architecture health | `codemap coupling` |
 | Project stats | `codemap graph-stats` |
 
-## Common Workflows
+Prefer `--json` when you need structured output rather than prose.
 
-### Understand a new codebase
+**Success criteria**: The command matches the actual question instead of overfetching.
+
+## Step 2: Run the minimal useful codemap query
+
+Start narrow:
+
+- limited result count
+- specific file or module when known
+- one analysis dimension at a time
+
+Then expand only if the first result set is clearly insufficient.
+
+Rules:
+
+- do not run every codemap command "just in case"
+- do not use codemap when exact `grep` is simpler
+- when file contents are needed after discovery, use `Read` on the concrete file paths returned
+
+**Success criteria**: The answer uses codemap for discovery and `Read` only for the specific files that matter.
+
+## Step 3: Report results in decision-friendly form
+
+Summarize:
+
+- what command was used
+- why it was the right command
+- the most relevant results
+- any follow-up files worth opening
+
+When there are no strong results, say that explicitly instead of inventing certainty.
+
+**Success criteria**: The user can act on the result set without parsing raw codemap output.
+
+## MCP Alternative
+
+Codemap can also run as an MCP server, giving AI agents direct tool access without Bash:
 
 ```bash
-codemap status              # Check index health
-codemap graph-stats         # High-level architecture stats
-codemap rank -l 10          # Top 10 most important files
-codemap summary <top-file>  # Deep dive into each key file
+claude mcp add codemap codemap serve
 ```
 
-### Impact analysis before refactoring
+This exposes tools like `mcp__codemap__search_code`, `mcp__codemap__search_symbols`, etc. The CLI skill (this file) uses Bash commands. MCP gives agents native tool calls. Both work -- use whichever the agent setup prefers.
 
-```bash
-codemap dependents <file>           # What depends on this file?
-codemap deps <file>                 # What does this file depend on?
-codemap coupling --module <dir>     # Coupling metrics for the module
-```
+## Guardrails
 
-### Find and fix circular dependencies
+- Do not auto-modify settings files to add permissions.
+- Do not run `codemap init` without the user's approval when it would create new config.
+- Do not treat stale or empty indexes as authoritative.
+- Do not replace simple exact-match tools with codemap when text search is clearly enough.
+- Do not add `disable-model-invocation`; this is a general discovery skill.
 
-```bash
-codemap cycles                # Detect all cycles
-codemap deps <file-in-cycle>  # Understand each file's imports
-# Refactor to break the cycle
-```
+## Output Contract
 
-### Search for implementation patterns
+Report:
 
-```bash
-codemap search "error handling"     # Find code by concept
-codemap symbols "handleError"       # Find by exact name
-```
-
-## Failure Modes
-
-### Index not built
-**Symptom:** `codemap search` returns an error or no results
-**Fix:** Run `codemap init` + `codemap index`
-
-### Stale index
-**Symptom:** Recently added files or symbols don't appear in results
-**Fix:** Run `codemap index` to re-index (or `codemap index --full` for a complete rebuild)
-
-### File not found
-**Symptom:** `codemap deps <file>` or `codemap summary <file>` returns an error
-**Fix:** Verify the file path is relative to the project root and the file exists
-
-## Integration with Other Skills
-
-- **`start`** — Check index status during session init; prompt indexing if stale
-- **`find-bugs`** — Use `codemap rank` and `codemap coupling` to prioritize which files to audit
-- **`plan-to-task-list-with-dag`** — Use `codemap dependents` for impact analysis when decomposing tasks
-- **`code-simplify`** — Use `codemap cycles` to find circular deps worth refactoring
+1. codemap availability and index state
+2. the command chosen
+3. the most relevant hits or graph results
+4. the next file(s) to open if deeper reading is needed
+5. any limitations such as missing index or weak results

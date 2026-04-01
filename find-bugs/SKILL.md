@@ -1,562 +1,206 @@
 ---
 name: find-bugs
-version: 1.0.1
-description: Use when the user asks to find bugs, review changes, security audit, or check code quality on the current branch. Analyzes full diffs against the default branch, maps attack surfaces, runs a security checklist against every changed file, verifies findings against context, and reports prioritized issues. Invoke via /find-bugs or when user says "find bugs", "review my changes", "security review", "audit this code".
+version: 2.0.0
+description: |
+  Review the current branch diff for real bugs and security issues, verify findings against
+  surrounding code, and report only issues that survive context checks. Runs as a forked review
+  workflow so the audit has separate reasoning budget and stays isolated from the main task flow.
+  Use when the user asks to find bugs, review changes, or audit branch risk.
+allowed-tools:
+  - Bash
+  - Read
+  - Glob
+  - Grep
+  - Skill
+context: fork
+agent: general-purpose
+effort: high
+argument-hint: "[review focus]"
+arguments:
+  - request
+when_to_use: |
+  Use when the user explicitly asks to review branch changes for bugs, vulnerabilities, or risky
+  regressions. Examples: "find bugs", "review my changes", "security review", "audit this branch".
+  Do not use for style review, full-repository audit, or direct code fixing.
 ---
 
 <EXTREMELY-IMPORTANT>
-Before reporting ANY bug or vulnerability, you **ABSOLUTELY MUST**:
+This skill is report-only and must stay evidence-driven.
 
-1. Read the complete diff (every changed line, not just file names)
-2. Read surrounding context to verify the issue is real
-3. Check if the issue is already handled elsewhere in the changed code
-4. Search for existing tests that cover the scenario
-5. Never report stylistic issues as bugs — only real defects and vulnerabilities
-
-**Reporting without verification = false positives, wasted developer time, eroded trust**
-
-This is not optional. Every finding requires disciplined verification.
+Non-negotiable rules:
+1. Read the full branch diff before reporting findings.
+2. Verify each finding against surrounding code and framework behavior.
+3. Report only real defects or vulnerabilities, not stylistic opinions.
+4. Keep the workflow read-only. Do not edit application code as part of this skill.
+5. Use the checklist reference to stay systematic, but do not paste the entire checklist into every invocation.
 </EXTREMELY-IMPORTANT>
 
 # Find Bugs
 
-## MANDATORY FIRST RESPONSE PROTOCOL
+## Inputs
 
-Before reporting ANY findings, you **MUST** complete this checklist:
+- `$request`: Optional review guidance such as focus area, threat model, or subsystem hint
 
-1. ☐ Get the full diff against the default branch (every changed line)
-2. ☐ List all modified files and confirm each was read completely
-3. ☐ Identify the default branch name (main/master/develop)
-4. ☐ Map attack surfaces for each changed file
-5. ☐ Run the security checklist against every changed file
-6. ☐ Verify each potential finding against surrounding context
-7. ☐ Classify findings by severity (Critical/High/Medium/Low)
-8. ☐ Announce: "Reviewing [N] files on branch [name]: [M] findings across [categories]"
+## Goal
 
-**Reporting findings WITHOUT completing this checklist = false positives and missed real bugs.**
+Produce a credible branch review that:
 
-## Overview
+- reads the actual changed code
+- maps the relevant attack and defect surfaces
+- verifies findings before reporting
+- prioritizes real issues by severity
+- clearly states clean results when nothing significant is found
 
-Analyze all changes on the current branch compared to the default branch. Find bugs, security vulnerabilities, and code quality issues. Report findings with evidence and concrete fix suggestions.
+## Step 0: Resolve review scope
 
-**What this skill does:**
-- Reviews every changed line in the branch diff
-- Maps attack surfaces (user inputs, DB queries, auth checks, external calls)
-- Runs a comprehensive security checklist against all changed files
-- Verifies each finding is real (not already handled, not a false positive)
-- Reports prioritized findings with severity, evidence, and fix suggestions
+This skill reviews branch changes, not the full repository by default.
 
-**What this skill does NOT do:**
-- Make any code changes (report only — the user decides what to fix)
-- Report stylistic or formatting issues
-- Invent issues when the code is clean
-- Review unchanged code (only the branch diff is in scope)
-- Run automated security tools (this is manual expert review)
+Determine:
 
-## When to Use
+- default branch
+- whether the review target is the full branch, a commit range, or current diff guidance from the user
+- whether the user asked for a focus area such as auth, data integrity, concurrency, or secrets
 
-- User says "find bugs", "review changes", "security review", "audit code", "/find-bugs"
-- User asks to check their branch for issues before merging
-- User wants a security review of recent changes
-- $ARGUMENTS provided as review guidance (e.g., `/find-bugs focus on auth changes`)
+If there are no changes relative to the review base, stop and say so explicitly.
 
-**Never review proactively.** Only when explicitly requested.
+**Success criteria**: The review scope is explicit and there is actual diff content to inspect.
 
-## When NOT to Use
+## Step 1: Read the real diff and changed files
 
-- **No changes on branch** — if the branch is identical to the default branch, there is nothing to review
-- **User wants code changes** — this skill reports only; use other skills to fix issues
-- **Automated scanning needed** — for SAST/DAST tools, use the project's CI pipeline
-- **Full codebase audit** — this skill reviews branch changes only, not the entire codebase
-- **Style review** — this skill finds bugs and vulnerabilities, not formatting issues
+Inspect the review surface with:
 
-## Step 1: Gather the Full Diff
+- branch diff against the default base
+- changed file list
+- changed-file context as needed with `Read`
 
-**Gate: Every changed line read and understood before proceeding to Step 2.**
+Rules:
 
-Get the complete diff against the default branch:
+- read the actual changed lines, not just `--stat`
+- if diff output is too large, read file-by-file against base
+- use `Skill` only when a nested helper such as `codemap` materially improves code discovery
 
-```bash
-# Detect default branch
-gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
+**Success criteria**: Every changed file that matters to the review has been read with enough context to reason about it.
 
-# Full diff — read EVERY line, not just file names
-git diff <default-branch>...HEAD
+## Step 2: Map attack surfaces and defect surfaces
 
-# List all changed files
-git diff --name-only <default-branch>...HEAD
-```
+For each changed file, identify the relevant surfaces:
 
-If the diff output is large or truncated:
-1. Get the file list with `git diff --name-only`
-2. Read each changed file individually using the Read tool
-3. Compare against the base version: `git show <default-branch>:<file-path>`
+- user inputs
+- database queries
+- auth and authorization
+- session or token handling
+- external calls
+- crypto or secret handling
+- serialization and parsing
+- filesystem paths and uploads
+- concurrency or state transitions
+- edge-case and boundary behavior
 
-**You must read every changed line.** Skimming file names or reading only `--stat` output will miss bugs.
+Files with low security surface can still contain logic bugs, so do not skip them entirely.
 
-## Step 2: Map Attack Surfaces
+Load `references/review-checklists.md` for the full review matrix.
 
-**Gate: Attack surface map complete for every changed file before proceeding to Step 3.**
+**Success criteria**: The changed files are grouped by the risks they actually expose.
 
-For each changed file, identify and catalog:
+## Step 3: Run the targeted review checklist
 
-| Surface | What to Look For |
-|---------|-----------------|
-| **User inputs** | Request params, headers, body, URL components, query strings, form data |
-| **Database queries** | SQL statements, ORM calls, raw queries, aggregation pipelines |
-| **Auth checks** | Authentication verification, authorization gates, role checks |
-| **Session/state** | Session reads/writes, cookie operations, token handling |
-| **External calls** | HTTP requests, API calls, file system operations, process spawning |
-| **Crypto operations** | Hashing, encryption, random number generation, key management |
-| **Data serialization** | JSON parsing, XML parsing, deserialization of untrusted data |
-| **File operations** | Path construction, file reads/writes, uploads, directory traversal |
+Use `references/review-checklists.md` to evaluate:
 
-Create a file-by-file map. Files with zero attack surfaces (pure UI, config, tests) can be noted as low-risk but must still be checked for logic bugs.
+- injection
+- XSS and unsafe rendering
+- authentication and authorization
+- session and CSRF handling
+- race conditions
+- crypto and secret handling
+- information disclosure
+- denial of service and resource exhaustion
+- business-logic correctness
+- general logic bugs such as null access, async mistakes, boundary errors, and missing returns
 
-## Step 3: Run Security Checklist
+Rules:
 
-**Gate: Every checklist item evaluated against every changed file before proceeding to Step 4.**
+- do not assume a framework protects a pattern without checking whether the protection actually applies here
+- do not skip checklist sections just because a file "looks simple"
+- focus on changed code, but read enough surrounding code to verify the claim
 
-Check **every** item against **every** changed file. Do not skip items because "they probably don't apply."
+**Success criteria**: Every meaningful checklist area has been evaluated against the actual changed surface.
 
-### 3.1 Injection
+## Step 4: Verify each candidate finding
 
-- [ ] **SQL injection** — Are user inputs parameterized in all queries? Look for string concatenation in SQL.
-- [ ] **Command injection** — Are user inputs passed to shell commands, `exec`, `spawn`, or `system` calls?
-- [ ] **Template injection** — Are user inputs rendered in templates without escaping?
-- [ ] **Header injection** — Are user inputs used in HTTP headers without sanitization?
-- [ ] **Path traversal** — Are user inputs used to construct file paths without validation?
+Before reporting any issue, check:
 
-### 3.2 Cross-Site Scripting (XSS)
+- surrounding function and caller context
+- whether middleware, helpers, or wrappers already mitigate it
+- whether existing tests already cover the scenario
+- whether exploitability or incorrect behavior is real in practice
 
-- [ ] Are all outputs in HTML templates properly escaped?
-- [ ] Are user inputs reflected in `innerHTML`, `dangerouslySetInnerHTML`, or equivalent?
-- [ ] Are URL parameters rendered without sanitization?
+If you cannot verify the finding confidently, drop it or clearly mark the verification gap.
 
-### 3.3 Authentication & Authorization
+Do not inflate weak suspicions into findings.
 
-- [ ] Do all protected operations verify authentication?
-- [ ] Is authorization checked (not just authentication)? Can user A access user B's data?
-- [ ] Are IDOR vulnerabilities present (direct object references without ownership checks)?
-- [ ] Are API endpoints protected consistently with their UI counterparts?
+**Success criteria**: Every reported issue survives a false-positive check.
 
-### 3.4 Session & CSRF
+## Step 5: Classify and prioritize
 
-- [ ] Are state-changing operations protected against CSRF?
-- [ ] Are session tokens regenerated after authentication?
-- [ ] Do session cookies have Secure, HttpOnly, SameSite flags?
-- [ ] Is session expiration configured?
+Assign severity based on actual impact:
 
-### 3.5 Race Conditions
+- `Critical`
+- `High`
+- `Medium`
+- `Low`
 
-- [ ] Are there TOCTOU (time-of-check-time-of-use) patterns in read-then-write operations?
-- [ ] Are concurrent modifications handled (optimistic locking, transactions)?
-- [ ] Could parallel requests cause double-spending, double-creation, or state corruption?
+Prioritize:
 
-### 3.6 Cryptography & Secrets
+- exploitable security issues first
+- then correctness and data-integrity bugs
+- then lower-risk quality problems that still represent real defects
 
-- [ ] Is cryptographically secure random used (not `Math.random()`, not `random.random()`)?
-- [ ] Are proper algorithms used (not MD5/SHA1 for security, not ECB mode)?
-- [ ] Are secrets absent from logs, error messages, and source code?
-- [ ] Are API keys, tokens, or credentials hardcoded?
+Load `references/review-checklists.md` for severity guidance.
 
-### 3.7 Information Disclosure
+**Success criteria**: Findings are ordered by real risk rather than by how easy they were to spot.
 
-- [ ] Do error messages expose internal details (stack traces, SQL queries, file paths)?
-- [ ] Are debug endpoints or verbose logging left enabled?
-- [ ] Are timing attacks possible on authentication or comparison operations?
+## Step 6: Report with evidence
 
-### 3.8 Denial of Service
+For each finding, report:
 
-- [ ] Are there unbounded operations (unbounded loops, unlimited file uploads, no pagination)?
-- [ ] Are rate limits present on authentication and expensive operations?
-- [ ] Could regex patterns cause ReDoS (catastrophic backtracking)?
-- [ ] Are resource limits set for memory, CPU, or connection pools?
+- `File:Line`
+- severity
+- category
+- concise problem statement
+- evidence for why the issue is real
+- exploit path or failure path when relevant
+- concrete fix direction
 
-### 3.9 Business Logic
+Also report:
 
-- [ ] Are edge cases handled (empty arrays, null values, negative numbers, zero)?
-- [ ] Are state machine transitions validated (can't go from "shipped" back to "draft")?
-- [ ] Are numeric operations safe (integer overflow, floating-point precision, division by zero)?
-- [ ] Are assumptions about data ordering or uniqueness validated?
+- files reviewed
+- checklist coverage summary
+- any areas not fully verified
 
-## Step 4: Find Logic Bugs
+If no significant findings exist, say so explicitly.
 
-**Gate: All logic bug patterns checked before proceeding to Step 5.**
+**Success criteria**: Another engineer can act on the report without re-deriving the issue from scratch.
 
-Beyond security, check for common logic bugs in the changed code:
+## Guardrails
 
-| Bug Pattern | What to Look For |
-|-------------|-----------------|
-| **Off-by-one errors** | Loop bounds, array indexing, pagination, slice operations |
-| **Null/undefined access** | Missing null checks before property access or method calls |
-| **Async errors** | Missing `await`, unhandled promise rejections, race conditions |
-| **Type coercion** | `==` vs `===`, implicit conversions, truthy/falsy misuse |
-| **Resource leaks** | Unclosed connections, file handles, event listeners not removed |
-| **Error swallowing** | Empty catch blocks, errors logged but not propagated |
-| **Stale closures** | Variables captured by closures that change after capture |
-| **Copy-paste errors** | Duplicated code with inconsistent modifications |
-| **Boundary conditions** | Empty inputs, maximum values, Unicode, special characters |
-| **Missing return** | Functions that should return but fall through |
+- Do not edit code as part of this skill.
+- Do not report style-only issues.
+- Do not invent findings to appear thorough.
+- Do not add `disable-model-invocation`; this skill should remain available for proactive review when the user asks for it.
+- Do not add `paths:`; this is a generic workflow skill.
+- Keep the heavy checklist content in references, not inline in `SKILL.md`.
 
-## Step 5: Verify Each Finding
+## When To Load References
 
-**Gate: Every finding verified as real (not a false positive) before proceeding to Step 6.**
+- `references/review-checklists.md`
+  Use for the detailed security, logic, severity, and reporting checklists.
 
-For each potential issue found in Steps 3-4:
+## Output Contract
 
-1. **Check surrounding context** — Is the issue already handled by middleware, a wrapper, or a parent function?
-2. **Search for existing tests** — Does a test already cover this scenario? If so, the code may be correct.
-3. **Check framework guarantees** — Does the framework (React, Django, Rails, etc.) auto-escape or auto-sanitize here?
-4. **Read the full function** — Not just the changed lines. The fix might be elsewhere in the same function.
-5. **Confirm exploitability** — For security issues, can the vulnerability actually be triggered? What is the attack vector?
+Report:
 
-**If you cannot confirm the issue is real after these checks, downgrade it to "Potential" or drop it entirely.**
-
-Do not report issues you are not confident about. False positives waste developer time and erode trust.
-
-## Step 6: Classify and Prioritize
-
-**Gate: All findings classified by severity before proceeding to Step 7.**
-
-Assign severity to each verified finding:
-
-| Severity | Criteria | Examples |
-|----------|----------|---------|
-| **Critical** | Exploitable now, data loss or unauthorized access possible | SQL injection, auth bypass, RCE, hardcoded credentials |
-| **High** | Significant risk, requires specific conditions to exploit | XSS with user interaction, IDOR, missing auth on API endpoint |
-| **Medium** | Moderate risk, limited impact or requires insider access | CSRF on non-sensitive operation, information disclosure, missing rate limit |
-| **Low** | Minor risk, unlikely to be exploited, or minimal impact | Missing security headers, verbose error messages, non-critical race condition |
-
-**Prioritization order:** Critical → High → Medium → Low. Within the same severity, security vulnerabilities before logic bugs before code quality.
-
-## Step 7: Pre-Conclusion Audit
-
-**Gate: Audit checklist complete before proceeding to Step 8.**
-
-Before finalizing findings, you **MUST** verify completeness:
-
-1. **File coverage** — List every changed file and confirm you read it completely
-2. **Checklist coverage** — For each security checklist item (3.1–3.9), note whether you found issues or confirmed it clean
-3. **Gaps** — List any areas you could NOT fully verify and explain why
-4. **False positive check** — Review each finding one more time: is it real? Is the evidence solid?
-
-Only then proceed to report findings.
-
-## Step 8: Report Findings
-
-**Gate: Report delivered before marking review complete.**
-
-Present findings in this format. **Do not make code changes — report only.**
-
-For each finding:
-
-- **File:Line** — Brief description
-- **Severity:** Critical / High / Medium / Low
-- **Category:** Security (injection, XSS, auth, etc.) / Logic Bug / Code Quality
-- **Problem:** What is wrong — specific and concrete
-- **Evidence:** Why this is real (not already handled, no existing test, framework doesn't auto-protect). **NEVER include actual secret values** (API keys, tokens, passwords) in evidence — describe the type and location only (e.g., "hardcoded API key at auth.ts:42" not the key itself).
-- **Attack vector** (security issues only): How could this be exploited?
-- **Fix:** Concrete suggestion with code snippet if helpful
-- **References:** OWASP, CWE, RFC, or other standards (if applicable)
-
-### Report Structure
-
-```
-## Findings Summary
-
-| # | Severity | Category | File | Description |
-|---|----------|----------|------|-------------|
-| 1 | Critical | Security | auth.ts:42 | SQL injection in login query |
-| 2 | High | Logic | cart.ts:87 | Race condition on checkout |
-| ... | ... | ... | ... | ... |
-
-## Detailed Findings
-
-### Finding 1: [Title]
-[Full details per format above]
-
-### Finding 2: [Title]
-...
-
-## Files Reviewed
-[List every file, confirm read completely]
-
-## Checklist Coverage
-[For each section 3.1–3.9, note: clean / finding #N / could not verify]
-
-## Areas Not Fully Verified
-[Any gaps and why]
-```
-
-**If you find nothing significant, say so explicitly.** Do not invent issues to appear thorough. A clean review is a valid outcome.
-
----
-
-## Safety Rules
-
-| Rule | Reason |
-|------|--------|
-| Never make code changes | This is a report-only skill; user decides what to fix |
-| Never skip files in the diff | Every changed file must be reviewed |
-| Never skip checklist items | Every security check applies to every file |
-| Never report unverified findings | False positives waste time and erode trust |
-| Never include actual secret values in findings | Report the type and location of the secret, never the value itself |
-| Never report style issues as bugs | Formatting is not a bug |
-| Never invent issues | A clean review is a valid and honest outcome |
-| Always read full diff content | File names alone miss bugs |
-| Always check surrounding context | Issues may be handled elsewhere |
-| Always prioritize security over style | Security vulnerabilities > logic bugs > code quality |
-
----
-
-## Quick Reference: Severity Classification
-
-```
-Can it be exploited remotely without authentication?
-├── YES → Is data loss or unauthorized access possible?
-│          ├── YES → CRITICAL
-│          └── NO → HIGH
-└── NO → Does it require specific conditions or insider access?
-           ├── YES → Is the impact significant?
-           │          ├── YES → MEDIUM
-           │          └── NO → LOW
-           └── NO → Is it a real defect (not style)?
-                      ├── YES → LOW
-                      └── NO → Don't report it
-```
-
----
-
-## Step 9: Verification (MANDATORY)
-
-After completing the review, verify the full workflow:
-
-### Check 1: Complete Coverage
-- [ ] Every changed file was read completely (not just file names)
-- [ ] Every security checklist item (3.1–3.9) was evaluated
-
-### Check 2: Finding Quality
-- [ ] Every finding was verified against surrounding context
-- [ ] No false positives (each finding has concrete evidence)
-- [ ] No invented issues (if nothing found, said so honestly)
-
-### Check 3: Severity Accuracy
-- [ ] Severity levels match the classification criteria
-- [ ] Prioritization is correct (security > logic > quality)
-
-### Check 4: Report Completeness
-- [ ] Files reviewed list is complete
-- [ ] Checklist coverage section present
-- [ ] Gaps and limitations documented
-
-### Check 5: Scope Discipline
-- [ ] Only branch changes were reviewed (not the entire codebase)
-- [ ] No code changes were made (report only)
-
-**Gate:** Do NOT mark review complete until all 5 checks pass.
-
----
-
-## Quality Checklist (Must Score 8/10)
-
-Score yourself honestly before marking review complete:
-
-### Diff Coverage (0-2 points)
-- **0 points:** Skimmed file names or read partial diff
-- **1 point:** Read most changed files but missed some
-- **2 points:** Read every changed line in every file
-
-### Attack Surface Mapping (0-2 points)
-- **0 points:** Skipped attack surface analysis
-- **1 point:** Mapped some surfaces but missed categories
-- **2 points:** Complete map for every changed file (inputs, queries, auth, external calls)
-
-### Checklist Rigor (0-2 points)
-- **0 points:** Skipped security checklist or applied it superficially
-- **1 point:** Ran checklist but skipped items for some files
-- **2 points:** Every checklist item evaluated against every changed file
-
-### Finding Verification (0-2 points)
-- **0 points:** Reported findings without checking context
-- **1 point:** Checked some findings but not all
-- **2 points:** Every finding verified: context checked, tests searched, framework guarantees considered
-
-### Report Quality (0-2 points)
-- **0 points:** Vague descriptions, missing severity or evidence
-- **1 point:** Findings reported but missing some fields
-- **2 points:** Every finding has severity, evidence, fix suggestion, and references where applicable
-
-**Minimum passing score: 8/10**
-
----
-
-## Common Rationalizations (All Wrong)
-
-These are excuses. Don't fall for them:
-
-- **"The diff is too long to read completely"** → STILL read every changed line; use file-by-file reading if needed
-- **"This file is just tests, it can't have bugs"** → STILL check for logic errors in test setup and assertions
-- **"The framework handles this automatically"** → STILL verify the framework protection applies to this specific case
-- **"I already checked injection for the other file"** → STILL check every checklist item for every file
-- **"There's nothing wrong with this code"** → STILL run the full checklist; then say so honestly
-- **"This is a minor change, quick review is fine"** → Small changes can introduce critical vulnerabilities
-- **"I should find something to be helpful"** → A clean review is more helpful than false positives
-- **"The user will catch it in testing"** → YOU are the safety net; report what you find with evidence
-
----
-
-## Failure Modes
-
-### Failure Mode 1: False Positives
-
-**Symptom:** Reported issues that are already handled by middleware, framework, or surrounding code
-**Fix:** Always check surrounding context and framework guarantees before reporting. Read the full function, not just changed lines.
-
-### Failure Mode 2: Missed Critical Vulnerability
-
-**Symptom:** A real security issue was in the diff but not reported
-**Fix:** Never skip security checklist items. Run every item against every file, even if it "probably doesn't apply."
-
-### Failure Mode 3: Incomplete Diff Reading
-
-**Symptom:** Bugs in files that were listed but not fully read
-**Fix:** If diff output is truncated, read each file individually. Confirm in the report that every file was read completely.
-
-### Failure Mode 4: Severity Inflation
-
-**Symptom:** Low-risk issues reported as Critical/High to appear thorough
-**Fix:** Use the severity classification criteria strictly. A missing security header is Low, not High.
-
-### Failure Mode 5: Scope Creep
-
-**Symptom:** Reporting issues in unchanged code or making code changes
-**Fix:** Only review the branch diff. Never edit files — this is a report-only skill.
-
----
-
-## Quick Workflow Summary
-
-```
-STEP 1: GATHER FULL DIFF
-├── Get default branch name
-├── Read complete diff (every changed line)
-├── List all changed files
-└── Gate: Every line read
-
-STEP 2: MAP ATTACK SURFACES
-├── Catalog: inputs, queries, auth, sessions, external calls, crypto
-├── File-by-file map
-└── Gate: All surfaces mapped
-
-STEP 3: SECURITY CHECKLIST
-├── 3.1 Injection (SQL, command, template, header, path)
-├── 3.2 XSS (output escaping, innerHTML, URL reflection)
-├── 3.3 Auth & Authorization (auth checks, IDOR, API consistency)
-├── 3.4 Session & CSRF (CSRF protection, session config)
-├── 3.5 Race Conditions (TOCTOU, concurrent modifications)
-├── 3.6 Crypto & Secrets (secure random, algorithms, hardcoded keys)
-├── 3.7 Information Disclosure (error details, debug endpoints, timing)
-├── 3.8 DoS (unbounded ops, rate limits, ReDoS, resource limits)
-├── 3.9 Business Logic (edge cases, state machines, numerics)
-└── Gate: Every item checked against every file
-
-STEP 4: LOGIC BUGS
-├── Off-by-one, null access, async errors, type coercion
-├── Resource leaks, error swallowing, stale closures
-├── Copy-paste errors, boundary conditions, missing returns
-└── Gate: All patterns checked
-
-STEP 5: VERIFY FINDINGS
-├── Check surrounding context
-├── Search for existing tests
-├── Check framework guarantees
-├── Confirm exploitability
-└── Gate: Every finding verified
-
-STEP 6: CLASSIFY AND PRIORITIZE
-├── Assign severity (Critical/High/Medium/Low)
-├── Order: security > logic > quality
-└── Gate: All findings classified
-
-STEP 7: PRE-CONCLUSION AUDIT
-├── Confirm file coverage
-├── Confirm checklist coverage
-├── Document gaps
-└── Gate: Audit complete
-
-STEP 8: REPORT FINDINGS
-├── Structured report with evidence
-├── Files reviewed list
-├── Checklist coverage summary
-└── Gate: Report delivered
-
-STEP 9: VERIFICATION (MANDATORY)
-├── Check 1: Complete coverage
-├── Check 2: Finding quality
-├── Check 3: Severity accuracy
-├── Check 4: Report completeness
-├── Check 5: Scope discipline
-└── Gate: All 5 checks pass
-```
-
----
-
-## Completion Announcement
-
-When review is complete, announce:
-
-```
-Bug review complete.
-
-**Quality Score: X/10**
-- Diff Coverage: X/2
-- Attack Surface Mapping: X/2
-- Checklist Rigor: X/2
-- Finding Verification: X/2
-- Report Quality: X/2
-
-**Summary:**
-- Files reviewed: [count]
-- Findings: [count] ([N] Critical, [N] High, [N] Medium, [N] Low)
-- Categories: Security [N], Logic [N], Code Quality [N]
-- Clean areas: [checklist sections with no findings]
-
-**Verification:**
-- Every changed file read: ✅
-- Every checklist item evaluated: ✅
-- Every finding verified: ✅
-- No code changes made: ✅
-
-**Next steps:**
-[Fix critical/high issues first, then address medium/low]
-```
-
----
-
-## Integration with Other Skills
-
-The `find-bugs` skill integrates with:
-
-- **`commit`** — Run `find-bugs` before committing to catch issues early
-- **`create-pr`** — Run `find-bugs` before creating a PR for self-review
-- **`code-simplify`** — After fixing bugs, use `code-simplify` to clean up the fixes
-- **`plan-to-task-list-with-dag`** — For large branches with many findings, use `plan-to-task-list-with-dag` to organize the fix effort
-
-**Workflow Chain:**
-
-```
-Changes ready for review
-       │
-       ▼
-find-bugs skill (this skill)
-       │
-       ▼
-Fix reported issues
-       │
-       ▼
-commit skill (commit the fixes)
-       │
-       ▼
-create-pr skill (submit for review)
-```
+1. files reviewed
+2. findings by severity
+3. concise detailed findings with evidence
+4. checklist coverage and any verification gaps
+5. explicit clean result if no significant bugs were found

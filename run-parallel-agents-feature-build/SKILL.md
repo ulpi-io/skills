@@ -1,557 +1,244 @@
 ---
 name: run-parallel-agents-feature-build
-version: 1.0.0
+version: 2.0.0
 description: |
-  Orchestrate multiple specialized agents working in parallel when building independent features.
-  Use when the task list contains 3+ unrelated tasks that don't share state or files.
-  Matches each task to the right expert agent and launches them concurrently via the Agent tool
-  with worktree isolation. Supports all available subagent types.
+  Orchestrate multiple code-writing agents in parallel when the work contains 3 or more genuinely
+  independent build tasks. Use for execution lanes with disjoint write scope, clear task boundaries,
+  and no dependency edges that would force sequencing.
+allowed-tools:
+  - Agent
+  - Skill
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  - AskUserQuestion
+effort: high
+argument-hint: "[plan path or parallel-build request]"
+arguments:
+  - request
+when_to_use: |
+  Use when the user explicitly asks to build in parallel, split execution across agents, or when an
+  approved task list contains 3 or more independent implementation lanes. Do not use for research,
+  debugging, or tightly coupled work that shares files, state, or sequencing requirements.
 ---
 
 <EXTREMELY-IMPORTANT>
-Before launching parallel agents, you **ABSOLUTELY MUST**:
-
-1. Verify tasks are truly independent (no shared files, no data flow between them)
-2. Match each task to the correct specialized agent
-3. Create complete briefs with scope, files, output, and success criteria
-4. Launch ALL agents in a SINGLE message with multiple Agent tool calls
-
-**Launching agents without verification = conflicts, wasted work, merge hell**
-
-This is not optional. Parallel execution requires independence verification.
+This skill orchestrates real Agent tool executions. Non-negotiable rules:
+1. Verify independence before launching anything.
+2. Write a complete prompt for every spawned agent because fresh `subagent_type` agents do not inherit task context.
+3. Launch all parallel agents in a single assistant message with multiple `Agent(...)` tool uses.
+4. Use `run_in_background: true` for independent lanes and do not poll or tail background output.
+5. Use `isolation: "worktree"` for code-writing lanes unless the task is explicitly read-only.
 </EXTREMELY-IMPORTANT>
 
 # Run Parallel Agents Feature Build
 
-## MANDATORY FIRST RESPONSE PROTOCOL
+## Inputs
 
-Before launching ANY parallel agents, you **MUST** complete this checklist:
+- `$request`: Optional plan path, task selection, or user direction such as `execute layer 0 from .ulpi/plans/foo.json` or `build these three features in parallel`.
 
-1. ☐ Count tasks — are there 3+ independent tasks?
-2. ☐ Check dependencies — do any tasks depend on others?
-3. ☐ Check file overlap — do tasks modify the same files?
-4. ☐ Match agents — assign correct agent type per task
-5. ☐ Prepare briefs — scope, files, output, success criteria for each
-6. ☐ Announce to user — "Launching N agents in parallel for [tasks]"
+## Goal
 
-**Launching agents WITHOUT completing this checklist = conflicts and failures.**
+Exploit Claude Code's real parallel agent runtime to execute independent build tasks concurrently without file conflicts, missing context, or fake orchestration.
 
-## Overview
+## Step 0: Resolve the candidate work set
 
-Automatically detect opportunities for parallel execution and orchestrate multiple specialized agents working concurrently on independent features, modules, or investigations. Match each task to the appropriate domain expert and coordinate their work to deliver faster results without sacrificing quality.
+Identify the source of truth for the work:
 
-## When to Use This Skill
+- an approved DAG plan
+- an explicit user task list
+- a clearly decomposed set of independent implementation lanes
 
-Use this skill automatically when:
+Then determine:
 
-**Task List Indicators:**
+- task count
+- dependency edges
+- write scope overlap
+- whether each lane is build work rather than research or debugging
 
-- The task list contains 3 or more independent tasks or phases
-- Receiving a large plan with multiple unrelated features
-- Tasks are clearly scoped and don't overlap
-- Each task can be understood without context from others
-- No shared state or cross-dependencies between tasks
+Do not use this skill if:
 
-**User Triggers:**
+- there are fewer than 3 independent lanes
+- any lane depends on another lane's result
+- multiple lanes write the same file or the same narrow subsystem surface
+- the task is still at planning or exploration stage
 
-- "Build in parallel"
-- "Split this work across agents"
-- "Use multiple agents for this"
-- "Speed this up with parallel execution"
+Use `AskUserQuestion` only if the decomposition is ambiguous and safe parallelization depends on a user choice.
 
-**Common Scenarios:**
+**Success criteria**: You have a concrete set of parallel-safe build lanes.
 
-- Building independent features or endpoints (e.g., wishlist API, checkout flow, user dashboard)
-- Implementing multiple UI components or microservices simultaneously
-- Generating documentation or schema files for several modules
-- Analyzing multiple code files for specific issues
-- Debugging failures in isolated subsystems
-- Processing multiple data files or resources
+## Step 1: Prove independence, do not assume it
 
-## When NOT to Use This Skill
+For each candidate lane, verify:
 
-Do NOT use parallel agents when:
+- required inputs are already available
+- no output from another lane is needed first
+- write scope is disjoint
+- validation can be run per lane or after merge without ambiguity
 
-**Dependencies Exist:**
+If a plan exists, treat its dependency graph and write scope as the primary source.
 
-- Tasks have sequential dependencies (Task B needs Task A's output)
-- Shared state, data, or ownership between tasks
-- The sequence of execution affects the outcome
-- Agents would interfere with each other's work
+If there is no plan, derive equivalent temporary structure:
 
-**Problem Not Decomposed:**
+- lane name
+- scope
+- expected files
+- acceptance criteria
+- validation command
 
-- The problem isn't yet broken into independent units
-- Need to understand full system state first
-- Related failures where fixing one might fix others
-- Careful coordination or debugging across layers is required
+Load `references/agent-runtime-semantics.md` for the runtime rules that make or break parallel execution.
 
-**Single Cohesive Task:**
+**Success criteria**: Every lane is independently executable without merge-race risk.
 
-- Working on a single integrated feature
-- Refactoring that touches multiple interconnected parts
-- Tasks that require constant communication between components
+## Step 2: Match each lane to the right agent
 
-## Core Workflow
+Choose the most appropriate specialized agent for each lane based on:
 
-### Step 1: Analyze the Task List or Request
+- repository technology
+- target files and directories
+- framework-specific patterns
+- whether the work is implementation or general support
 
-Examine the current task list or user request to identify:
+Load `references/agent_matching_logic.md` for detailed matching rules and edge cases.
 
-1. **Number of independent work streams** - Are there 3+ separate features/tasks?
-2. **Dependencies** - Can each task be completed without waiting for others?
-3. **Shared state** - Do tasks modify the same files or data structures?
-4. **Scope clarity** - Is each task clearly defined with known requirements?
+Practical defaults:
 
-If all conditions for parallelization are met, proceed to Step 2.
+- use the most specific framework/domain agent available
+- use `general-purpose` only when no stronger fit exists
+- do not invent agent types
 
-### Step 2: Match Features to Specialized Agents
+**Success criteria**: Every lane has a justified agent assignment.
 
-For each independent task, determine the best agent type based on:
+## Step 3: Build full agent briefs
 
-**Technology Stack Detection:**
+Because fresh `subagent_type` agents start without the main thread's task context, every prompt must contain:
 
-- **Laravel backend** → `laravel-senior-engineer`
-- **Next.js frontend or full-stack** → `nextjs-senior-engineer`
-- **React + Vite + Tailwind frontends** → `react-vite-tailwind-engineer`
-- **Express.js APIs** → `express-senior-engineer`
-- **Node.js CLI tools** → `nodejs-cli-senior-engineer`
-- **Python backend, Django, data pipelines** → `python-senior-engineer`
-- **FastAPI specifically, async DB, JWT auth** → `fastapi-senior-engineer`
-- **Go backend, services** → `go-senior-engineer`
-- **Go CLI tools** → `go-cli-senior-engineer`
-- **iOS/macOS, Swift, SwiftUI** → `ios-macos-senior-engineer`
-- **Expo React Native mobile** → `expo-react-native-engineer`
-- **AWS infrastructure, CDK** → `devops-aws-senior-engineer`
-- **Docker, containers** → `devops-docker-senior-engineer`
-- **General tasks (exploration, research)** → `general-purpose`
-
-**File Pattern Analysis:**
-
-```
-*.php + /app/ + /routes/ → Laravel
-*.tsx + /app/ or /pages/ + next.config.* → Next.js
-*.tsx + vite.config.* + tailwind.config.* → React/Vite/Tailwind
-*.ts + express imports → Express
-*.ts + commander/inquirer imports → Node CLI
-*.py + fastapi imports → FastAPI
-*.py + django/flask/general → Python
-*.go + go.mod → Go
-*.swift + Package.swift or *.xcodeproj → iOS/macOS
-*.tsx + app.json (Expo) → Expo React Native
-Dockerfile + docker-compose.* → Docker
-CDK, CloudFormation, Terraform → AWS DevOps
-```
+- exact scope
+- why this task exists
+- files or directories to inspect
+- write scope
+- constraints and patterns to follow
+- acceptance criteria
+- validation command
+- explicit instruction whether the lane should write code or only investigate
 
-### Step 3: Prepare Agent Briefs
+If the work came from a DAG plan, preserve:
 
-For each agent, create a clear, focused brief containing:
+- task ID
+- acceptance criteria
+- write scope
+- validation command
+- review requirement
 
-**Required Elements:**
+If the task is identity, routing, registry, or isolation sensitive, require the lane to use `references/task-exit-gate.md` before declaring completion.
 
-1. **Scope of work** - Exactly what to build/analyze/fix
-2. **Expected output** - What deliverables to produce
-3. **Context** - Relevant file paths, existing patterns, constraints
-4. **Success criteria** - How to verify completion
+**Success criteria**: Each lane prompt is complete enough for a fresh agent to act without asking basic clarifying questions.
 
-**Brief Template:**
+## Step 4: Launch all agents in one parallel batch
 
-```
-Build [feature name]:
-- Scope: [specific feature boundaries]
-- Files: [relevant paths or patterns]
-- Requirements: [bullet points]
-- Output: [expected deliverables]
-- Patterns: [existing code patterns to follow]
-```
+Launch every lane in a single assistant message containing multiple `Agent(...)` tool uses.
 
-### Step 4: Launch Agents in Parallel
+Required launch semantics for code-writing lanes:
 
-Execute all agents simultaneously using a **single message with multiple Agent tool calls**:
+- `subagent_type`: matched agent type
+- `description`: short 3-5 word description
+- `prompt`: full task brief
+- `run_in_background: true`
+- `isolation: "worktree"`
 
-```
-Use the Agent tool with these parameters for each task:
-- prompt: Complete brief (scope, files, output, success criteria)
-- subagent_type: Matched agent from the Agent Table
-- isolation: "worktree" (MANDATORY for parallel file modifications)
-- run_in_background: true (for concurrent execution)
-- model: "opus" for complex tasks, "sonnet" for straightforward tasks
-```
+Runtime-specific rules:
 
-**Critical Requirements:**
+- do not send the agent launches across multiple assistant messages if the user asked for parallel work
+- do not rely on agent defaults for async or isolation when code-writing safety matters
+- do not use read-only forks here; this skill is for fresh specialized build agents
 
-- Send ALL Agent tool calls in ONE message (this is what makes them parallel)
-- Use `isolation: "worktree"` — without this, parallel agents clobber each other's files
-- Use `run_in_background: true` — without this, agents run sequentially
-- Each agent gets its complete brief in the `prompt` parameter
-- No placeholder values — all parameters must be complete
-- For verifying built features in the browser (e.g., testing a UI component the agent just created), use `browse --session <agent-name>` for session isolation
+Load `references/agent-runtime-semantics.md` for the exact source-backed reasons behind these rules.
 
-### Step 5: Monitor and Aggregate Results
+**Success criteria**: All independent lanes are launched concurrently with explicit, safe runtime settings.
 
-After agents complete:
+## Step 5: Aggregate completions without polling
 
-1. **Collect outputs** from each agent
-2. **Verify deliverables** match expected outputs
-3. **Check for conflicts** (e.g., overlapping file changes)
-4. **Merge results** into a coherent summary
-5. **Report to user** with consolidated findings
+After launch:
 
-**Aggregation Template:**
+- continue with non-overlapping coordination work
+- wait for completion notifications rather than polling background transcripts
+- trust the returned agent summaries unless there is a concrete reason to inspect deeper
 
-```
-Parallel execution complete. Results:
+When each lane completes, capture:
 
-**[Feature 1]** (via [agent-type])
-- Status: [completed/blocked/partial]
-- Delivered: [summary]
-- Files modified: [list]
+- status
+- files touched
+- validation result
+- blockers or deviations from brief
 
-**[Feature 2]** (via [agent-type])
-- Status: [completed/blocked/partial]
-- Delivered: [summary]
-- Files modified: [list]
+If a lane is blocked, do not hide it inside a merged success summary.
 
-**Overall:** [X/Y features completed, any conflicts, next steps]
-```
+**Success criteria**: Every spawned lane has a tracked outcome without unnecessary transcript noise.
 
-### Step 5b: Review Dispatch (Mandatory When Plan Specifies Review)
+## Step 6: Review, conflict check, and closeout
 
-After each task agent completes and before merging its worktree, check the task's `review` field from the plan JSON. If it is not `none`, invoke the corresponding review skill using the `Skill` tool:
+Before treating a lane as merged:
 
-| `review` value | Skill invocation | What it runs |
-|---------------|-----------------|--------------|
-| `codex` | `Skill("codex-review")` | OpenAI Codex CLI (`codex review`) — external binary, independent AI |
-| `claude` | `Skill("claude-review")` | Separate Claude Code agent in isolated worktree |
-| `kiro` | `Skill("kiro-review")` | Kiro CLI (`kiro-cli chat`) — external binary, independent AI |
-| `none` | Skip review | No review needed |
+- check for write-scope conflicts across finished lanes
+- if the plan specifies a `review` field, invoke the corresponding review skill:
+  - `codex` → `codex-review`
+  - `claude` → `claude-review`
+  - `kiro` → `kiro-review`
+- if the lane came from a structured task plan, require the lane to satisfy `references/task-exit-gate.md`
 
-**CRITICAL:** These are real external CLI tools, not prompts for a general-purpose agent. Do NOT substitute a Claude agent with "review this diff" in the prompt — that is a self-review, not an independent review. The entire point of specifying `codex` or `kiro` is to get a second opinion from a different AI system.
+If conflicts exist:
 
-**Review timing:** Reviews can run in parallel with other task agents that don't depend on the reviewed task. For example, if TASK-001 and TASK-002 are both in Layer 0, you can review TASK-001 while TASK-002's agent is still running.
+- stop automatic aggregation
+- identify the overlapping files
+- merge intentionally or escalate to the user
 
-**Review failures:** If the review tool finds P0/P1 issues, fix them before merging the worktree and before launching dependent tasks. P2/P3 issues can be noted and fixed during merge.
+**Success criteria**: Finished lanes are reviewed and conflict-checked before being treated as complete.
 
-### Step 6: Verification (MANDATORY)
+## Step 7: Report the consolidated result
 
-After aggregating results, verify the parallel execution was successful:
+Summarize:
 
-#### Check 1: All Agents Completed
-- [ ] Every launched agent returned a result
-- [ ] No agents timed out or crashed
+- which lanes ran
+- which agents handled them
+- completion status per lane
+- files or areas changed
+- reviews performed
+- remaining blockers or follow-up sequencing
 
-#### Check 2: No File Conflicts
-- [ ] No two agents modified the same file
-- [ ] If conflicts exist, they are resolved
+Be explicit about partial success. Parallel execution is only a win if the user can see which lanes are actually done.
 
-#### Check 3: Deliverables Match Briefs
-- [ ] Each agent delivered what was specified
-- [ ] Output matches expected format
+**Success criteria**: The user gets a concise but accurate parallel-execution summary.
 
-#### Check 4: No Integration Issues
-- [ ] Features work together (if they interact)
-- [ ] No broken imports or references
+## Guardrails
 
-#### Check 5: User Informed
-- [ ] Completion announced with summary
-- [ ] Any issues or partial results documented
+- Do not use this skill for fewer than 3 genuinely independent lanes.
+- Do not parallelize tasks with shared write scope or dependency edges.
+- Do not keep giant agent catalogs or launch templates inline in `SKILL.md`.
+- Do not assume fresh agents know the surrounding task context.
+- Do not poll or tail background agent output unless the user explicitly asks.
+- Do not rely on default agent `background` or `isolation` settings when explicit launch parameters are safer.
+- Do not add `disable-model-invocation`; this skill should remain available when the user asks for parallel execution.
+- Do not add `context: fork`; this workflow coordinates fresh specialized agents, not read-only skill forks.
+- Do not add `paths:`; this is a generic orchestration skill.
 
-**Gate:** Do NOT mark task complete until all 5 checks pass.
+## When To Load References
 
-## Example Scenarios
+- `references/agent-runtime-semantics.md`
+  Use for source-backed Agent runtime rules: fresh context, single-message parallel launch, background behavior, worktree isolation, and explicit parameter precedence.
 
-### Example A: Feature Build
+- `references/agent_matching_logic.md`
+  Use for detailed agent-selection rules and framework-specific edge cases.
 
-**User Says:**
-"Build the wishlist API, checkout summary, and user dashboard in parallel."
+- `references/task-exit-gate.md`
+  Use when the task came from a structured plan with acceptance criteria, write scope, and validation requirements.
 
-**Execution:**
+## Output Contract
 
-1. **Detect** three separate feature scopes
-2. **Match agents:**
-   - Wishlist API → `laravel-senior-engineer` (backend)
-   - Checkout summary → `nextjs-senior-engineer` (frontend)
-   - User dashboard → `nextjs-senior-engineer` (frontend/UI)
-3. **Launch** all three in a single message with Agent tool
-4. **Aggregate** results into merged summary
+Report:
 
-**Output:**
-
-```
-Built 3 features in parallel:
-- Wishlist API: Complete (app/Http/Controllers/WishlistController.php, routes/api.php)
-- Checkout summary: Complete (app/checkout/summary/page.tsx)
-- User dashboard: Complete (app/dashboard/page.tsx)
-```
-
-### Example B: Debug Parallel Subsystems
-
-**User Says:**
-"Run parallel agents to debug these failing tests."
-
-**Execution:**
-
-1. **Cluster failures** by subsystem:
-   - Laravel backend tests
-   - Next.js frontend tests
-   - Node.js API tests
-2. **Spawn agents:**
-   - `laravel-senior-engineer` for Laravel failures
-   - `nextjs-senior-engineer` for Next.js failures
-   - `express-senior-engineer` for Node API failures
-3. **Let each diagnose and fix** independently
-4. **Gather results**, merge patches, re-run tests
-5. **Output** consolidated fix report
-
-### Example C: Code Analysis
-
-**User Says:**
-"Analyze these 5 code files in parallel for performance bottlenecks."
-
-**Execution:**
-
-1. **Split files** across appropriate agents based on file type
-2. **Run analysis** concurrently (each agent gets 1-2 files)
-3. **Merge findings** into summarized report with:
-   - File-by-file breakdown
-   - Common patterns across files
-   - Prioritized recommendations
-
-## Agent Type Reference
-
-Quick reference for matching tasks to agents:
-
-| Agent Type                          | Best For                                          | Key Indicators                               |
-| ----------------------------------- | ------------------------------------------------- | -------------------------------------------- |
-| `laravel-senior-engineer`           | Laravel backends, APIs, Eloquent models           | `*.php`, `/app/`, Eloquent, Artisan          |
-| `nextjs-senior-engineer`            | Next.js apps, React Server Components, App Router | `*.tsx`, `/app/`, `/pages/`, `next.config.*` |
-| `react-vite-tailwind-engineer`      | React + Vite + Tailwind TypeScript frontends      | `*.tsx`, `vite.config.*`, `tailwind.config.*`|
-| `express-senior-engineer`           | Express.js APIs, middleware, REST endpoints       | `*.js/*.ts`, `express` imports               |
-| `nodejs-cli-senior-engineer`        | Node.js CLI tools, commander.js, inquirer         | `commander`, `inquirer`, `ora`, CLI patterns |
-| `python-senior-engineer`            | Python backends, Django, data pipelines           | `*.py`, `requirements.txt`, `pyproject.toml` |
-| `fastapi-senior-engineer`           | FastAPI, async DB, JWT auth                       | `*.py`, `fastapi` imports, `uvicorn`         |
-| `go-senior-engineer`                | Go backends, services, APIs                       | `*.go`, `go.mod`, `go.sum`                   |
-| `go-cli-senior-engineer`            | Go CLI tools, cobra, viper                        | `*.go`, `cobra` imports, CLI patterns        |
-| `ios-macos-senior-engineer`         | Swift, SwiftUI, Xcode, SPM, StoreKit             | `*.swift`, `Package.swift`, `*.xcodeproj`    |
-| `expo-react-native-engineer`        | Expo mobile apps, cross-platform                  | `*.tsx`, `app.json`, Expo modules            |
-| `devops-aws-senior-engineer`        | AWS infrastructure, CDK, CloudFormation           | CDK, CloudFormation, Terraform, AWS          |
-| `devops-docker-senior-engineer`     | Docker, Docker Compose, containerization          | `Dockerfile`, `docker-compose.*`             |
-| `general-purpose`                   | Exploration, research, general tasks              | Non-framework-specific work                  |
-
-See `references/agent_matching_logic.md` for detailed matching rules and edge cases.
-
-## Best Practices
-
-### Scoping Tasks Effectively
-
-**Good Task Scopes:**
-
-- "Build user authentication endpoint with JWT"
-- "Create product listing page with filters"
-- "Implement cart total calculation service"
-
-**Poor Task Scopes:**
-
-- "Build the entire checkout flow" (too broad, likely has dependencies)
-- "Fix the app" (undefined, not decomposed)
-- "Refactor database layer" (touches too many interconnected parts)
-
-### Handling Conflicts
-
-If agents modify overlapping files:
-
-1. **Review changes** from each agent
-2. **Identify conflicts** (same lines modified)
-3. **Merge intelligently** or ask user for guidance
-4. **Re-test** affected areas
-
-### Communication Pattern
-
-Always inform the user BEFORE launching parallel agents:
-
-```
-I've identified 3 independent features that can be built in parallel:
-1. [Feature 1] - using [agent-type]
-2. [Feature 2] - using [agent-type]
-3. [Feature 3] - using [agent-type]
-
-Launching agents now...
-```
-
-### Handling Partial Success
-
-If an agent fails or gets blocked:
-
-- Continue with successful agents
-- Report partial results
-- Provide clear next steps for blocked work
-- Don't retry automatically without user input
-
----
-
-## Quality Checklist (Must Score 8/10)
-
-Score yourself honestly before marking parallel execution complete:
-
-### Independence Verification (0-2 points)
-- **0 points:** Launched without checking dependencies
-- **1 point:** Checked some dependencies
-- **2 points:** Full dependency check (files, data flow, state)
-
-### Agent Matching (0-2 points)
-- **0 points:** Wrong agents for tasks
-- **1 point:** Agents assigned without justification
-- **2 points:** Each task matched to correct agent with indicators
-
-### Brief Quality (0-2 points)
-- **0 points:** No briefs or generic briefs
-- **1 point:** Partial briefs (missing fields)
-- **2 points:** Complete briefs with scope, files, output, success criteria
-
-### Execution Correctness (0-2 points)
-- **0 points:** Agents launched sequentially
-- **1 point:** Parallel launch but incomplete briefs
-- **2 points:** Single message with all Agent tool calls, complete briefs
-
-### Result Aggregation (0-2 points)
-- **0 points:** No summary provided
-- **1 point:** Partial summary
-- **2 points:** Complete summary with status, deliverables, conflicts, next steps
-
-**Minimum passing score: 8/10**
-
----
-
-## Common Rationalizations (All Wrong)
-
-These are excuses. Don't fall for them:
-
-- **"These tasks look independent"** → STILL check for file overlap
-- **"I know the right agents"** → STILL document the matching rationale
-- **"Briefs are obvious"** → STILL write complete scope, files, output, success criteria
-- **"Sequential is safer"** → If tasks are independent, parallel is FASTER with no downside
-- **"I'll merge conflicts later"** → Check for conflicts BEFORE launching
-- **"One message is too long"** → ALL Agent tool calls MUST be in one message
-- **"The user just wants it done"** → Correct execution = faster completion
-- **"Two tasks don't need parallel agents"** → Correct, need 3+ tasks
-- **"I'll just have a Claude agent review the diff, same thing as codex"** → It is NOT the same thing. Codex and Kiro are independent AI systems with different training and different blind spots. Self-review catches fewer bugs than cross-model review. Use the tool specified in the plan.
-- **"The review tool isn't installed"** → WARN the user, don't silently substitute. `which codex` or `which kiro-cli` to check availability.
-
----
-
-## Failure Modes
-
-### Failure Mode 1: Launching Dependent Tasks in Parallel
-
-**Symptom:** Agents fail or produce conflicting output because Task B needed Task A's result
-**Fix:** Run dependency checks. If Output(A) ∈ Input(B), execute sequentially.
-
-### Failure Mode 2: Wrong Agent Assignment
-
-**Symptom:** Laravel work done by nextjs-senior-engineer, poor results
-**Fix:** Use technology detection patterns. Match `*.php` → Laravel agent.
-
-### Failure Mode 3: Sequential Launch Instead of Parallel
-
-**Symptom:** Sent multiple messages with Agent tool calls, agents ran one at a time
-**Fix:** ALL Agent tool calls in a SINGLE message. This is critical for parallel execution.
-
-### Failure Mode 4: Incomplete Briefs
-
-**Symptom:** Agents ask clarifying questions or deliver wrong output
-**Fix:** Every brief must have Scope, Files, Output, Success criteria. No placeholders.
-
-### Failure Mode 5: No Conflict Check After Completion
-
-**Symptom:** Agents modified same files, changes overwrite each other
-**Fix:** After aggregation, check file overlap. If conflicts, merge intelligently.
-
----
-
-## Quick Workflow Summary
-
-```
-STEP 1: ANALYZE
-├── Count tasks (need 3+)
-├── Check dependencies
-├── Check file overlap
-└── Gate: Tasks are independent
-
-STEP 2: MATCH AGENTS
-├── Identify technology per task
-├── Assign correct agent type
-└── Document matching rationale
-
-STEP 3: PREPARE BRIEFS
-├── Scope, Files, Output, Success criteria
-└── No placeholders allowed
-
-STEP 4: LAUNCH PARALLEL
-├── Single message with ALL Agent tool calls
-├── Do NOT wait between launches
-└── Gate: All agents launched
-
-STEP 5: AGGREGATE RESULTS
-├── Collect outputs
-├── Check for conflicts
-└── Merge into summary
-
-STEP 6: VERIFICATION
-├── All agents completed
-├── No file conflicts
-├── Deliverables match briefs
-└── Gate: All 5 checks pass
-```
-
----
-
-## Completion Announcement
-
-When parallel execution is complete, announce:
-
-```
-Parallel execution complete.
-
-**Quality Score: X/10**
-- Independence Verification: X/2
-- Agent Matching: X/2
-- Brief Quality: X/2
-- Execution Correctness: X/2
-- Result Aggregation: X/2
-
-**Results:**
-- Features completed: X/Y
-- Agents used: [list]
-- Conflicts: [none/resolved/pending]
-
-**Summary:**
-[Brief description of what was delivered]
-
-**Next steps:**
-[Any remaining work or follow-up needed]
-```
-
----
-
-## Integration with Other Skills
-
-The `run-parallel-agents-feature-build` skill integrates with:
-
-- **`plan-to-task-list-with-dag`** — Use to generate a structured plan, then this skill to execute it
-- **`plan-founder-review`** — Review the plan before execution (quality gate)
-- **`start`** — Use `start` to identify if parallel agents are appropriate
-- **`run-parallel-agents-feature-debug`** — For debugging, use the debug variant instead
-- **`codemap`** — Use `codemap search` and `codemap deps` when preparing briefs to understand what code exists and what each file depends on
-- **`browse`** — For agents to verify their own work in the browser (e.g., testing a page they just built), use `browse --session <agent-name>` to isolate each agent's browser state
-
-**Workflow:** `start` → `plan-to-task-list-with-dag` → `plan-founder-review` → `run-parallel-agents-feature-build`
-
----
-
-## Resources
-
-### references/
-
-- **agent_matching_logic.md** - Detailed rules for matching features to agent types, edge cases, and technology detection patterns
-
-This skill does not require scripts or assets - it orchestrates existing Claude Code agent capabilities.
+1. resolved parallel lane set
+2. agent assignment per lane
+3. launch status
+4. completion and review status per lane
+5. conflicts, blockers, or remaining sequential work

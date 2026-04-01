@@ -1,148 +1,116 @@
 ---
 name: frontend-design-ui-ux
-version: 1.0.0
-description: Design user interfaces with comprehensive UX methodology. Produces implementation-ready specifications, component briefs, and design tokens for handoff to Next.js and React engineering agents. Use when designing new features, creating design systems, planning user flows, or specifying component behavior.
+version: 2.0.0
+description: |
+  Produce implementation-ready UX and UI specifications: user flows, states, component briefs,
+  design tokens, accessibility constraints, and handoff guidance for frontend engineering agents.
+  Use for new features, redesigns, or design-system work where implementation should follow a clear
+  product and interaction spec.
+allowed-tools:
+  - AskUserQuestion
+  - Read
+  - Write
+argument-hint: "[feature, screen, or design problem]"
+arguments:
+  - request
+when_to_use: |
+  Use when the user wants interface design, flow design, component specification, or design-system
+  work rather than direct implementation. Examples: "design this dashboard", "spec the onboarding
+  flow", "create a handoff for this feature", "define tokens and states for this component".
+effort: high
 ---
 
-# Frontend Design UI/UX Skill
+<EXTREMELY-IMPORTANT>
+This is a design-spec skill, not an implementation skill.
 
-## Purpose
+Non-negotiable rules:
+1. Understand users, context, and states before proposing screens.
+2. Specify flows, states, accessibility, and responsiveness, not just visuals.
+3. Reuse the templates in `references/` instead of inventing new handoff formats.
+4. Keep implementation handoff concrete enough that an engineering agent can build from it.
+5. Do not start coding the UI from this skill.
+</EXTREMELY-IMPORTANT>
 
-This is a **design skill**, not an implementation skill. It produces:
-- Design artifacts and specifications
-- Component briefs with TypeScript interfaces
-- User flow documentation
-- Design tokens and system definitions
-- Clear handoff instructions for implementation
+# frontend-design-ui-ux
 
-**Target Agents:**
-- `nextjs-senior-engineer` - For SSR, SEO-critical, App Router projects
-- `react-vite-tailwind-engineer` - For SPAs, CLI web UIs, Electron apps
+## Inputs
 
-## Design Methodology
+- `$request`: Feature, page, component, or UX problem to design
 
-### Phase 1: Discovery
+## Goal
 
-Before designing, gather context:
+Produce a design handoff that covers:
 
-**User Research Questions:**
-- Who are the primary users? (roles, technical level, accessibility needs)
-- What problem are they solving?
-- Where will they use this? (device, context, environment)
-- When do they need it? (frequency, urgency, duration)
-- Why this feature now? (business goal, user pain point)
+- user goals
+- flow and state model
+- component structure
+- design tokens
+- accessibility and responsive behavior
+- target engineering handoff
 
-**Context Analysis:**
-- Existing patterns in the codebase
-- Design system constraints
-- Tech stack limitations
-- Performance requirements
-- Accessibility requirements (WCAG 2.1 AA minimum)
+## Step 0: Discovery
 
-### Phase 2: Information Architecture
+Resolve:
 
-**Content Inventory:**
-- List all data/content to display
-- Identify required vs optional fields
-- Define content hierarchy
+- target users
+- product goal
+- device and usage context
+- existing design-system or product constraints
+- accessibility expectations
 
-**User Flow Mapping:**
-- Entry points (how users arrive)
-- Decision points (branching logic)
-- Exit points (success, error, abandon)
-- Edge cases and error states
+If the problem statement is underspecified, ask before designing.
 
-**State Mapping:**
-Document every state the UI can be in:
-- Loading (initial, refresh, pagination)
-- Empty (first use, no results, filtered empty)
-- Partial (incomplete data, degraded)
-- Success (complete, confirmed)
-- Error (validation, network, permission, timeout)
+**Success criteria**: The design problem is framed in user and product terms, not just screens.
 
-### Phase 3: Component Design
+## Step 1: Model flows and states
 
-**Atomic Design Hierarchy:**
-1. **Atoms** - Basic elements (Button, Input, Icon, Text)
-2. **Molecules** - Simple combinations (SearchInput, FormField, Card)
-3. **Organisms** - Complex sections (Header, ProductList, CommentThread)
-4. **Templates** - Page layouts (DashboardLayout, AuthLayout)
-5. **Pages** - Specific instances (UserDashboard, LoginPage)
+Document:
 
-**For Each Component, Define:**
-- Purpose (one sentence)
-- Variants (visual/behavioral variations)
-- Props with TypeScript types
-- All possible states
-- Responsive behavior at breakpoints
-- Accessibility requirements
+- primary user journey
+- edge cases
+- loading, empty, partial, success, and error states
+- key decisions or branching points
 
-### Phase 4: Interaction Design
+Use `references/user-flow-template.md` when writing flow documentation.
 
-**User Interactions:**
-| Interaction | Trigger | Feedback | Duration |
-|-------------|---------|----------|----------|
-| Click/Tap | Mouse/Touch | Visual + State change | Instant |
-| Hover | Mouse enter | Visual highlight | - |
-| Focus | Tab/Click | Focus ring | - |
-| Drag | Mouse down + move | Ghost + Drop zones | Continuous |
-| Swipe | Touch move | Momentum scroll | Gesture-based |
+**Success criteria**: The design covers behavior across states, not just the happy path.
 
-**Feedback Patterns:**
-- Loading: Skeleton, spinner, progress bar
-- Success: Toast, inline confirmation, redirect
-- Error: Inline message, toast, modal (severity-based)
-- Progress: Step indicator, progress bar, percentage
+## Step 2: Specify components and interaction rules
 
-**Animation Specifications:**
-```typescript
-const animations = {
-  duration: {
-    instant: '0ms',
-    fast: '150ms',
-    normal: '300ms',
-    slow: '500ms',
-  },
-  easing: {
-    default: 'cubic-bezier(0.4, 0, 0.2, 1)',
-    in: 'cubic-bezier(0.4, 0, 1, 1)',
-    out: 'cubic-bezier(0, 0, 0.2, 1)',
-    bounce: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
-  },
-}
-```
+For the needed components, define:
 
-### Phase 5: Design Tokens
+- purpose
+- variants
+- props or data needs
+- states
+- interaction feedback
+- responsive behavior
+- accessibility requirements
 
-Define tokens for consistency across implementations:
+Use `references/component-spec-template.md` for structured component briefs.
 
-**Colors:**
-- Semantic naming (primary, secondary, destructive)
-- Full scale for each (50-900)
-- Light/dark mode variants
+**Success criteria**: The engineering handoff is concrete enough to implement without guessing.
 
-**Typography:**
-- Font families (sans, mono, serif if needed)
-- Size scale (xs through 4xl)
-- Weight scale (normal, medium, semibold, bold)
-- Line heights (tight, normal, relaxed)
+## Step 3: Define tokens and system-level decisions
 
-**Spacing:**
-- Base unit: 0.25rem (4px)
-- Scale: 0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 32, 40, 48, 64
+Specify only the tokens and conventions the feature actually needs:
 
-**Other Tokens:**
-- Border radius (none, sm, md, lg, full)
-- Shadows (sm, md, lg, xl)
-- Z-index layers (base, dropdown, sticky, modal, toast)
-- Breakpoints (sm: 640px, md: 768px, lg: 1024px, xl: 1280px)
+- color roles
+- typography hierarchy
+- spacing and layout rhythm
+- motion and feedback rules
+- semantic states such as success, warning, danger, disabled
 
-### Phase 6: Engineer Handoff
+Use `references/design-tokens-template.md` when a token artifact is required.
 
-**Agent Selection Logic:**
+**Success criteria**: The spec encodes reusable system decisions, not just one-off styling notes.
 
-| Criteria | Agent |
-|----------|-------|
+## Step 4: Handoff to the right engineering surface
+
+### Agent Selection
+
+| Criteria | Target Agent |
+|----------|-------------|
 | Server-side rendering needed | `nextjs-senior-engineer` |
 | SEO critical | `nextjs-senior-engineer` |
 | App Router / Server Components | `nextjs-senior-engineer` |
@@ -153,58 +121,37 @@ Define tokens for consistency across implementations:
 | Static site with no SSR | Either (ask user) |
 | Unclear | Ask user |
 
-## Output Templates
+State:
 
-Use these templates in `references/` directory:
-- `component-spec-template.md` - Full component specifications
-- `user-flow-template.md` - User journey documentation
-- `design-tokens-template.md` - Token system definition
+- which implementation target and why it fits
+- the acceptance criteria for engineering handoff
 
-## Quality Checklist
+**Success criteria**: Another agent can pick up the design package and implement it directly.
 
-Before handoff to engineering agent, verify:
+## Guardrails
 
-- [ ] **States**: All states documented (loading, error, empty, success, partial)
-- [ ] **Responsive**: Breakpoints defined with specific behavior changes
-- [ ] **Accessibility**: ARIA roles, keyboard nav, screen reader announcements
-- [ ] **Interactions**: All user interactions mapped with feedback
-- [ ] **Animations**: Specifications included (or explicitly marked as none)
-- [ ] **Types**: Props typed with TypeScript interfaces
-- [ ] **Edge Cases**: Identified and handling specified
-- [ ] **Target Agent**: Specified with selection reasoning
-- [ ] **Acceptance Criteria**: Clear, testable requirements
+- Do not implement production UI code from this skill.
+- Do not skip accessibility, state coverage, or responsive behavior.
+- Do not produce vague design prose when a concrete artifact is needed.
+- Do not ignore existing product patterns unless the user asked for a redesign.
 
-## Session Management
+## When To Load References
 
-**Scope Control:**
-- Confirm scope before expanding beyond initial request
-- Ask before adding "nice to have" features
-- Keep specifications focused on requested functionality
+- `references/user-flow-template.md`
+  Use for user journeys and acceptance flow documentation.
 
-**Checkpoints:**
-- After discovery: Confirm understanding
-- After IA: Validate user flows
-- After component design: Review specs
-- Before handoff: Final quality check
+- `references/component-spec-template.md`
+  Use for component briefs and interface contracts.
 
-**Handoff Signals:**
-When specifications are complete, clearly indicate:
-```
-## Ready for Implementation
+- `references/design-tokens-template.md`
+  Use when the task requires tokenized styling decisions or system handoff.
 
-Target Agent: [nextjs-senior-engineer | react-vite-tailwind-engineer]
+## Output Contract
 
-The following specifications are ready for implementation:
-1. [Component/Flow name] - [brief description]
-2. ...
+Report or write:
 
-Invoke the target agent with these specifications to begin implementation.
-```
-
-## Integration with Other Skills
-
-This skill produces specifications that are consumed by:
-- `nextjs-senior-engineer` - Implements Next.js components
-- `react-vite-tailwind-engineer` - Implements React/Vite components
-
-Do NOT implement code directly. Always hand off to the appropriate engineering agent.
+1. user and context summary
+2. flows and states
+3. component specs
+4. design tokens or styling rules if needed
+5. handoff target and implementation acceptance criteria

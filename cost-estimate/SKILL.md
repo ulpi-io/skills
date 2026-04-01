@@ -1,491 +1,249 @@
 ---
 name: cost-estimate
-version: 1.0.1
-description: Estimate development cost of a codebase (full repo, branch diff, or single commit). Invoke via /cost-estimate or when user says "estimate cost", "how much would this cost", "development cost". Accepts optional scope args like "branch:feat/foo" or "commit:abc1234".
+version: 2.0.0
+description: |
+  Estimate the development cost of a codebase, branch diff, or single commit by combining repo
+  metrics, category-based productivity rates, organizational overhead, and optional Claude ROI.
+  Runs as a forked analysis workflow so the estimate has separate reasoning budget and stays
+  isolated from the main task flow.
+allowed-tools:
+  - Bash
+  - Read
+  - Glob
+  - Grep
+context: fork
+agent: general-purpose
+effort: high
+argument-hint: "[full|branch:<name>|commit:<hash>]"
+arguments:
+  - request
+when_to_use: |
+  Use when the user asks to estimate development cost, effort, engineering hours, or ROI for the
+  current repository, a branch diff, or a specific commit. Examples: "estimate cost", "how much
+  would this codebase cost to build", "/cost-estimate branch:feat/foo", or "estimate this
+  commit". Do not use for budgeting hosted infrastructure, pricing SaaS plans, or generating a
+  project execution DAG.
 ---
 
-# Cost Estimate Command
+<EXTREMELY-IMPORTANT>
+This skill is an evidence-driven estimation workflow.
 
-You are a senior software engineering consultant tasked with estimating the development cost of code in the current repository.
+Non-negotiable rules:
+1. Use the helper scripts under `.agents/skills/cost-estimate/helpers/` instead of redoing LOC,
+   session, or cost math manually.
+2. Keep scope explicit: full repo, `branch:<name>`, or `commit:<hash>`.
+3. Separate raw engineering hours from organizational overhead and team multipliers.
+4. Keep the pricing rubric and report schema in references, not inline in the invocation path.
+5. Treat external market-rate research as optional. Use built-in rates unless the user explicitly
+   requests a different market or region.
+</EXTREMELY-IMPORTANT>
 
-All tunable rates, ratios, and multipliers are defined in the **Configuration** section below. When performing calculations in later steps, always reference these values — do not use hardcoded numbers elsewhere. To customize the estimate for a different market, team structure, or role mix, edit only this section.
+# Cost Estimate
 
-## Configuration
+## Inputs
 
-All cost parameters in one place. Edit these to adjust the entire estimate.
+- `$request`: Optional scope or estimation guidance such as `branch:feat/foo`, `commit:abc1234`,
+  region hints, or desired audience
 
-### Coding Productivity Rates (lines/hour, pure focused output)
+## Goal
 
-| Code Category | Low | High | Examples |
-|---------------|-----|------|----------|
-| Simple CRUD/UI/boilerplate | 50 | 80 | Forms, lists, repetitive layouts, config screens |
-| Standard views with logic | 35 | 55 | Typical screens, moderate complexity views |
-| Complex UI (animations, custom) | 25 | 40 | Onboarding flows, custom components, transitions |
-| Business logic / API clients | 30 | 50 | Networking, state management, data transforms |
-| Database/persistence | 30 | 50 | CRUD, migrations, queries, schema definitions |
-| Audio/video processing | 20 | 30 | AV pipelines, streaming, encoding/decoding |
-| GPU/shader programming | 15 | 25 | Metal, CUDA, render pipelines, compute shaders |
-| Native C/C++ interop | 15 | 25 | FFI, bridging, unsafe code, native plugins |
-| System extensions/plugins | 15 | 25 | OS extensions, daemons, drivers, kernel modules |
-| On-device ML inference | 15 | 25 | CoreML, MLX, ONNX, model integration |
-| Tests | 50 | 80 | Tests are boilerplate-heavy with assertions |
-| Config/build files | 40 | 60 | Build configs, CI/CD, manifests, project files |
-| Documentation | 60 | 100 | Markdown, READMEs, API docs, comments-only files |
+Produce a credible estimate that:
 
-### Development Overhead Multipliers (% of base coding hours)
+- measures the requested code scope with the helper scripts
+- classifies code into the right productivity buckets
+- computes engineering hours and costs without double-counting overhead
+- translates that estimate into realistic calendar and team-cost views
+- reports assumptions, confidence, and Claude ROI clearly
 
-| Overhead Category | Low | High | Notes |
-|-------------------|-----|------|-------|
-| Architecture & design | 12% | 15% | Upfront design, API contracts, data modeling |
-| Debugging & troubleshooting | 20% | 25% | Bug fixing, edge cases, platform quirks |
-| Code review & refactoring | 8% | 12% | PR reviews, cleanup passes, tech debt |
-| Documentation | 5% | 8% | Inline docs, README updates, API docs |
-| Integration & testing | 15% | 18% | Wiring components, end-to-end testing |
-| Learning curve | 8% | 15% | New frameworks, APIs, unfamiliar domains |
+## Step 0: Resolve scope and mode
 
-**Total overhead range: ~68-93%**
+Parse the request into one of:
 
-### Hourly Market Rates by Role (USD, 2025 US market)
+- full repository
+- `branch:<name>`
+- `commit:<hash>`
 
-| Role | Low | Mid | High | Notes |
-|------|-----|-----|------|-------|
-| Senior Engineer (generalist) | 100 | 150 | 225 | IC5+ full-stack / backend / mobile |
-| Senior Engineer (specialist) | 125 | 175 | 250 | GPU, ML, systems, AV, security |
-| Product Management | 125 | 160 | 200 | PRDs, roadmap, stakeholder mgmt |
-| UX/UI Design | 100 | 140 | 175 | Wireframes, mockups, design systems |
-| Engineering Management | 150 | 185 | 225 | 1:1s, hiring, performance, strategy |
-| QA/Testing | 75 | 100 | 125 | Test plans, manual testing, automation |
-| Project/Program Management | 100 | 125 | 150 | Schedules, dependencies, status |
-| Technical Writing | 75 | 100 | 125 | User docs, API docs, internal docs |
-| DevOps/Platform | 125 | 160 | 200 | CI/CD, infra, deployments |
+If the request is ambiguous, infer full repository by default. If the user supplied region or
+market hints, carry them into the final rate discussion. Otherwise use the built-in baseline rates.
 
-### Role Ratios (hours as % of engineering hours, by company stage)
+**Success criteria**: The estimation target and pricing basis are explicit before running scripts.
 
-| Role | Solo | Lean Startup | Growth Co | Enterprise |
-|------|------|--------------|-----------|------------|
-| Product Management | 0% | 15% | 30% | 40% |
-| UX/UI Design | 0% | 15% | 25% | 35% |
-| Engineering Management | 0% | 5% | 15% | 20% |
-| QA/Testing | 0% | 5% | 20% | 25% |
-| Project/Program Management | 0% | 0% | 10% | 15% |
-| Technical Writing | 0% | 0% | 5% | 10% |
-| DevOps/Platform | 0% | 5% | 15% | 20% |
-| **Full Team Multiplier** | **1.0x** | **~1.45x** | **~2.2x** | **~2.65x** |
+## Step 1: Measure the real code surface with the helper scripts
 
-### Organizational Efficiency (coding hours as % of 40-hr week)
+Use the helper toolchain in `.agents/skills/cost-estimate/helpers/`:
 
-| Company Type | Efficiency | Effective Coding Hrs/Week |
-|--------------|------------|--------------------------|
-| Solo/Startup (lean) | 65% | 26 |
-| Growth Company | 55% | 22 |
-| Enterprise | 45% | 18 |
-| Large Bureaucracy | 35% | 14 |
+- `loc_counter.py`
+- `git_session_analyzer.py`
+- `cost_calculator.py`
+- `report_generator.py`
 
-### Sanity Check Bounds
+Run `loc_counter.py` for the resolved scope to capture:
 
-| Metric | Too Conservative | Target Range | Too Aggressive |
-|--------|-----------------|--------------|----------------|
-| Effective lines/hour (LOC / total hours) | < 12 | 15-30 | > 40 |
+- total lines
+- file counts
+- language breakdown
+- directory breakdown
+- source vs test vs config vs docs
+- per-file category candidates from `all_files`
 
-### Claude ROI Constants
+Run `git_session_analyzer.py` when git history is available so Claude ROI can use actual session
+estimates rather than LOC fallback.
 
-| Parameter | Value | Notes |
-|-----------|-------|-------|
-| Claude coding speed | 200-500 lines/hr | Fallback when no git history |
-| Claude coding speed (midpoint) | 350 lines/hr | Used for LOC-based hour estimate |
-| Human baseline rate for comparison | 150 $/hr | Senior engineer, used in savings calc |
-| Claude subscription range | $20-200/month | Pro to Team plans |
+Rules:
 
----
+- prefer the script output over ad hoc `find`, `wc`, or inline arithmetic
+- if scope is a branch or commit, measure the diff rather than the full repository
+- if git history is missing or unhelpful, fall back to LOC-based Claude hour estimates later
+
+**Success criteria**: You have structured JSON for scope size and, when possible, active-session estimates.
+
+## Step 2: Classify the code into productivity buckets
+
+Review the `loc_counter.py` output and map every relevant source line into exactly one category.
+
+Use `references/estimation-rates.md` for:
+
+- category keys
+- productivity ranges
+- overhead ranges
+- market-rate baselines
+- role multipliers
+- organizational efficiency constants
+- Claude ROI constants
+
+Classification rules:
+
+- assign each source line once
+- keep tests, config/build, and documentation separate from product code
+- detect specialized work such as GPU, native interop, audio/video, system extensions, or on-device ML
+- do not inflate complexity without file-level evidence
+- group files when a directory clearly shares one category, but call out exceptional files separately
+
+**Success criteria**: There is a complete category-to-line-count JSON payload for the calculator.
+
+## Step 3: Run the calculator and sanity-check the output
+
+Pipe the category totals into `cost_calculator.py`.
+
+The calculator should produce:
+
+- base coding hours
+- overhead hours
+- total estimated hours
+- sanity-check effective lines/hour
+- calendar-time tables
+- engineering-only cost
+- full-team cost
+- Claude ROI fields when Claude hours are available
+
+Rules:
+
+- do not bake overhead into the category assignment; the calculator already adds overhead
+- if the sanity check falls outside the target range, adjust category assignments or explain why this repo is legitimately outside the norm
+- use built-in market rates by default unless the user explicitly requested a different market basis
+
+**Success criteria**: The calculator output is internally consistent and the sanity check has been reviewed.
+
+## Step 4: Refine Claude ROI and confidence
+
+If session data exists, inspect it and adjust only when the default commit-density heuristic is
+obviously understating large-scope work. If session data is missing, use the fallback Claude
+productivity constant from `references/estimation-rates.md`.
+
+Report:
+
+- estimated Claude active hours
+- speed multiplier vs the baseline human rate
+- value per Claude hour
+- headline ROI and savings
+
+Also state confidence:
+
+- high when scope, category mix, and history are clean
+- medium when history or categorization is incomplete
+- low when the request is intentionally approximate or the repo is only partially available
+
+**Success criteria**: The ROI story is explicit, bounded, and not overstated.
+
+## Step 5: Generate the report body
+
+Use `report_generator.py` to generate the markdown backbone, then refine the narrative where needed.
+
+Load `references/report-contract.md` for the required report structure and minimum sections.
+
+The final estimate should cover:
+
+- executive summary
+- codebase metrics
+- development-time estimate
+- calendar-time view
+- engineering-only cost
+- full-team cost
+- Claude ROI
+- assumptions and caveats
+
+Rules:
+
+- lead with the executive summary and Claude ROI
+- keep the report stakeholder-readable, not tool-dump heavy
+- mention the scope basis explicitly
+- preserve escaped currency formatting when editing prose manually
+
+**Success criteria**: The estimate is readable, structured, and aligned with the report contract.
+
+## Guardrails
+
+- Do not add `disable-model-invocation`; this is a read-heavy analysis workflow.
+- Do not add `paths:`; this is a generic estimation skill.
+- Do not keep pricing tables, role matrices, or full report templates inline in `SKILL.md`.
+- Do not replace helper-script output with manual math unless the helper chain is unavailable.
+- Do not present a cost number without the scope, assumptions, and confidence level.
+- Do not claim region-specific market validation unless the user explicitly requested it and that research was actually performed.
+
+## When To Load References
+
+- `references/estimation-rates.md`
+  Use for the productivity buckets, overhead rates, market-rate baselines, team multipliers,
+  efficiency constants, and Claude ROI fallback constants.
+
+- `references/report-contract.md`
+  Use for the mandatory section order, reporting contract, and required caveats.
 
 ## Helper Scripts
 
-Three Python scripts in `.claude/skills/cost-estimate/helpers/` automate the heavy lifting. **Use these instead of manual `find`, `wc -l`, `git log`, and inline math.** They work on any repo.
-
-### 1. `loc_counter.py` — Count lines of code
-```bash
-# Full repo (respects .gitignore via git ls-files)
-python3 .claude/skills/cost-estimate/helpers/loc_counter.py
-
-# Branch diff (added lines only)
-python3 .claude/skills/cost-estimate/helpers/loc_counter.py --branch feat/foo
-
-# Branch diff against specific base
-python3 .claude/skills/cost-estimate/helpers/loc_counter.py --branch feat/foo --base develop
-
-# Single commit
-python3 .claude/skills/cost-estimate/helpers/loc_counter.py --commit abc1234
-```
-**Output (JSON):** `totals` (lines, files, test/doc/config/source breakdown), `by_language`, `by_directory`, `all_files` (with path, lines, category, is_test, is_doc, is_config flags).
-
-### 2. `git_session_analyzer.py` — Estimate Claude active hours
-```bash
-# All commits on current branch
-python3 .claude/skills/cost-estimate/helpers/git_session_analyzer.py
-
-# Specific branch
-python3 .claude/skills/cost-estimate/helpers/git_session_analyzer.py --branch feat/foo
-```
-**Output (JSON):** `total_commits`, `total_sessions`, `estimated_active_hours`, `sessions[]` with date/start/end/commits/estimated_hours/subjects. Review the session estimates and adjust upward for large-scope commits (e.g. a single commit that adds 5000 lines should count as more than 1 hour).
-
-### 3. `cost_calculator.py` — Calculate costs from categorized LOC
-
-```bash
-# Pipe categories as JSON
-echo '{"audio_video_processing": 2000, "business_logic": 5000, ...}' | \
-  python3 .claude/skills/cost-estimate/helpers/cost_calculator.py --rate 150 --claude-hours 29
-```
-**Valid category keys:** `simple_crud_ui_boilerplate`, `standard_views`, `complex_ui`, `business_logic`, `database_persistence`, `audio_video_processing`, `gpu_shader`, `native_interop`, `system_extensions`, `on_device_ml`, `tests`, `config_build`, `documentation`
-
-**Output (JSON):** `base_coding` (rows with category/lines/rate/hours), `overhead` (rows), `total_estimated_hours`, `sanity_check`, `calendar_time`, `engineering_cost`, `team_costs` (per stage with role breakdowns), `claude_roi` (if --claude-hours given).
-
-### 4. `report_generator.py` — Generate markdown report sections
-```bash
-# Full report from calculator + session data
-python3 .claude/skills/cost-estimate/helpers/report_generator.py \
-  --calc costs.json --sessions sessions.json --project "MyApp" --scope "Full codebase"
-
-# Single section only
-python3 .claude/skills/cost-estimate/helpers/report_generator.py \
-  --calc costs.json --section executive_summary
-
-# Pipe directly from calculator
-echo '{"business_logic": 5000}' | python3 cost_calculator.py --rate 150 --claude-hours 29 | \
-  python3 report_generator.py --project "MyApp"
-```
-**Available sections:** `executive_summary`, `development_time`, `calendar_time`, `engineering_cost`, `team_cost`, `grand_total`, `claude_roi`, `assumptions`
-
-**Output:** Ready-to-paste markdown. Review, add complexity factors, market research rationale, and codebase metrics (which are project-specific and come from Step 1).
-
-### Recommended Workflow
-
-```bash
-# 1. Count LOC
-python3 .claude/skills/cost-estimate/helpers/loc_counter.py > /tmp/loc.json
-
-# 2. Analyze git sessions
-python3 .claude/skills/cost-estimate/helpers/git_session_analyzer.py > /tmp/sessions.json
-
-# 3. Classify files into categories (done manually from loc.json)
-#    Then pipe to calculator:
-echo '{"category": lines, ...}' | \
-  python3 .claude/skills/cost-estimate/helpers/cost_calculator.py \
-    --rate 150 --claude-hours 29 > /tmp/calc.json
-
-# 4. Generate report sections
-python3 .claude/skills/cost-estimate/helpers/report_generator.py \
-  --calc /tmp/calc.json --sessions /tmp/sessions.json --project "MyApp"
-```
-
-The main job is: **classify files into categories** (the creative/judgment part) and **add context** (complexity factors, market research, codebase description). The math and formatting are handled by the scripts.
-
----
-
-## Step 0: Determine Scope
-
-Check the user's input for scope specifiers:
-
-- **No arguments (default)**: Estimate the entire codebase.
-- **`branch:<name>`**: Estimate only the diff introduced by that branch (added lines only).
-- **`commit:<hash>`**: Estimate only the diff for that single commit (added lines only).
-
-The `loc_counter.py` script handles all three modes via `--branch` and `--commit` flags.
-
-## Step 1: Analyze the Codebase
-
-**Run `loc_counter.py`** to get a complete breakdown. Then review the output to:
-
-1. **Identify the primary languages** from `by_language`
-2. **Understand the directory structure** from `by_directory`
-3. **Note test/doc/config splits** from `totals`
-4. **Identify complexity factors** — scan the `all_files` list for signs of advanced work (GPU code, system extensions, audio/video pipelines, ML inference, native interop, complex UI, etc.)
-5. **Detect project name** from the repo directory name or top-level config files
-
-## Step 2: Classify and Calculate Development Hours
-
-Review the `all_files` output from Step 1 and classify each file (or group of files) into categories from the **Coding Productivity Rates** table. Build a JSON object mapping category keys to line counts, then **pipe it to `cost_calculator.py`**.
-
-> **These rates represent pure focused coding output** — fingers on keyboard, writing code with modern IDE autocomplete. All thinking, debugging, reviewing, and design time is captured by the overhead multipliers — do not bake overhead into rates or it will be double-counted.
-
-The calculator handles: base hours, overhead multipliers, sanity check, calendar time, engineering cost, and full team costs. Review the `sanity_check` in the output — if it fails, adjust your category assignments.
-
-**Every source line must be assigned to exactly one category. Do not double-count.**
-
-## Step 3: Market Rates
-
-Start with the **Hourly Market Rates by Role** from the Configuration section as baseline defaults.
-
-Ask the user: **"Use built-in market rates, or search the web for current rates for your tech stack/region?"**
-
-- **Built-in rates** — use the Configuration section defaults as-is (faster, no web dependency)
-- **Web research** — use WebSearch to validate or adjust for:
-  - The specific tech stack detected in Step 1
-  - Geographic variations (US markets: SF Bay Area, NYC, Austin, Remote)
-  - Contractor vs. employee rates
-
-If the user chooses web research, search for:
-- "senior full stack developer hourly rate 2025"
-- "senior software engineer hourly rate United States 2025"
-- "[detected language/platform] developer contractor rate 2025"
-
-If web search results differ significantly from the config defaults, note the discrepancy and use the researched rates. Otherwise, use the config defaults.
-
-## Step 4: Calculate Organizational Overhead
-
-Real companies don't have developers coding 40 hours/week. Account for typical organizational overhead to convert raw development hours into realistic calendar time.
-
-**Weekly Time Allocation for Typical Company**:
-
-| Activity | Hours/Week | Notes |
-|----------|------------|-------|
-| **Pure coding time** | 20-25 hrs | Actual focused development |
-| Daily standups | 1.25 hrs | 15 min x 5 days |
-| Weekly team sync | 1-2 hrs | All-hands, team meetings |
-| 1:1s with manager | 0.5-1 hr | Weekly or biweekly |
-| Sprint planning/retro | 1-2 hrs | Per week average |
-| Code reviews (giving) | 2-3 hrs | Reviewing teammates' work |
-| Slack/email/async | 3-5 hrs | Communication overhead |
-| Context switching | 2-4 hrs | Interruptions, task switching |
-| Ad-hoc meetings | 1-2 hrs | Unplanned discussions |
-| Admin/HR/tooling | 1-2 hrs | Timesheets, tools, access requests |
-
-Use the **Organizational Efficiency** table from the Configuration section for coding hours per week by company type.
-
-**Calendar Weeks Calculation**:
-```
-Calendar Weeks = Raw Dev Hours / Effective Coding Hrs/Week (from config)
-```
-
-## Step 5: Calculate Full Team Cost
-
-Engineering doesn't ship products alone. Use the **Role Ratios** and **Hourly Market Rates by Role** from the Configuration section to calculate the fully-loaded team cost.
-
-For each company stage:
-1. Look up the role ratio % from the config's Role Ratios table
-2. Multiply engineering hours by that % to get each role's hours
-3. Multiply each role's hours by the Mid rate from the Hourly Market Rates table
-4. Sum all roles for Full Team Cost, or use the Full Team Multiplier shortcut
-
-**Calculation**:
-```
-Full Team Cost = Engineering Cost x Full Team Multiplier (from config)
-```
-
-## Step 6: Generate Cost Estimate
-
-Detect the project name from the repository (directory name, package manifest, or top-level config).
-
-**IMPORTANT: The report MUST lead with the Executive Summary and Claude ROI at the very top.** The detailed breakdowns come after. This is the required report structure:
-
----
-
-## [Project Name] - Development Cost Estimate
-
-**Analysis Date**: [Current Date]
-**Scope**: [Full codebase / Branch `<name>` (diff from `<base>`) / Commit `<hash>`]
-
----
-
-### Executive Summary
-
-| Metric | Value |
-|--------|-------|
-| **Codebase** | [X] lines of [language] across [X] files |
-| **Engineering hours** | [X] hours |
-| **Engineering cost (avg)** | **$[X,XXX]** |
-| **Full team cost (Growth Co)** | **$[X,XXX]** |
-| **Calendar time (solo dev)** | ~[X] months |
-
-### Claude ROI
-
-| Metric | Value |
-|--------|-------|
-| **Claude active hours** | ~[X] hours (across [X] calendar days) |
-| **Speed multiplier** | [X]x faster than human developer |
-| **Value per Claude hour** | $[X,XXX]/hr (engineering) |
-| **ROI** | [X]x ($[X]k value for ~$[X] in Claude costs) |
-
-> Claude worked ~[X] hours and produced $[X] of professional development value = **$[X,XXX] per Claude hour**
-
----
-
-### Grand Total Summary
-
-| Metric | Solo | Lean Startup | Growth Co | Enterprise |
-|--------|------|--------------|-----------|------------|
-| Calendar Time | [X] | [X] | [X] | [X] |
-| Total Human Hours | [X] | [X] | [X] | [X] |
-| **Total Cost** | **$[X]** | **$[X]** | **$[X]** | **$[X]** |
-
----
-
-*Detailed breakdown follows.*
-
----
-
-### Codebase Metrics
-
-- **Total Lines of Code**: [number] ([scope context: "in repository" or "in diff"])
-  - [Language 1]: [number] lines
-  - [Language 2]: [number] lines
-  - Tests: [number] lines
-  - Config/Build: [number] lines
-  - Documentation: [number] lines
-
-- **Complexity Factors**:
-  - [Auto-detected factor 1, e.g. "Audio/video processing pipeline"]
-  - [Auto-detected factor 2, e.g. "System extension architecture"]
-  - [Auto-detected factor 3, e.g. "Third-party API integrations"]
-
-### Development Time Estimate
-
-**Base Development Hours**: [number] hours
-
-| Code Category | Lines | Rate (lines/hr) | Hours |
-|---------------|-------|-----------------|-------|
-| [Category 1] | [X] | [X] | [X] |
-| [Category 2] | [X] | [X] | [X] |
-| ... | ... | ... | ... |
-| **Total Base** | **[X]** | | **[X]** |
-
-**Overhead Multipliers**:
-- Architecture & Design: +[X]% ([hours] hours)
-- Debugging & Troubleshooting: +[X]% ([hours] hours)
-- Code Review & Refactoring: +[X]% ([hours] hours)
-- Documentation: +[X]% ([hours] hours)
-- Integration & Testing: +[X]% ([hours] hours)
-- Learning Curve: +[X]% ([hours] hours)
-
-**Total Estimated Hours**: [number] hours
-
-**Sanity Check**: [total LOC] / [total hours] = [X] effective lines/hour [PASS: within 15-30 range / ADJUST: outside range, explain adjustment]
-
-### Realistic Calendar Time (with Organizational Overhead)
-
-| Company Type | Efficiency | Coding Hrs/Week | Calendar Weeks | Calendar Time |
-|--------------|------------|-----------------|----------------|---------------|
-| Solo/Startup (lean) | 65% | 26 hrs | [X] weeks | ~[X] months |
-| Growth Company | 55% | 22 hrs | [X] weeks | ~[X] years |
-| Enterprise | 45% | 18 hrs | [X] weeks | ~[X] years |
-| Large Bureaucracy | 35% | 14 hrs | [X] weeks | ~[X] years |
-
-### Market Rate Research
-
-**Senior Developer Rates (2025)**:
-- Low end: $[X]/hour (remote, mid-level market)
-- Average: $[X]/hour (standard US market)
-- High end: $[X]/hour (SF Bay Area, NYC, specialized)
-
-**Recommended Rate for This Project**: $[X]/hour
-
-*Rationale*: [Based on detected tech stack complexity and specialization requirements]
-
-### Total Cost Estimate (Engineering Only)
-
-| Scenario | Hourly Rate | Total Hours | **Total Cost** |
-|----------|-------------|-------------|----------------|
-| Low-end | $[X] | [hours] | **$[X,XXX]** |
-| Average | $[X] | [hours] | **$[X,XXX]** |
-| High-end | $[X] | [hours] | **$[X,XXX]** |
-
-**Recommended Estimate (Engineering Only)**: **$[X,XXX] - $[X,XXX]**
-
-### Full Team Cost (All Roles)
-
-| Company Stage | Team Multiplier | Engineering Cost | **Full Team Cost** |
-|---------------|-----------------|------------------|-------------------|
-| Solo/Founder | 1.0x | $[X] | **$[X]** |
-| Lean Startup | 1.45x | $[X] | **$[X]** |
-| Growth Company | 2.2x | $[X] | **$[X]** |
-| Enterprise | 2.65x | $[X] | **$[X]** |
-
-**Role Breakdown (Growth Company Example)**:
-
-| Role | Hours | Rate | Cost |
-|------|-------|------|------|
-| Engineering | [X] hrs | $[X]/hr | $[X] |
-| Product Management | [X] hrs | $[X]/hr | $[X] |
-| UX/UI Design | [X] hrs | $[X]/hr | $[X] |
-| Engineering Management | [X] hrs | $[X]/hr | $[X] |
-| QA/Testing | [X] hrs | $[X]/hr | $[X] |
-| Project Management | [X] hrs | $[X]/hr | $[X] |
-| Technical Writing | [X] hrs | $[X]/hr | $[X] |
-| DevOps/Platform | [X] hrs | $[X]/hr | $[X] |
-| **TOTAL** | **[X] hrs** | | **$[X]** |
-
-### Claude ROI Analysis (Detailed)
-
-**Project Timeline**:
-- First commit / project start: [date]
-- Latest commit: [date]
-- Total calendar time: [X] days ([X] weeks)
-
-**Claude Active Hours Estimate**:
-- Total sessions identified: [X] sessions
-- Estimated active hours: [X] hours
-- Method: [git clustering / file timestamps / LOC estimate]
-
-**Value per Claude Hour**:
-
-| Value Basis | Total Value | Claude Hours | $/Claude Hour |
-|-------------|-------------|--------------|---------------|
-| Engineering only | $[X] | [X] hrs | **$[X,XXX]/Claude hr** |
-| Full team (Growth Co) | $[X] | [X] hrs | **$[X,XXX]/Claude hr** |
-
-**Speed vs. Human Developer**:
-- Estimated human hours for same work: [X] hours
-- Claude active hours: [X] hours
-- **Speed multiplier: [X]x** (Claude was [X]x faster)
-
-**Cost Comparison**:
-- Human developer cost: $[X] (at config baseline rate)
-- Estimated Claude cost: $[X] (subscription + API)
-- **Net savings: $[X]**
-- **ROI: [X]x** (every $1 spent on Claude produced $[X] of value)
-
-### Assumptions
-
-1. Rates based on US market averages (2025)
-2. Full-time equivalent allocation for all roles
-3. Does not include:
-   - Marketing & sales
-   - Legal & compliance
-   - Office/equipment
-   - Hosting/infrastructure
-   - Ongoing maintenance post-launch
-
----
-
-## Step 7: Calculate Claude ROI — Value Per Claude Hour
-
-This is the most important metric for understanding AI-assisted development efficiency. It answers: **"What did each hour of Claude's actual working time produce?"**
-
-**IMPORTANT**: The Claude ROI results must appear in TWO places in the report:
-1. **Executive Summary** at the very top (compact table format)
-2. **Claude ROI Analysis (Detailed)** section with full breakdown
-
-Calculate all ROI values in this step, then populate both sections when writing the report.
-
-### 7a: Determine Actual Claude Clock Time
-
-**Run `git_session_analyzer.py`** to automatically cluster commits into sessions and estimate active hours:
-
-```bash
-python3 .claude/skills/cost-estimate/helpers/git_session_analyzer.py
-```
-
-Review the output sessions and adjust estimates upward for commits with large scope (e.g. a single commit adding thousands of lines likely took 2-4 hours, not 1 hour). Use `git show <hash> --stat` to check the scope of low-commit sessions.
-
-**Fallback (no git):** Estimate from LOC using the Claude ROI Constants: `Claude active hours = Total LOC / 350 lines/hr`
-
-### 7b: Calculate ROI
-
-Pass `--claude-hours` to `cost_calculator.py` (in Step 2) to get the full ROI breakdown automatically. The calculator computes speed multiplier, value per Claude hour, cost comparison, and savings.
-
----
-
-## Notes
-
-Present the estimate in a clear, professional format suitable for sharing with stakeholders. Include confidence intervals and key assumptions. Highlight areas of highest complexity that drive cost.
-
-**IMPORTANT — Dollar Sign Escaping**: Always escape `$` as `\$` in the final markdown report. Bare `$` characters are interpreted as LaTeX math delimiters by many markdown renderers (GitHub, VS Code, etc.), which mangles currency values. The `report_generator.py` `fmt()` function handles this automatically, but when writing prose sections manually (e.g., market rate research, rationale text, assumptions), always use `\$` for currency.
+- `.agents/skills/cost-estimate/helpers/loc_counter.py`
+  - full repo: no flags
+  - branch diff: `--branch <name>` (optionally `--base <base>`)
+  - single commit: `--commit <hash>`
+  - output: JSON with `totals`, `by_language`, `by_directory`, `all_files`
+
+- `.agents/skills/cost-estimate/helpers/git_session_analyzer.py`
+  - all commits: no flags
+  - specific branch: `--branch <name>`
+  - output: JSON with `total_commits`, `total_sessions`, `estimated_active_hours`, `sessions[]`
+
+- `.agents/skills/cost-estimate/helpers/cost_calculator.py`
+  - input: pipe category JSON on stdin
+  - flags: `--rate <hourly>`, `--claude-hours <N>`
+  - valid category keys: `simple_crud_ui_boilerplate`, `standard_views`, `complex_ui`, `business_logic`, `database_persistence`, `audio_video_processing`, `gpu_shader`, `native_interop`, `system_extensions`, `on_device_ml`, `tests`, `config_build`, `documentation`
+  - output: JSON with `base_coding`, `overhead`, `total_estimated_hours`, `sanity_check`, `calendar_time`, `engineering_cost`, `team_costs`, `claude_roi`
+
+- `.agents/skills/cost-estimate/helpers/report_generator.py`
+  - flags: `--calc <costs.json>`, `--sessions <sessions.json>`, `--project <name>`, `--scope <desc>`
+  - single section: `--section <name>`
+  - available sections: `executive_summary`, `development_time`, `calendar_time`, `engineering_cost`, `team_cost`, `grand_total`, `claude_roi`, `assumptions`
+  - output: ready-to-paste markdown
+
+Use these directly. The judgment work in this skill is classification, calibration, and explanation,
+not reimplementing the scripts.
+
+## Output Contract
+
+Report:
+
+1. resolved scope and pricing basis
+2. key repo metrics and complexity drivers
+3. engineering hours and sanity-check result
+4. engineering-only and team-cost ranges
+5. Claude ROI and confidence level
+6. assumptions, caveats, and any missing-data limitations

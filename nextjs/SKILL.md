@@ -1,72 +1,134 @@
 ---
 name: nextjs
-version: 1.0.0
+version: 2.0.0
 description: |
-  Next.js 16 App Router reference — Cache Components, proxy.ts, API-backed data layer,
-  multilingual-first with next-intl, atomic components, structured logging, analytics tracking.
-  Use when working on any Next.js page, component, route, layout, data fetching, caching,
-  i18n, testing, or metadata task.
+  Next.js App Router reference skill covering pages, layouts, components, metadata, i18n,
+  API-backed data access, server actions, caching, accessibility, analytics, and testing. Use when
+  the task touches a Next.js code path and should follow the project's App Router conventions.
 allowed-tools:
   - Bash
   - Read
+  - Write
+  - Edit
+  - Grep
+paths:
+  - "app/**/*.ts"
+  - "app/**/*.tsx"
+  - "src/**/*.ts"
+  - "src/**/*.tsx"
+  - "components/**/*.ts"
+  - "components/**/*.tsx"
+  - "messages/**/*.json"
+  - "next.config.*"
+  - "proxy.ts"
+  - "middleware.ts"
+  - "tests/**/*.ts"
+  - "tests/**/*.tsx"
+  - "playwright.config.*"
+argument-hint: "[Next.js page, component, route, or caching task]"
+arguments:
+  - request
+when_to_use: |
+  Use when the task touches Next.js pages, layouts, components, routing, metadata, server actions,
+  caching, i18n, logging, analytics, or tests. Examples: "build this App Router page", "fix this
+  server action", "update metadata", "wire translations", "change caching behavior".
+effort: high
 ---
 
 <EXTREMELY-IMPORTANT>
-These rules apply to ALL Next.js code you write. Violating any of them produces broken, unmaintainable, or inaccessible output.
+This skill is a routing shell over the Next.js reference set, not the full framework manual.
 
-1. **No raw strings in JSX.** Every user-visible string must use `t()` from next-intl. No hardcoded text.
-2. **No oversized files.** Components: 150 lines max. Pages: 300 lines max. Extract to `_components/` or `features/` if larger.
-3. **No page without `generateMetadata` + OG.** Every page exports `generateMetadata` with title, description, OG image, hreflang alternates.
-4. **No inline fetch.** All data fetching goes through `src/lib/api/` client. Never call `fetch()` directly. Never use an ORM.
-5. **No `'use client'` on pages or layouts.** Only leaf components in `components/ui/`, `components/features/`, or `_components/` may be client components.
-6. **All params/searchParams/cookies/headers are async.** Always `await params`, `await searchParams`, `await cookies()`, `await headers()`. Sync access is removed in v16.
+Non-negotiable rules:
+1. Read `references/stack.md` first.
+2. Then load only the references needed for the actual task.
+3. Keep user-visible text translated.
+4. Keep data access in the project’s API-client pattern.
+5. Keep the heavy Next.js guidance in `references/`, not inline here.
 </EXTREMELY-IMPORTANT>
 
-# Next.js 16 App Router
+# nextjs
 
-## MANDATORY FIRST RESPONSE PROTOCOL
+## Inputs
 
-Before writing ANY code, you **MUST** complete this checklist:
+- `$request`: The Next.js page, component, routing, caching, or testing task
 
-1. Read `references/stack.md` to understand locked decisions (runtime, bundler, config)
-2. Identify the task type from the routing table below
-3. Read the matching reference file(s) — they contain the patterns, code examples, and anti-patterns
-4. Only then begin implementation
+## Goal
 
-**Writing code without reading the reference = wrong patterns, wasted time, rework.**
+Route Next.js work through the project's App Router conventions so implementation follows the established patterns for data access, metadata, localization, and rendering boundaries.
 
-## Routing Table
+## Step 0: Read the stack contract
 
-| Task | Read |
-|------|------|
-| Starting a session / understanding the stack | `references/stack.md` |
-| Creating or modifying files, folder conventions | `references/folder-structure.md` |
-| Navigation, dynamic routes, proxy.ts, parallel routes | `references/routing.md` |
-| Creating a new page or layout | `references/page-checklist.md` |
-| Creating or editing a component | `references/component-anatomy.md` |
-| Adding data fetching (reads) | `references/api-client-pattern.md` |
-| Adding mutations (writes), forms | `references/server-actions.md` |
-| Making caching decisions | `references/caching-strategy.md` |
-| Adding/editing user-facing text, translations, or RTL | `references/i18n-conventions.md` |
-| Error boundaries, recovery, not-found | `references/error-handling.md` |
-| Structured logging, log levels, PII rules | `references/logging.md` |
-| Analytics events, provider adapters | `references/tracking.md` |
-| Unit tests (Vitest) | `references/testing-unit.md` |
-| End-to-end tests (Playwright) | `references/testing-e2e.md` |
-| Authentication, sessions, protected routes | `references/auth.md` |
-| Security hardening, CSP, headers, XSS prevention | `references/security.md` |
-| SEO, OG tags, structured data, sitemaps | `references/seo.md` |
-| Accessibility (ARIA, keyboard, focus, reduced motion) | `references/accessibility.md` |
-| Markdown mirrors, llms.txt, machine-readable content | `references/machine-readable.md` |
+Always start with:
 
-Multiple tasks? Read multiple files. The references are self-contained — no need to consult external docs.
+- `references/stack.md`
 
-## Quick Rules
+That establishes the locked decisions for runtime, config, and project-wide Next.js patterns.
 
-These repeat the critical guardrails for context-window resilience:
+**Success criteria**: The project’s Next.js architecture assumptions are explicit before editing.
 
-1. All `params`, `searchParams`, `cookies()`, `headers()` are async — always `await`.
-2. All data fetching goes through the API client — never inline fetch, never ORM.
-3. All visible strings use `t()` — no hardcoded text.
-4. All Tailwind uses logical properties — `ps-`, `pe-`, `ms-`, `me-`, `text-start`, `text-end`.
-5. `cacheComponents: true` required in `next.config.ts` for `'use cache'` to work.
+## Step 1: Load only the relevant references
+
+Pick the reference files that match the task:
+
+- routing and route structure
+- page and layout checklist
+- component anatomy
+- API client pattern
+- server actions
+- caching
+- i18n
+- error handling
+- logging or tracking
+- auth, security, SEO, accessibility
+- unit or e2e testing
+
+Do not bulk-load the full reference tree.
+
+**Success criteria**: The active context only contains the task-relevant Next.js conventions.
+
+## Step 2: Implement with the core Next.js guardrails
+
+Keep these rules active:
+
+- async request-bound APIs are awaited
+- data access uses the project API client, not ad hoc fetches or ORM calls
+- visible strings go through the localization layer
+- pages and layouts stay server-first unless a leaf component truly needs client mode
+- metadata and SEO requirements stay attached to page work
+
+**Success criteria**: The change fits the project’s App Router architecture instead of generic framework defaults.
+
+## Step 3: Verify the affected surface
+
+Use the narrowest relevant verification:
+
+- unit tests
+- e2e tests
+- linting or type checks
+- page or route smoke validation
+
+**Success criteria**: The changed Next.js surface still behaves correctly.
+
+## Guardrails
+
+- Do not inline the whole Next.js handbook in `SKILL.md`.
+- Do not skip `references/stack.md`.
+- Do not hardcode user-facing strings when i18n is required.
+- Do not bypass the project’s API-client and caching conventions.
+- Do not add `disable-model-invocation`; this is a normal domain skill.
+
+## When To Load References
+
+- `references/stack.md`
+  Always.
+
+- then only the task-relevant files under `references/`
+
+## Output Contract
+
+Report:
+
+1. which Next.js references were loaded
+2. the architecture pattern chosen
+3. the change made
+4. the verification run

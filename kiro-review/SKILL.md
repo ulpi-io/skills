@@ -1,209 +1,143 @@
 ---
 name: kiro-review
-version: 1.0.0
-description: Run Kiro CLI to review code changes made in the current session or branch. Invokes `kiro-cli chat` in non-interactive mode with focused review instructions derived from the actual changes. Use when the user says "kiro review", "second opinion", "rival review", "cross-review", or "/kiro-review".
+version: 2.0.0
+description: |
+  Run Kiro CLI as an independent reviewer over the current branch, a specific commit, or
+  uncommitted changes. Builds a focused prompt from the real diff and returns a compact review
+  summary.
+allowed-tools:
+  - Bash
+  - Read
+disable-model-invocation: true
+user-invocable: true
+argument-hint: "[branch review, uncommitted, or specific commit]"
+arguments:
+  - request
+when_to_use: |
+  Use only when the user explicitly asks for a Kiro review or cross-review. Examples:
+  "/kiro-review", "run kiro on this branch", "get a second opinion from kiro". Do not use for
+  direct code editing or when the user asked for Claude or Codex instead.
+effort: high
 ---
+
+<EXTREMELY-IMPORTANT>
+This skill orchestrates an external reviewer and must stay disciplined.
+
+Non-negotiable rules:
+1. Read the real diff before writing the Kiro prompt.
+2. Make the prompt specific to the changed areas and likely risks.
+3. Never put secrets or credentials in the prompt.
+4. Carry forward exclusion lists on later rounds.
+5. Verify returned findings before acting on them.
+</EXTREMELY-IMPORTANT>
 
 # Kiro Review
 
-Use Kiro CLI to get an independent AI review of code changes.
+## Inputs
 
-## When to Use
+- `$request`: Optional scope hint such as `last commit`, `uncommitted`, `auth focus`, or `round 2`
 
-- User explicitly asks for a kiro review, second opinion, or cross-review
-- User says "run kiro", "kiro review", "/kiro-review"
-- User wants an independent AI to verify Claude's work before merging
+## Goal
 
-## Prerequisites
+Use `kiro-cli` to get an external review pass that:
 
-- `kiro-cli` must be installed (`which kiro-cli`)
-- User must be logged in (`kiro-cli whoami`)
+- uses the right diff scope
+- focuses on the actual change surface
+- returns structured findings instead of generic commentary
 
-## Workflow
+## Step 0: Verify Kiro availability
 
-### Step 1: Determine the Review Scope
+Check:
 
-Identify what to review:
+- `which kiro-cli`
+- `kiro-cli whoami` or the minimal auth check needed in this environment
 
-```bash
-# Option A: Review current branch against main
-git log --oneline main..HEAD | head -20
+If the CLI is unavailable or not authenticated, explain the blocker and stop.
 
-# Option B: Review uncommitted changes
-git diff --stat
+**Success criteria**: Kiro can run successfully from the current repository.
 
-# Option C: Review a specific commit
-git show --stat <sha>
-```
+## Step 1: Resolve review scope
 
-Determine the diff to feed into the review:
-- **Branch review**: `git diff main..HEAD`
-- **Uncommitted changes**: `git diff`
-- **Single commit**: `git show <sha>`
+Determine whether to review:
 
-### Step 2: Analyze the Changes and Build the Prompt
+- the full branch
+- uncommitted changes
+- a specific commit
 
-Read the diff to understand what areas need review focus. Build a
-focused review prompt based on the actual code changes.
+Read the diff summary and changed-file list first.
 
-```bash
-# Get the diff summary
-git diff --stat <base>..HEAD
+If there is nothing to review, stop and say so explicitly.
 
-# Identify key areas
-git diff --name-only <base>..HEAD | sed 's|/[^/]*$||' | sort -u
-```
+**Success criteria**: The review target is explicit and backed by a real diff.
 
-Write a focused review prompt to `/tmp/kiro-review-prompt.md`:
+## Step 2: Build the focused Kiro prompt
 
-```markdown
-Review the code changes on this branch compared to main.
+Create a compact prompt that includes:
 
-The changes cover: [brief description of what changed].
+- what changed
+- the major risk areas
+- any previously fixed issues to exclude on later rounds
+- an instruction to verify findings against the actual code
+- the expected compact output format
 
-Focus your review on:
-1. [Area 1 based on actual changes]
-2. [Area 2 based on actual changes]
-3. [Area 3 based on actual changes]
+Avoid generic prompts. They produce weak results.
 
-For each finding, report:
-- Priority: P1 (critical), P2 (important), P3 (minor)
-- File and line number
-- Description of the issue
-- Suggested fix
+**Success criteria**: The prompt is specific to the change set rather than reusable boilerplate.
 
-Verify each finding against the actual code. Read the relevant
-source files before reporting. Do not report style issues.
+## Step 3: Run Kiro in non-interactive mode
 
-Output a markdown table of findings.
-```
+Invoke `kiro-cli chat` with:
 
-**Key principles for the prompt:**
-- Be specific about what changed -- generic prompts get generic results
-- List previously known issues so kiro doesn't re-report them
-- Focus on the areas where bugs are most likely (security, concurrency, edge cases)
-- Tell kiro to verify findings against actual code before reporting
-
-### Step 3: Run Kiro Review
-
-```bash
-kiro-cli chat \
-  --no-interactive \
-  -a \
-  "$(cat /tmp/kiro-review-prompt.md)" \
-  2>&1
-```
-
-**Important flags:**
 - `--no-interactive` -- runs without expecting user input, returns output directly
 - `-a` (trust all tools) -- kiro needs file read access to verify findings against source
-- Always capture stderr with `2>&1` (kiro logs to stderr)
 
-Run this in the background if the review is expected to take long:
-- Use `run_in_background` on the Bash tool
-- The output will be available when the command completes
+Always capture stderr with `2>&1` (kiro logs to stderr).
 
-**Optional flags:**
+Optional flags:
+
 - `--model <model>` -- specify a particular model if needed
 - `--agent <agent>` -- use a specific agent profile for the review
 
-### Step 4: Parse and Report Findings
+If the run is likely to take a while, background execution is acceptable, but keep the scope tight enough that the review stays focused.
 
-Read the kiro output and extract findings. Look for:
-- Priority markers (`P1`, `P2`, `P3`)
-- File paths with line numbers
-- Markdown tables of findings
+**Success criteria**: Kiro runs on the intended scope and returns parseable findings.
 
-Report findings to the user in a clear table:
+## Step 4: Summarize findings
 
-```
-| # | Priority | Description | File:Line |
-|---|----------|-------------|-----------|
-| 1 | P1       | ...         | ...       |
-```
+Report:
 
-### Step 5: Fix Findings (if requested)
+- review scope
+- findings by priority
+- file and line references when available
+- explicit clean result when no material findings are returned
 
-If the user wants to fix the findings:
-1. Read each cited file to verify the finding is real
-2. Apply fixes
-3. Run tests and typecheck
-4. Commit the fixes
+If the user wants fixes, verify each finding locally before changing code.
 
-### Step 6: Iterate (if requested)
+**Success criteria**: The user gets a readable review summary instead of raw CLI logs.
 
-For thorough review, run multiple rounds:
-1. Fix findings from round N
-2. Update the prompt to list all previously fixed issues
-3. Run round N+1 with the updated prompt
-4. Repeat until findings converge to zero
+## Step 5: Iterate only with exclusions
 
-**Critical for iteration:** Always add previously fixed issues to the
-prompt's exclusion list. Otherwise kiro will re-report the same issues
-every round, wasting time and API costs.
+On later rounds:
 
-## Example: Branch Review
+- list prior fixed findings in the exclusion block
+- narrow the scope to newly changed files when possible
+- avoid repeated full-branch reviews unless the code changed broadly again
 
-```bash
-# 1. Write review prompt
-cat > /tmp/kiro-review-prompt.md << 'EOF'
-Review the code changes on this branch compared to main.
+**Success criteria**: Follow-up rounds target new issues instead of recycling old ones.
 
-The changes cover a new authentication module.
+## Guardrails
 
-Focus on:
-1. SECURITY: JWT validation, token expiry, session management
-2. CORRECTNESS: Error handling, edge cases, missing null checks
-3. TESTING: Are there tests for error paths?
+- Do not run this skill proactively.
+- Do not put secrets, tokens, or private config into the prompt.
+- Do not trust findings blindly without local verification.
+- Do not skip diff reading before prompt construction.
 
-Verify each finding against the actual code before reporting.
-Output a markdown table with Priority, File:Line, Description, and Suggested Fix columns.
-EOF
+## Output Contract
 
-# 2. Run review
-kiro-cli chat \
-  --no-interactive \
-  -a \
-  "$(cat /tmp/kiro-review-prompt.md)" \
-  2>&1
-```
+Report:
 
-## Example: Iterative Deep Review
-
-```bash
-# Round 2 prompt (after fixing round 1 findings)
-cat > /tmp/kiro-review-prompt.md << 'EOF'
-Round 2 review. Prior fixes (do NOT re-report):
-- SQL injection in user query (parameterized)
-- Missing auth check on /api/admin (added middleware)
-- XSS in profile page (escaped output)
-
-Focus on genuinely NEW issues only.
-Review the current branch against main.
-Output a markdown table of findings.
-EOF
-
-kiro-cli chat \
-  --no-interactive \
-  -a \
-  "$(cat /tmp/kiro-review-prompt.md)" \
-  2>&1
-```
-
-## Safety Rules
-
-| Rule | Reason |
-|------|--------|
-| Always use `-a` (trust all tools) | Kiro needs file read access to verify findings |
-| Always list prior fixes in iterative reviews | Prevents wasting rounds on already-fixed issues |
-| Always verify findings before fixing | Kiro can produce false positives |
-| Run from the correct directory | Kiro reviews the repo it's invoked in |
-| Never pass secrets in the prompt | The prompt may be logged |
-
-## Failure Modes
-
-- **Kiro not installed**: Check `which kiro-cli` first, tell user to install
-- **Not logged in**: Run `kiro-cli whoami` — user needs to `kiro-cli login`
-- **Too large diff**: Kiro may truncate; break into smaller review scopes
-- **Repeated findings**: Always maintain the exclusion list between rounds
-- **False positives**: Always read the cited code before acting on findings
+1. the review scope
+2. the main focus areas given to Kiro
+3. findings by priority with locations when available
+4. explicit clean result if nothing material was found
+5. whether a next round should exclude previously fixed issues
