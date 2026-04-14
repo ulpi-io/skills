@@ -17,6 +17,11 @@ npx skills add https://github.com/ulpi-io/skills --skill browse
 | Skill | What it does |
 |-------|-------------|
 | [browse](#browse) | Headless browser CLI — 76+ commands, ref-based interaction, 13x fewer tokens than @playwright/mcp |
+| [browse-stealth](#browse-stealth) | Stealth browsing via camoufox runtime — Turnstile, Google, DataDome bypass with proxy rotation |
+| [browse-config](#browse-config) | Guided camoufox profile generator — stealth, Google-safe, fast-scrape, or custom presets |
+| [browse-seo](#browse-seo) | On-page SEO audit — meta tags, headings, schema, Core Web Vitals, mobile rendering |
+| [browse-aeo](#browse-aeo) | Answer Engine Optimization — page audit + SERP analysis for AI Overviews and Perplexity |
+| [browse-geo](#browse-geo) | Generative Engine Optimization monitoring — brand/domain visibility across AI search |
 | [codemap](#codemap) | Code search + architecture analysis — hybrid vector/BM25, dependency graphs, PageRank |
 | [plan-to-task-list-with-dag](#plan-to-task-list-with-dag) | Decompose features into parallel-ready task DAGs |
 | [map-project](#map-project) | Generate CLAUDE.md from codebase scan |
@@ -75,6 +80,76 @@ browse click @e5                           # → "Clicked @e5"  (15 tokens)
 **Why not @playwright/mcp?** Playwright MCP dumps ~16K tokens on every action. `browse` returns a one-liner. Over a 10-step session: **12K tokens vs 146K** — 13x less context burned. 76+ commands, ref-based interaction, cursor-interactive detection, 150+ device emulation, multi-agent sessions, persistent profiles, React DevTools, command recording, cookie import from real browsers.
 
 Requires: `npm install -g @ulpi/browse` | [Full docs →](https://github.com/ulpi-io/browse)
+
+---
+
+## browse-stealth
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill browse-stealth
+```
+
+**Stealth browsing for sites that block normal browsers.**
+
+Same workflow as `browse` — navigate, inspect, interact, report — but with the camoufox runtime (anti-detection Firefox with C++-level fingerprint spoofing). Passes Cloudflare Turnstile, Google "unusual traffic", DataDome, and PerimeterX checks. Supports named camoufox profiles, persistent authenticated sessions, and per-region proxy rotation.
+
+Requires: `npm install -g @ulpi/browse` + `npm install camoufox-js && npx camoufox-js fetch`
+
+---
+
+## browse-config
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill browse-config
+```
+
+**Guided camoufox profile generator.**
+
+Asks the user questions to build a `browse.json` camoufox section or a named profile JSON for `.browse/camoufox-profiles/`. Presets: **stealth** (geoip + humanize), **Google-safe** (geoip + humanize + random OS), **fast-scrape** (blocks images/WebRTC/WebGL, cache on), or **custom** walkthrough covering identity, privacy, performance, network, behavior, and advanced Firefox prefs.
+
+Requires: `npm install -g @ulpi/browse`
+
+---
+
+## browse-seo
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill browse-seo
+```
+
+**On-page SEO audit via the browse CLI.**
+
+Extracts meta tags, heading hierarchy, structured data, navigation timing, link structure, and mobile rendering. Runs targeted JS checks for alt tags, hreflang, and lazy-loaded images. Produces a ranked report with pass/warning/fail per section and prioritized fixes. Switches to camoufox automatically when targets return 403 or a challenge page.
+
+Requires: `npm install -g @ulpi/browse`
+
+---
+
+## browse-aeo
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill browse-aeo
+```
+
+**Answer Engine Optimization — page audit and AI-SERP analysis.**
+
+Two modes. **Page Audit** scores a URL on a 0-100 scale across structured data, meta quality, heading structure, answer readiness, and authority signals — flagging FAQ/HowTo/Article schema gaps that feed AI answers. **SERP Analysis** checks how a query surfaces in Google AI Overviews and Perplexity, identifying cited domains, featured snippets, and People Also Ask targets. Uses camoufox for anti-bot bypass.
+
+Requires: `npm install -g @ulpi/browse` + `npm install camoufox-js && npx camoufox-js fetch`
+
+---
+
+## browse-geo
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill browse-geo
+```
+
+**Generative Engine Optimization monitoring across AI search.**
+
+Runs multi-query sweeps against Google AI Overviews, Perplexity, and ChatGPT Search (authenticated). Records citation presence, position, context, and competing domains per query. Compiles a visibility matrix with per-engine visibility rate, best-performing queries, gap queries, and top competing domains. Uses camoufox for Google and a persistent browser profile for ChatGPT.
+
+Requires: `npm install -g @ulpi/browse` + `npm install camoufox-js && npx camoufox-js fetch` + ChatGPT Plus/Team account for ChatGPT Search.
 
 ---
 
