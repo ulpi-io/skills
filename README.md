@@ -30,6 +30,7 @@ npx skills add https://github.com/ulpi-io/skills --skill browse
 | [pr-retro](#pr-retro) | Branch retrospective with merge readiness verdict |
 | [branch-review-before-pr](#branch-review-before-pr) | Structural review — race conditions, trust boundaries |
 | [find-bugs](#find-bugs) | Security audit + bug finding on branch diff |
+| [go-live-audit](#go-live-audit) | Pre-launch audit — multi-agent workflow: gates, dimension finders, adversarial verify, critic |
 | [bugfix](#bugfix) | Fix bugs with red-green workflow — reproducer, root cause, minimal fix, regression tests |
 | [code-simplify](#code-simplify) | Review code for reuse, quality, efficiency |
 | [frontend-design-ui-ux](#frontend-design-ui-ux) | UI/UX design specs and component briefs |
@@ -255,6 +256,18 @@ npx skills add https://github.com/ulpi-io/skills --skill find-bugs
 **Security audit + bug finding on branch diff.**
 
 Analyzes full diff against main, maps attack surfaces, runs security checklist against every changed file, verifies findings against context. Prioritized output.
+
+---
+
+## go-live-audit
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill go-live-audit
+```
+
+**Launch-readiness audit of an entire repo — authored fresh for each project.**
+
+Generates a project-tailored multi-agent audit workflow from a bundled template and runs it via the Workflow tool: build/test/lint/typecheck gates in parallel, one read-only finder per applicable audit dimension (picked from a 20+ dimension catalog — authz, multi-tenancy, injection, data-loss, money-math, concurrency, supply-chain, …), agent-based dedup, adversarial verifiers that try to *refute* every finding (blockers get a code lens + spec lens), and a completeness critic that spawns follow-up finders for uncovered areas. Ends with a GO / NO-GO / GO-WITH-FIXES verdict. Typically 40–80 agents — for a quick branch-diff review use `find-bugs` instead.
 
 ---
 
