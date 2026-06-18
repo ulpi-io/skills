@@ -55,6 +55,12 @@ money is BIGINT/string, RLS fail-closed, append-only ActivityLog, route-barrel w
 // skill and passes its scriptPath). When set, the Audit phase COMPOSES that proven workflow inline via
 // the workflow() hook; when unset, it falls back to an inline finder pass.
 const AUDIT_SCRIPT_PATH = CFG.auditScriptPath || null
+// Specialist agents/skills differ per install. The skill resolves what THIS environment has and passes
+// it in: availableAgents = the specialist agent names that actually exist (null = unconstrained — trust
+// the plan + runtime fallback); allowGeneralFallback = the user consented to degrade a missing
+// specialist to general-purpose (the skill NOTIFIES the user before setting this).
+const AVAILABLE_AGENTS = Array.isArray(CFG.availableAgents) ? CFG.availableAgents : null
+const ALLOW_GENERAL_FALLBACK = CFG.allowGeneralFallback !== false   // default true: degrade, don't crash
 let PROMPT = CFG.prompt || 'FILL: the feature request'
 
 // Fail LOUD if inputs never reached the script. Without this, the values above stay at their FILL:
@@ -79,33 +85,29 @@ const harnessRoute = HARNESS === 'kiro'
 const rank = { BLOCK: 3, CONCERN: 2, OBSERVATION: 1 }
 const hasBlocking = (fs) => (fs || []).some(f => f.severity === 'BLOCK' || f.severity === 'CONCERN')
 
-// The agent types this runtime actually exposes. The plan assigns `agent`/`reviewer`
-// per task (reviewer = agent + '-reviewer'); a task assigned `general-purpose` yields
-// `general-purpose-reviewer`, which does NOT exist — spawning an unknown agentType
-// crashes the ENTIRE workflow. safeAgent() maps any unknown type to a valid fallback
-// so one bad plan assignment can never abort the run.
-const KNOWN_AGENTS = new Set([
-  'claude', 'claude-code-guide', 'codex:codex-rescue',
-  'devops-aws-senior-engineer', 'devops-aws-senior-engineer-reviewer',
-  'devops-docker-senior-engineer', 'devops-docker-senior-engineer-reviewer', 'Explore',
-  'expo-react-native-engineer', 'expo-react-native-engineer-reviewer',
-  'express-senior-engineer', 'express-senior-engineer-reviewer', 'general-purpose',
-  'go-cli-senior-engineer', 'go-cli-senior-engineer-reviewer',
-  'go-senior-engineer', 'go-senior-engineer-reviewer',
-  'ios-senior-engineer', 'ios-senior-engineer-reviewer',
-  'laravel-senior-engineer', 'laravel-senior-engineer-reviewer',
-  'macos-senior-engineer', 'macos-senior-engineer-reviewer',
-  'nextjs-senior-engineer', 'nextjs-senior-engineer-reviewer',
-  'nodejs-cli-senior-engineer', 'nodejs-cli-senior-engineer-reviewer', 'Plan',
-  'python-fastapi-senior-engineer', 'python-fastapi-senior-engineer-reviewer',
-  'python-senior-engineer', 'python-senior-engineer-reviewer',
-  'react-vite-tailwind-engineer', 'react-vite-tailwind-engineer-reviewer',
-  'rust-architecture-reviewer', 'rust-senior-engineer', 'rust-senior-engineer-reviewer',
-  'statusline-setup',
-])
-function safeAgent(type, fallback = 'general-purpose') {
-  if (typeof type === 'string' && KNOWN_AGENTS.has(type)) return type
-  return KNOWN_AGENTS.has(fallback) ? fallback : 'general-purpose'
+// Specialist agents differ per install — the plan may assign an agent type (e.g.
+// 'nestjs-backend-engineer' or its '-reviewer') that THIS environment doesn't have. We do NOT hardcode
+// a registry (it goes stale and wrongly downgrades agents that exist elsewhere). Instead: honor the
+// skill-supplied availableAgents when present, and let spawnSpecialist catch any runtime "not found",
+// record it in missingAgents, and (only when the user consented via allowGeneralFallback) retry on
+// general-purpose. The return surfaces missingAgents so the skill can notify the user.
+const missingAgents = new Set()
+function resolveAgent(type) {
+  if (typeof type !== 'string' || !type) return 'general-purpose'
+  if (AVAILABLE_AGENTS && !AVAILABLE_AGENTS.includes(type)) { missingAgents.add(type); return ALLOW_GENERAL_FALLBACK ? 'general-purpose' : type }
+  return type
+}
+async function spawnSpecialist(brief, opts) {
+  try { return await agent(brief, opts) }
+  catch (e) {
+    const msg = String((e && e.message) || e)
+    const notFound = opts.agentType && opts.agentType !== 'general-purpose' && /agent type .*not found|not a valid agent|unknown agent|no such agent|available agents:/i.test(msg)
+    if (notFound) {
+      missingAgents.add(opts.agentType)
+      if (ALLOW_GENERAL_FALLBACK) { log(`agentType "${opts.agentType}" not available in this environment — using general-purpose`); return await agent(brief, { ...opts, agentType: 'general-purpose' }) }
+    }
+    throw e
+  }
 }
 
 // ── StructuredOutput schemas ────────────────────────────────────────────────────
@@ -173,8 +175,8 @@ function planBrief(prompt, round) {
   return `Follow the plan-to-task-list-with-dag methodology for this request, UNATTENDED (do NOT ask
 the user anything — ${mode}). Request:\n${prompt}\n
 Ground every path in the real repo at ${ROOT}; never invent files. Decompose into atomic tasks (≤3
-files each). For EVERY task assign a specialist engineer \`agent\` (never general-purpose) and set
-\`reviewer\` = that agent name + '-reviewer'; set \`stackSkill\` to the slash-skill to enforce for the
+files each). For EVERY task assign an engineer \`agent\` and set \`reviewer\` = that agent name +
+'-reviewer'. ${AVAILABLE_AGENTS ? `Choose \`agent\` ONLY from the agents that exist in THIS environment: ${AVAILABLE_AGENTS.join(', ')}. Pick the closest specialist; if none fits use 'general-purpose'. Set \`reviewer\` to the agent's '-reviewer' ONLY if that exact name is also in that list, otherwise 'general-purpose'. Do NOT invent agent names outside that list.` : `Prefer the closest specialist over general-purpose.`} Set \`stackSkill\` to the slash-skill to enforce for the
 task's stack ('/nextjs','/laravel','/rust',…) or null. Give each task writeScope, 2–3 acceptance
 criteria (≥1 failure/edge), and a validate command. Write .ulpi/plans/<name>.md + .json (JSON is the
 source of truth; render MD from it). Return planName, planPath, tasks[], and layers[][] (the parallel
@@ -197,7 +199,7 @@ Report applied:true. Do NOT touch code — only the plan files.`
 function engineerBrief(t) {
   return `You are the specialist engineer (${t.agent}) for ${t.id}: ${t.title}.
 ${t.description || ''}
-${t.stackSkill ? `You MUST use the ${t.stackSkill} skill and honor its rules.` : ''}
+${t.stackSkill ? `If the ${t.stackSkill} skill is available here, you MUST use it and honor its rules; if it is not installed, proceed on your own best-practice rubric and note that in your report.` : ''}
 Work in THIS isolated worktree. Base your task branch on the latest integrated state:
   git checkout -B ${branchFor(t)} ${WORKING_BRANCH}
 Edit ONLY: ${(t.writeScope || []).join(', ')}. Honor the locked rules: ${HARD_RULES}.
@@ -309,7 +311,7 @@ async function buildPlan(plan, round) {
     const layer = layers[li].map(id => byId.get(id)).filter(Boolean)
     // engineers implement in parallel (isolated worktrees, disjoint write scope), each on a task branch
     const built = await parallel(layer.map(t => () =>
-      agent(engineerBrief(t), { label: `build:${t.id}`, phase: 'Build', schema: TASK_RESULT, agentType: safeAgent(t.agent), isolation: 'worktree' }).then(r => ({ t, r }))))
+      spawnSpecialist(engineerBrief(t), { label: `build:${t.id}`, phase: 'Build', schema: TASK_RESULT, agentType: resolveAgent(t.agent), isolation: 'worktree' }).then(r => ({ t, r }))))
     // in-workflow git integrate: merge passed task branches onto the working branch (one sequential agent)
     const passedBranches = built.filter(b => b && b.r && b.r.status === 'passed').map(b => branchFor(b.t))
     if (passedBranches.length) await agent(integrateBrief(passedBranches), { label: `integrate:L${li}r${round}`, phase: 'Build', schema: INTEGRATE_RESULT })
@@ -317,13 +319,13 @@ async function buildPlan(plan, round) {
     for (const b of built.filter(Boolean)) {
       const t = b.t
       if (!b.r || b.r.status !== 'passed') { log.push({ task: t.id, status: 'blocked', reason: 'engineer validate failed', fixes: 0, findings: [] }); continue }
-      let review = await agent(reviewerBrief(t), { label: `review:${t.id}`, phase: 'Build', schema: FINDINGS, agentType: safeAgent(t.reviewer) }) || { verdict: 'concerns', findings: [] }
+      let review = await spawnSpecialist(reviewerBrief(t), { label: `review:${t.id}`, phase: 'Build', schema: FINDINGS, agentType: resolveAgent(t.reviewer) }) || { verdict: 'concerns', findings: [] }
       let fixes = 0
       while (review.verdict === 'blocked' && fixes < MAX_FIX) {
         fixes++
-        await agent(fixBrief(t, review.findings, fixes), { label: `fix:${t.id}#${fixes}`, phase: 'Build', schema: TASK_RESULT, agentType: safeAgent(t.agent), isolation: 'worktree' })
+        await spawnSpecialist(fixBrief(t, review.findings, fixes), { label: `fix:${t.id}#${fixes}`, phase: 'Build', schema: TASK_RESULT, agentType: resolveAgent(t.agent), isolation: 'worktree' })
         await agent(integrateBrief([fixBranchFor(t, fixes)]), { label: `reintegrate:${t.id}#${fixes}`, phase: 'Build', schema: INTEGRATE_RESULT })
-        review = await agent(reviewerBrief(t), { label: `review:${t.id}#${fixes}`, phase: 'Build', schema: FINDINGS, agentType: safeAgent(t.reviewer) }) || { verdict: 'concerns', findings: [] }
+        review = await spawnSpecialist(reviewerBrief(t), { label: `review:${t.id}#${fixes}`, phase: 'Build', schema: FINDINGS, agentType: resolveAgent(t.reviewer) }) || { verdict: 'concerns', findings: [] }
       }
       log.push({ task: t.id, status: review.verdict === 'blocked' ? 'blocked' : 'passed', fixes, findings: review.findings || [] })
     }
@@ -422,6 +424,7 @@ return {
   roundsRun: history.length,
   history,
   openRegister,                 // empty = clean; non-empty after MAX_ROUNDS = escalate to the user
+  missingAgents: [...missingAgents],   // specialist agent types the plan wanted that aren't installed here → skill notifies the user
   harness: HARNESS,
   goLive: GO_LIVE,
 }

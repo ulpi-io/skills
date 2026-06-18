@@ -49,8 +49,9 @@ This skill drives a long-running, multi-agent delivery Workflow. Non-negotiable 
    specialist ENGINEER agent implements on a task branch in an isolated worktree, an in-workflow
    INTEGRATE agent git-merges it onto the working branch, the matched specialist REVIEWER agent
    reviews the integrated state, and a bounded fix loop runs until the task passes.
-4. The build MUST pick a specialist agent for every task — never `general-purpose` for build work —
-   and when a task's stack has a skill, the engineer MUST use it (`/nextjs`, `/laravel`, `/rust`, …).
+4. The build picks the closest AVAILABLE specialist per task; it falls back to `general-purpose` ONLY
+   with the user's consent after the skill notified them a specialist is missing — never silently. When
+   a task's stack skill is installed, the engineer MUST use it (`/nextjs`, `/laravel`, `/rust`, …).
 5. Gates are real. The founder-review loops review → FIX → re-review until APPROVE / no issues; the
    build loops engineer → reviewer → fix until the task passes. Never wave a gate through.
 6. Codex delegation goes through the codex plugin (`codex:codex-rescue` agentType). Kiro via the
@@ -103,10 +104,30 @@ be built. If `root` is not a git repo, STOP and tell the user — offer `git ini
 correct the path — and do not launch the Workflow. (The Workflow runs the same preflight and aborts
 cleanly with `ranReal:false`, but catching it here avoids spawning the run at all.)
 
+**Resolve the specialist agents/skills this environment has, and notify on gaps.** The build assigns
+an engineer + `-reviewer` agent per task and may require a stack skill (`/nextjs`, `/laravel`, `/rust`,
+…) — these differ per install, and the plan agent (a subagent) cannot see the registry, so YOU resolve
+them here and pass them down (this is why an unconstrained plan once invented a `nestjs-backend-engineer`
+that wasn't installed):
+
+1. From the agent types available to you (your Agent tool's `subagent_type` options) and your installed
+   skills, list the specialist engineer/`-reviewer` agents and stack skills that actually exist here.
+2. Identify the project's stack(s) and the specialists they'd want. If a needed specialist agent or
+   stack skill is MISSING, NOTIFY the user with `AskUserQuestion` before building — name exactly what's
+   missing and offer: **install it** (tell them how, then stop so they can re-run) or **continue
+   without** (the build uses `general-purpose` for that agent and skips the missing stack skill).
+3. Pass `availableAgents` (the specialist agent names that exist here, including their `-reviewer`
+   forms) and `allowGeneralFallback` (`true` only if the user chose continue) into the Workflow `args`.
+   The plan then assigns ONLY agents from that list, so it cannot invent one that isn't installed; the
+   Workflow also returns `missingAgents` for anything that still slipped through.
+
+Never silently substitute `general-purpose` for a missing specialist without telling the user first.
+
 Open a master `TodoWrite` mirroring the phases in `references/playbook-state.md`.
 
 **Success criteria**: `harness`, `goLive`, `root` (a confirmed git work tree), `workingBranch`,
-`validate`, and `hardRules` are all resolved.
+`validate`, `hardRules`, and `availableAgents` (+ `allowGeneralFallback` if any specialist is missing)
+are all resolved.
 
 ## Phase 2 — Run the playbook Workflow (steps 3–14)
 
@@ -120,7 +141,7 @@ Then launch `references/workflow-template.js` via the **Workflow** tool, passing
 ```
 Workflow({ scriptPath: ".../references/workflow-template.js",
            args: { prompt, harness, goLive, root, workingBranch, validate, hardRules, maxRounds,
-                   auditScriptPath } })
+                   auditScriptPath, availableAgents, allowGeneralFallback } })
 ```
 
 **Pass `args` as a real JSON object, NOT a JSON-encoded string.** A stringified blob reaches the
@@ -164,6 +185,9 @@ Read the Workflow result:
   `aborted` message), `roundsRun` is 0, or `harness` comes back as a `FILL:` string, the inputs never
   reached the script. Report that failure and relaunch (fresh run) with `args` as a real JSON object;
   do NOT treat `converged` as meaningful.
+- **If `missingAgents` is non-empty**, some tasks ran on `general-purpose` because the assigned
+  specialist isn't installed here. Surface the list (which agents, how to install) so the user can
+  decide whether to install them and re-run for higher-quality output.
 - **`converged: true`** (real run, `openRegister` empty) → DONE. Report the rounds run, the build
   outcome per task, the review/audit verdicts, and where the plans landed.
 - **`openRegister` non-empty** (recursion hit `maxRounds`) → STOP and escalate honestly: present the
@@ -179,8 +203,9 @@ what still blocks, with the round budget respected.
 - Do not drop or reorder steps — all 14 run; the Workflow owns 3–14, the skill owns 1–2.1.
 - Do not hand-roll the plan — the Workflow's plan phase follows the plan-to-task-list-with-dag
   methodology and assigns a specialist agent per task.
-- The build MUST assign a specialist agent to every task; `general-purpose` is not an acceptable
-  build agent. When a stack skill exists (`/nextjs`, `/laravel`, `/rust`, …), the engineer MUST use it.
+- The build assigns the closest AVAILABLE specialist per task; fall back to `general-purpose` only with
+  the user's consent after notifying them a specialist is missing (never silently). When a stack skill
+  is installed, the engineer MUST use it (`/nextjs`, `/laravel`, `/rust`, …).
 - Do not exit a gate with open BLOCK/CONCERN findings, and never fabricate a clean verdict to break
   the loop.
 - Do not let the recursion run unbounded; honor `maxRounds`.
