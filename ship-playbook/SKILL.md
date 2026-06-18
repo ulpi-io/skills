@@ -139,6 +139,16 @@ that wasn't installed):
 
 Never silently substitute `general-purpose` for a missing specialist without telling the user first.
 
+**Verify the chosen build/review handoff harness is installed, and notify if not.** If `buildHarness`
+or `taskReviewHarness` is not `native`, confirm its tooling exists before launching:
+- **kiro build** needs the `hand-over-to-kiro` skill (by Sabeur Thabti, @thabti) **and** `kiro-cli`
+  (`kiro-cli --version`); **kiro review** needs the `kiro-review` skill **and** `kiro-cli`.
+- **codex** (build or review) needs the codex plugin (`codex:codex-rescue`).
+
+If a chosen handoff's tool is missing, NOTIFY the user with `AskUserQuestion` — offer to **install it**
+(for kiro: `hand-over-to-kiro` via `npx skills add …` + kiro-cli from <https://kiro.dev/docs/cli>) or
+**switch that handoff to `native`** (or another available harness). Do not silently fall back.
+
 Open a master `TodoWrite` mirroring the phases in `references/playbook-state.md`.
 
 **Success criteria**: `harness`, `goLive`, `mapRefresh`, `buildHarness`, `taskReviewHarness`, `root`

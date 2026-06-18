@@ -51,6 +51,7 @@ npx skills add https://github.com/ulpi-io/skills --skill browse
 | [claude-review](#claude-review) | Independent self-review via Claude agent in worktree isolation |
 | [codex-review](#codex-review) | Independent AI review via OpenAI Codex CLI — second opinion on your changes |
 | [kiro-review](#kiro-review) | Independent AI review via Kiro CLI — second opinion on your changes |
+| [hand-over-to-kiro](#hand-over-to-kiro) | Delegate an implementation task to the Kiro CLI — injection-safe handoff, verified diff (credit: @thabti) |
 | [find-agents](#find-agents) | Find, install, and manage AI agents across 43+ IDEs |
 | [secrets](#secrets) | Credential management — encrypted vault, CLI injection, MCP shim |
 | [build-dmg](#build-dmg) | Build distributable DMG installers for macOS Xcode projects |
@@ -551,6 +552,22 @@ npx skills add https://github.com/ulpi-io/skills --skill kiro-review
 **Independent AI review via Kiro CLI.**
 
 Get a second opinion on code changes using Amazon's Kiro. Analyzes the diff, builds focused review prompts, runs `kiro-cli chat` in non-interactive mode with full tool access, parses prioritized findings, and supports iterative multi-round reviews. Use for cross-review before merging or when you want a rival AI to verify Claude's work.
+
+Requires: `kiro-cli` + logged in (`kiro-cli login`)
+
+---
+
+## hand-over-to-kiro
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill hand-over-to-kiro
+```
+
+**Delegate an implementation task to the Kiro CLI — and get a verified report back.**
+
+Hand a plan or a task to Amazon's Kiro to *build* (the write-side counterpart to `/kiro-review`). Claude gathers context, builds a self-contained, **injection-safe** prompt (written to a temp file, never interpolated into the shell; user input rephrased and wrapped in boundary tags), runs `kiro-cli` with tool-trust opt-in (no `--trust-all-tools` unless you ask), then verifies the result against `git diff` and reports files changed, errors, and what's left. Used by `/ship-playbook` as its kiro build handoff.
+
+Credit: original skill by **Sabeur Thabti** ([@thabti](https://github.com/thabti/hand-over-to-kiro)), MIT — adapted to the @ulpi/skills conventions.
 
 Requires: `kiro-cli` + logged in (`kiro-cli login`)
 

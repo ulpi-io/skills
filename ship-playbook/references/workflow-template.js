@@ -309,13 +309,14 @@ async function harnessReviewLoop(plan, round) {
 // ── build/review handoff: who WRITES & who REVIEWS each task ─────────────────────
 // Independent of the plan/impl cross-review HARNESS. buildHarness / taskReviewHarness each ∈
 // native|codex|kiro. native = the plan's specialist agent (via resolveAgent + missingAgents reporting);
-// codex = the codex plugin agent (write-capable); kiro = the Kiro CLI (the kiro-review skill for review;
-// the Kiro CLI directly for build, with self-implementation fallback if the CLI is absent).
+// codex = the codex plugin agent (write-capable); kiro = the kiro-review skill for review and the
+// hand-over-to-kiro skill (which wraps the Kiro CLI, run autonomously) for build, each with a
+// self-implementation fallback if the skill/CLI is absent.
 function buildSpawn(t, brief, label) {
   if (BUILD_HARNESS === 'codex')
     return spawnSpecialist(`You MAY edit files to implement this task.\n${brief}`, { label, phase: 'Build', schema: TASK_RESULT, agentType: 'codex:codex-rescue', isolation: 'worktree' })
   if (BUILD_HARNESS === 'kiro')
-    return spawnSpecialist(`Use the Kiro CLI (\`kiro\`) to implement this task in this worktree; if the Kiro CLI is not available, implement it yourself.\n${brief}`, { label, phase: 'Build', schema: TASK_RESULT, agentType: 'general-purpose', isolation: 'worktree' })
+    return spawnSpecialist(`Use the hand-over-to-kiro skill (\`/hand-over-to-kiro\`) to delegate implementing this task to kiro-cli — it builds an injection-safe prompt, runs kiro in this worktree, and verifies the diff. This is UNATTENDED: tell it to run kiro autonomously (\`--trust-all-tools\`), since no human can approve tool calls. If the hand-over-to-kiro skill or kiro-cli is unavailable, say so and implement the task yourself.\n${brief}`, { label, phase: 'Build', schema: TASK_RESULT, agentType: 'general-purpose', isolation: 'worktree' })
   return spawnSpecialist(brief, { label, phase: 'Build', schema: TASK_RESULT, agentType: resolveAgent(t.agent), isolation: 'worktree' })
 }
 function taskReviewSpawn(t, brief, label) {

@@ -27,7 +27,7 @@ The `harness` above is the one-shot cross-review of the plan and the full implem
 
 | Handoff | `native` (default) | `codex` | `kiro` |
 |---|---|---|---|
-| Build (write) — `buildHarness` | the plan's specialist engineer agent (`resolveAgent(t.agent)`, in a worktree) | `codex:codex-rescue` agent (write-capable), worktree, brief allows edits | a `general-purpose` agent driving the **Kiro CLI** to implement; if the CLI is absent it implements directly (there is no kiro-build skill wrapper) |
+| Build (write) — `buildHarness` | the plan's specialist engineer agent (`resolveAgent(t.agent)`, in a worktree) | `codex:codex-rescue` agent (write-capable), worktree, brief allows edits | a `general-purpose` agent that runs the **`hand-over-to-kiro`** skill (by Sabeur Thabti, @thabti) to delegate the build to `kiro-cli`; if that skill or the CLI is absent it implements directly |
 | Per-task review — `taskReviewHarness` | the matched `-reviewer` agent (`resolveAgent(t.reviewer)`) | `codex:codex-rescue` agent, READ-ONLY brief | the **`kiro-review`** skill via the Kiro CLI, READ-ONLY; if unavailable it says so and returns empty findings (never substitutes a native review) |
 
 These are wired in `workflow-template.js` (`buildSpawn` / `taskReviewSpawn`). The native path keeps the
