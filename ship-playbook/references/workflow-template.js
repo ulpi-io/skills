@@ -62,6 +62,35 @@ const harnessRoute = HARNESS === 'kiro'
 const rank = { BLOCK: 3, CONCERN: 2, OBSERVATION: 1 }
 const hasBlocking = (fs) => (fs || []).some(f => f.severity === 'BLOCK' || f.severity === 'CONCERN')
 
+// The agent types this runtime actually exposes. The plan assigns `agent`/`reviewer`
+// per task (reviewer = agent + '-reviewer'); a task assigned `general-purpose` yields
+// `general-purpose-reviewer`, which does NOT exist — spawning an unknown agentType
+// crashes the ENTIRE workflow. safeAgent() maps any unknown type to a valid fallback
+// so one bad plan assignment can never abort the run.
+const KNOWN_AGENTS = new Set([
+  'claude', 'claude-code-guide', 'codex:codex-rescue',
+  'devops-aws-senior-engineer', 'devops-aws-senior-engineer-reviewer',
+  'devops-docker-senior-engineer', 'devops-docker-senior-engineer-reviewer', 'Explore',
+  'expo-react-native-engineer', 'expo-react-native-engineer-reviewer',
+  'express-senior-engineer', 'express-senior-engineer-reviewer', 'general-purpose',
+  'go-cli-senior-engineer', 'go-cli-senior-engineer-reviewer',
+  'go-senior-engineer', 'go-senior-engineer-reviewer',
+  'ios-senior-engineer', 'ios-senior-engineer-reviewer',
+  'laravel-senior-engineer', 'laravel-senior-engineer-reviewer',
+  'macos-senior-engineer', 'macos-senior-engineer-reviewer',
+  'nextjs-senior-engineer', 'nextjs-senior-engineer-reviewer',
+  'nodejs-cli-senior-engineer', 'nodejs-cli-senior-engineer-reviewer', 'Plan',
+  'python-fastapi-senior-engineer', 'python-fastapi-senior-engineer-reviewer',
+  'python-senior-engineer', 'python-senior-engineer-reviewer',
+  'react-vite-tailwind-engineer', 'react-vite-tailwind-engineer-reviewer',
+  'rust-architecture-reviewer', 'rust-senior-engineer', 'rust-senior-engineer-reviewer',
+  'statusline-setup',
+])
+function safeAgent(type, fallback = 'general-purpose') {
+  if (typeof type === 'string' && KNOWN_AGENTS.has(type)) return type
+  return KNOWN_AGENTS.has(fallback) ? fallback : 'general-purpose'
+}
+
 // ── StructuredOutput schemas ────────────────────────────────────────────────────
 const PLAN = {
   type: 'object', additionalProperties: false,
@@ -263,7 +292,7 @@ async function buildPlan(plan, round) {
     const layer = layers[li].map(id => byId.get(id)).filter(Boolean)
     // engineers implement in parallel (isolated worktrees, disjoint write scope), each on a task branch
     const built = await parallel(layer.map(t => () =>
-      agent(engineerBrief(t), { label: `build:${t.id}`, phase: 'Build', schema: TASK_RESULT, agentType: t.agent, isolation: 'worktree' }).then(r => ({ t, r }))))
+      agent(engineerBrief(t), { label: `build:${t.id}`, phase: 'Build', schema: TASK_RESULT, agentType: safeAgent(t.agent), isolation: 'worktree' }).then(r => ({ t, r }))))
     // in-workflow git integrate: merge passed task branches onto the working branch (one sequential agent)
     const passedBranches = built.filter(b => b && b.r && b.r.status === 'passed').map(b => branchFor(b.t))
     if (passedBranches.length) await agent(integrateBrief(passedBranches), { label: `integrate:L${li}r${round}`, phase: 'Build', schema: INTEGRATE_RESULT })
@@ -271,13 +300,13 @@ async function buildPlan(plan, round) {
     for (const b of built.filter(Boolean)) {
       const t = b.t
       if (!b.r || b.r.status !== 'passed') { log.push({ task: t.id, status: 'blocked', reason: 'engineer validate failed', fixes: 0, findings: [] }); continue }
-      let review = await agent(reviewerBrief(t), { label: `review:${t.id}`, phase: 'Build', schema: FINDINGS, agentType: t.reviewer }) || { verdict: 'concerns', findings: [] }
+      let review = await agent(reviewerBrief(t), { label: `review:${t.id}`, phase: 'Build', schema: FINDINGS, agentType: safeAgent(t.reviewer) }) || { verdict: 'concerns', findings: [] }
       let fixes = 0
       while (review.verdict === 'blocked' && fixes < MAX_FIX) {
         fixes++
-        await agent(fixBrief(t, review.findings, fixes), { label: `fix:${t.id}#${fixes}`, phase: 'Build', schema: TASK_RESULT, agentType: t.agent, isolation: 'worktree' })
+        await agent(fixBrief(t, review.findings, fixes), { label: `fix:${t.id}#${fixes}`, phase: 'Build', schema: TASK_RESULT, agentType: safeAgent(t.agent), isolation: 'worktree' })
         await agent(integrateBrief([fixBranchFor(t, fixes)]), { label: `reintegrate:${t.id}#${fixes}`, phase: 'Build', schema: INTEGRATE_RESULT })
-        review = await agent(reviewerBrief(t), { label: `review:${t.id}#${fixes}`, phase: 'Build', schema: FINDINGS, agentType: t.reviewer }) || { verdict: 'concerns', findings: [] }
+        review = await agent(reviewerBrief(t), { label: `review:${t.id}#${fixes}`, phase: 'Build', schema: FINDINGS, agentType: safeAgent(t.reviewer) }) || { verdict: 'concerns', findings: [] }
       }
       log.push({ task: t.id, status: review.verdict === 'blocked' ? 'blocked' : 'passed', fixes, findings: review.findings || [] })
     }
