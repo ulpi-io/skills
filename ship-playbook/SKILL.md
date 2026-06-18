@@ -83,8 +83,8 @@ specialist engineer/reviewer pair across the DAG layers, a full implementation c
 optional go-live audit, and a self-correcting loop that re-plans and re-runs the whole playbook on
 anything those gates surface — until the gates are genuinely clean.
 
-The 14 steps map to the Workflow phases: **step 3 → Plan · steps 4–6 → Plan review · steps 7–9 →
-Harness plan review · steps 10–11 → Build · step 12 → Impl review · step 13 → Audit · step 14 →
+The 14 steps map to the Workflow phases: **step 3 → Plan · steps 4–9 → Plan review (native ∥ selected
+harness, one bounded loop) · steps 10–11 → Build · step 12 → Impl review · step 13 → Audit · step 14 →
 Recurse**. Steps 1, 2, 2.1 are the prompt and the two questions the skill collects up front.
 
 ## Phase 1 — Intake (steps 1, 2, 2.1)
@@ -184,10 +184,10 @@ skips:
   (mode auto-selected; EXPANSION-ish round 1, HOLD/REDUCTION on recursion), grounds every path in the
   real repo, assigns a specialist engineer + `-reviewer` + stack skill to each task, writes
   `.ulpi/plans/<name>.md`+`.json`, and returns `{tasks, layers}`.
-- **Plan review (steps 4–6)** — native founder review → fix the plan (JSON-first, re-render MD) →
-  re-review, until APPROVE / no blocking findings.
-- **Harness plan review (steps 7–9)** — if `harness != none`, the selected harness ∥ native founder
-  review → fix → repeat until both clean.
+- **Plan review (steps 4–9)** — ONE bounded loop under a single "Plan review" phase: native founder
+  review (∥ the selected harness when `harness != none`) → fix the plan (JSON-first, re-render MD) →
+  re-review. Exits as soon as no BLOCK/CONCERN remain (OBSERVATIONs never block) OR a fix round stops
+  reducing the blocking count — capped at `MAX_REVIEW` (2) so two reviewers can't grind the plan.
 - **Build (steps 10–11)** — walk the DAG layers; per task: engineer (worktree, task branch) →
   in-workflow integrate agent (`git merge` onto the working branch) → reviewer → bounded fix loop
   until it passes; barrier between layers. Engineer/reviewer = the native specialist by default, or

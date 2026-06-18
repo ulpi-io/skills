@@ -25,8 +25,7 @@ export const meta = {
   description: 'Runs the full 14-step ship playbook: plan → founder-review loops → specialist build across DAG layers → impl review → go-live audit → bounded recursion, into a verified finding register',
   phases: [
     { title: 'Plan', detail: 'plan-DAG methodology; assign specialist agents' },
-    { title: 'Plan review', detail: 'native founder review → fix → re-review to APPROVE' },
-    { title: 'Harness plan review', detail: 'selected harness ∥ native until both clean' },
+    { title: 'Plan review', detail: 'native ∥ selected harness → fix → re-review (bounded; stops when not improving)' },
     { title: 'Build', detail: 'per task: engineer → git integrate → reviewer → fix' },
     { title: 'Impl review', detail: 'full implementation review, native ∥ harness' },
     { title: 'Audit', detail: 'go-live audit (compose go-live-audit) ∥ harness' },
@@ -46,7 +45,7 @@ const WORKING_BRANCH = CFG.workingBranch || 'FILL: branch to build on (e.g. main
 const HARNESS = CFG.harness || 'FILL: claude | codex | kiro | none'
 const GO_LIVE = CFG.goLive === true
 const MAX_ROUNDS = CFG.maxRounds || 3        // step 14 recursion budget
-const MAX_REVIEW = 4                          // bounded founder-review review→fix iterations
+const MAX_REVIEW = 2                          // bounded plan-review iterations (a plan isn't code; non-convergence also early-exits)
 const MAX_FIX = 3                             // bounded per-task engineer↔reviewer fix iterations
 const VALIDATE_ALL = CFG.validate || 'FILL: workspace validate, e.g. pnpm -w exec tsc --noEmit && pnpm lint'
 const HARD_RULES = CFG.hardRules || `FILL: load-bearing invariants (import boundaries, Node strip-only,
@@ -88,6 +87,7 @@ const harnessRoute = HARNESS === 'kiro'
   : `READ-ONLY via the ${HARNESS} harness, do NOT edit.`
 const rank = { BLOCK: 3, CONCERN: 2, OBSERVATION: 1 }
 const hasBlocking = (fs) => (fs || []).some(f => f.severity === 'BLOCK' || f.severity === 'CONCERN')
+const blockingCount = (fs) => (fs || []).filter(f => f.severity === 'BLOCK' || f.severity === 'CONCERN').length
 
 // Specialist agents differ per install — the plan may assign an agent type (e.g.
 // 'nestjs-backend-engineer' or its '-reviewer') that THIS environment doesn't have. We do NOT hardcode
@@ -284,25 +284,37 @@ function ingestGoLive(result) {
   return [...fromFindings, ...fromGates]
 }
 
-// ── steps 4–6: native founder-review loop until APPROVE / no blocking ───────────
+// ── plan review (native-only path, no harness) — bounded; exits on clean OR non-convergence ─────
 async function nativeReviewLoop(plan, round) {
+  let prev = Infinity
   for (let i = 0; i < MAX_REVIEW; i++) {
     const r = await agent(founderBrief(plan, 'native'), { label: `plan-review:native:r${round}.${i}`, phase: 'Plan review', schema: FINDINGS })
-    if (!r || r.verdict === 'approve' || !hasBlocking(r.findings)) return r
+    if (!r) return
+    const n = blockingCount(r.findings)
+    if (r.verdict === 'approve' || n === 0) return r   // clean — OBSERVATIONs never block
+    if (n >= prev) return r                            // not improving → stop churning, proceed to build
+    prev = n
     await agent(planFixBrief(plan, r.findings), { label: `plan-fix:r${round}.${i}`, phase: 'Plan review', schema: FIX_RESULT })
   }
 }
 
-// ── steps 7–9: selected harness ∥ native founder review until both clean ────────
+// ── plan review (native ∥ selected harness) — bounded; exits on clean OR non-convergence ────────
+// Two strong reviewers keep surfacing fresh CONCERNs on a plan, so cap iterations AND stop the moment
+// a fix round fails to REDUCE the blocking count — never grind the plan for non-improving concerns.
+// (OBSERVATIONs never block; only BLOCK/CONCERN count toward looping.)
 async function harnessReviewLoop(plan, round) {
+  let prev = Infinity
   for (let i = 0; i < MAX_REVIEW; i++) {
     const both = await parallel([
-      () => agent(founderBrief(plan, 'native'), { label: `plan-review2:native:r${round}.${i}`, phase: 'Harness plan review', schema: FINDINGS }),
-      () => agent(`${harnessRoute}\n${founderBrief(plan, HARNESS)}`, { label: `plan-review2:${HARNESS}:r${round}.${i}`, phase: 'Harness plan review', schema: FINDINGS, agentType: harnessAgentType }),
+      () => agent(founderBrief(plan, 'native'), { label: `plan-review:native:r${round}.${i}`, phase: 'Plan review', schema: FINDINGS }),
+      () => agent(`${harnessRoute}\n${founderBrief(plan, HARNESS)}`, { label: `plan-review:${HARNESS}:r${round}.${i}`, phase: 'Plan review', schema: FINDINGS, agentType: harnessAgentType }),
     ])
     const findings = both.flatMap(r => (r && r.findings) ? r.findings : [])
-    if (!hasBlocking(findings)) return
-    await agent(planFixBrief(plan, findings), { label: `plan-fix2:r${round}.${i}`, phase: 'Harness plan review', schema: FIX_RESULT })
+    const n = blockingCount(findings)
+    if (n === 0) return                                // both clean
+    if (n >= prev) return                              // not improving → stop churning, proceed to build
+    prev = n
+    await agent(planFixBrief(plan, findings), { label: `plan-fix:r${round}.${i}`, phase: 'Plan review', schema: FIX_RESULT })
   }
 }
 
@@ -407,11 +419,12 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
   if (!plan || !plan.tasks || !plan.tasks.length) { history.push({ round, error: 'planning produced no tasks' }); break }
   plannedAnyTasks = true
 
-  // Plan review (steps 4–9): harnessReviewLoop already runs native ∥ harness, so a separate
-  // nativeReviewLoop would re-run native review redundantly (up to 2×MAX_REVIEW). Run ONE loop:
-  // native-only when no harness, else the native∥harness loop (which still covers native).
-  if (HARNESS === 'none') { phase('Plan review'); await nativeReviewLoop(plan, round) }   // steps 4–6
-  else { phase('Harness plan review'); await harnessReviewLoop(plan, round) }              // steps 4–9
+  // Plan review (steps 4–9): ONE bounded loop under a single "Plan review" phase. harnessReviewLoop
+  // runs native ∥ the selected harness; nativeReviewLoop is the no-harness path. Both exit early on
+  // clean OR non-convergence, so two reviewers can't grind the plan for non-improving concerns.
+  phase('Plan review')
+  if (HARNESS === 'none') await nativeReviewLoop(plan, round)
+  else await harnessReviewLoop(plan, round)
 
   phase('Build')
   const buildLog = await buildPlan(plan, round)            // steps 10–11

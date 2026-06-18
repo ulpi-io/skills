@@ -6,7 +6,7 @@ schema, dedup, convergence, and the recursion budget.
 ## Phases as a state machine
 
 ```
-A intake ──> B plan ──> C native plan-review loop ──> D harness plan-review loop
+A intake ──> B plan ──> C plan-review loop (native ∥ selected harness)
                                                               │
                                                               v
                                                         E build loop
@@ -15,7 +15,7 @@ A intake ──> B plan ──> C native plan-review loop ──> D harness plan
                                             F impl review (native ∥ harness)
                                                               │
                                                               v
-                                       G go-live audit (native ∥ harness)   [if goLive]
+                                       G go-live audit   [if goLive AND F is verified-clean]
                                                               │
                                                               v
                                             H converge?  ── clean ──> DONE
@@ -27,9 +27,12 @@ A intake ──> B plan ──> C native plan-review loop ──> D harness plan
                               new fix-prompt ──> back to B      STOP + escalate
 ```
 
-- C loops on itself until APPROVE / no issues.
-- D loops on itself (selected harness ∥ native) until both clean. Skipped when `harness == none`.
+- C is ONE bounded loop (not two): native review runs ∥ the selected harness (native-only when
+  `harness == none`). It exits when no BLOCK/CONCERN remain (OBSERVATIONs never block) OR when a fix
+  round stops reducing the blocking count (non-convergence), capped at `MAX_REVIEW` (2). Two strong
+  reviewers always find fresh concerns on a plan, so do NOT grind — fix what improves, then build.
 - E barriers between DAG layers; each task loops engineer↔reviewer until it passes.
+- F is verified first; G (the heaviest phase) runs ONLY when build+impl are verified-clean.
 - F and G feed ONE merged finding register that H evaluates.
 - H either finishes or re-enters B with the consolidated findings as the new request.
 
@@ -40,8 +43,7 @@ Open one master todo at intake and keep it current across rounds:
 ```
 [ ] Round <n> — intake: harness=<x>, goLive=<y>, maxRounds=<m>
 [ ] Round <n> — plan: <plan-name> (<task count> tasks, critical path …)
-[ ] Round <n> — native plan-review: APPROVE/REVISE/REJECT (loop k)
-[ ] Round <n> — harness plan-review (<harness>): clean? (loop k)   # or "skipped (none)"
+[ ] Round <n> — plan-review (native ∥ <harness>): clean? (loop k of MAX_REVIEW, or stopped non-converging)
 [ ] Round <n> — build: layer i/N — task TASK-00x by <agent>: pass/fix-loop
 [ ] Round <n> — impl review: native + <harness> → <#confirmed> findings
 [ ] Round <n> — go-live audit: GO/NO-GO/GO-WITH-FIXES → <#blockers>   # or "skipped"
