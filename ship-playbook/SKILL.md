@@ -94,11 +94,19 @@ call (unless `$request` already pins them):
 Then gather the project facts the Workflow needs (do not ask the user — read the repo): `root`
 (absolute repo path), `workingBranch` (the current branch to build on — never build on a protected
 branch without confirmation), `validate` (the workspace typecheck+lint+test command), and
-`hardRules` (the load-bearing invariants from root `CLAUDE.md` / the spec). Open a master `TodoWrite`
-mirroring the phases in `references/playbook-state.md`.
+`hardRules` (the load-bearing invariants from root `CLAUDE.md` / the spec).
 
-**Success criteria**: `harness`, `goLive`, `root`, `workingBranch`, `validate`, and `hardRules` are
-all resolved.
+**Verify `root` is a git work tree before launching** — `git -C <root> rev-parse --is-inside-work-tree`
+must print `true`, and `workingBranch` must exist with at least one commit. The build creates task
+branches and git-merges them, so a non-git folder (or a repo with no commit on `workingBranch`) cannot
+be built. If `root` is not a git repo, STOP and tell the user — offer `git init` + a baseline commit, or
+correct the path — and do not launch the Workflow. (The Workflow runs the same preflight and aborts
+cleanly with `ranReal:false`, but catching it here avoids spawning the run at all.)
+
+Open a master `TodoWrite` mirroring the phases in `references/playbook-state.md`.
+
+**Success criteria**: `harness`, `goLive`, `root` (a confirmed git work tree), `workingBranch`,
+`validate`, and `hardRules` are all resolved.
 
 ## Phase 2 — Run the playbook Workflow (steps 3–14)
 
@@ -178,6 +186,8 @@ what still blocks, with the round budget respected.
 - Do not let the recursion run unbounded; honor `maxRounds`.
 - Do not pass secrets/tokens into any agent brief; reference by location, redact values.
 - Do not build on a protected branch without explicit confirmation of `workingBranch`.
+- Do not launch the build in a non-git folder or an empty repo — the build creates and merges task
+  branches, so it requires a git work tree with a committed `workingBranch`.
 
 ## When To Load References
 

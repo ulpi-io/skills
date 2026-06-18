@@ -347,6 +347,20 @@ async function dedupVerify(all, phaseTitle) {
   return verified.filter(Boolean)
 }
 
+// ── preflight: ROOT must be a git work tree with a committed WORKING_BRANCH ──────
+// The build phase creates task branches and git-merges them (git checkout -B / commit / merge in
+// ROOT). In a non-git folder — or a repo with no commit on WORKING_BRANCH — every build agent's git
+// command fails and the run collapses into blocked-task noise. Verify once up front and abort cleanly.
+phase('Plan')
+const PREFLIGHT_SCHEMA = { type: 'object', additionalProperties: false, required: ['isGitRepo'], properties: { isGitRepo: { type: 'boolean' }, currentBranch: { type: 'string' }, workingBranchExists: { type: 'boolean' }, detail: { type: 'string' } } }
+const pre = await agent(`Report git readiness for a build that will checkout/commit/merge in ${ROOT} — READ-ONLY, do NOT init/create/modify anything. Run \`git -C ${ROOT} rev-parse --is-inside-work-tree\`: isGitRepo=true only if it prints "true" with exit 0 (false on any error / "not a git repository"). If a repo: report currentBranch (\`git -C ${ROOT} rev-parse --abbrev-ref HEAD\`) and workingBranchExists = whether \`git -C ${ROOT} rev-parse --verify --quiet "${WORKING_BRANCH}^{commit}"\` succeeds (the branch exists AND has a commit to branch from).`, { label: 'preflight:git', phase: 'Plan', schema: PREFLIGHT_SCHEMA })
+if (!pre || pre.isGitRepo !== true) {
+  return { converged: false, ranReal: false, aborted: `ROOT is not a git repository: ${ROOT}. ship-playbook builds by creating task branches and git-merging them onto ${WORKING_BRANCH}, so it needs a git work tree. Run \`git init\` and commit a baseline (or point root at the actual repo), then relaunch.`, harness: HARNESS, goLive: GO_LIVE }
+}
+if (pre.workingBranchExists === false) {
+  return { converged: false, ranReal: false, aborted: `ROOT is a git repo but WORKING_BRANCH "${WORKING_BRANCH}" has no commit to branch from (current branch: ${pre.currentBranch || 'unknown'}). The build needs a committed base — make a baseline commit on "${WORKING_BRANCH}" (or set workingBranch to an existing committed branch), then relaunch.`, harness: HARNESS, goLive: GO_LIVE }
+}
+
 // ── the playbook: steps 3 → 14, recursing until clean or MAX_ROUNDS ─────────────
 const history = []
 let openRegister = []
