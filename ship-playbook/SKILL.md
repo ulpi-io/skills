@@ -43,8 +43,9 @@ This skill drives a long-running, multi-agent delivery Workflow. Non-negotiable 
 1. ALL 14 playbook steps run. They are not optional and none is demoted — the Workflow
    (`references/workflow-template.js`) executes steps 3–14 as real phases; the skill performs steps
    1, 2, 2.1 (the prompt + the two intake questions) and feeds them in as `args`.
-2. ALWAYS ask the two intake questions first (plan-review harness + go-live audit). They are
-   inputs to the Workflow, not steps the Workflow can skip.
+2. ALWAYS ask the intake questions first (plan-review harness + go-live audit, plus the optional
+   end-of-run project-map refresh). The first two are Workflow inputs, not steps it can skip; the map
+   refresh is a Phase-3 action the skill runs after the Workflow returns.
 3. The BUILD is a Workflow phase, not a description. Per task across the DAG layers: the matched
    specialist ENGINEER agent implements on a task branch in an isolated worktree, an in-workflow
    INTEGRATE agent git-merges it onto the working branch, the matched specialist REVIEWER agent
@@ -84,13 +85,18 @@ Recurse**. Steps 1, 2, 2.1 are the prompt and the two questions the skill collec
 
 ## Phase 1 — Intake (steps 1, 2, 2.1)
 
-The prompt is `$request` (step 1). Ask the two governing questions in a SINGLE `AskUserQuestion`
+The prompt is `$request` (step 1). Ask the governing questions in a SINGLE `AskUserQuestion`
 call (unless `$request` already pins them):
 
 1. **Plan-review harness** (step 2) — which second harness cross-reviews the plan and the
    implementation: `claude`, `codex`, `kiro`, or `none`.
 2. **Go-live audit at the end** (step 2.1) — `yes` adds the go-live audit after the build, `no` stops
    at the implementation review.
+3. **Refresh the project map at the end** — whether to regenerate the `CLAUDE.md` context map after
+   the build lands so it reflects the new code: `map-project` (single project),
+   `map-project-monorepo` (workspace), or `no`. Detect the repo layout and offer the matching default
+   (a workspace/monorepo → `map-project-monorepo`, otherwise `map-project`). Run only in Phase 3 on a
+   real, non-aborted run.
 
 Then gather the project facts the Workflow needs (do not ask the user — read the repo): `root`
 (absolute repo path), `workingBranch` (the current branch to build on — never build on a protected
@@ -173,6 +179,9 @@ skips:
 
 Watch progress via `/workflows`. To iterate on the script, edit the saved `scriptPath` the tool
 returns and re-invoke with `{scriptPath}` (and `resumeFromRunId` to reuse cached agent results).
+**On any resume, re-pass the SAME `args` object** — `resumeFromRunId` reuses cached *agent* results but
+the script re-executes from the top, so omitting `args` empties `CFG` and the script hard-throws on the
+`FILL:` guard. Always include the full `args` object you launched with.
 
 **Success criteria**: The Workflow runs to completion and returns
 `{ converged, roundsRun, history, openRegister }`.
@@ -194,8 +203,13 @@ Read the Workflow result:
   remaining BLOCK/CONCERN findings, what each round tried (`history`), and options (raise
   `maxRounds`, hand-fix, accept-with-risk). Never represent this as clean.
 
+**Then, if the user chose a project-map refresh at intake AND the run was real (`ranReal`, not
+aborted), run it last** — invoke the chosen skill (`map-project` or `map-project-monorepo`) so the
+`CLAUDE.md` context map reflects the code the build just landed. Skip it on an aborted/false-clean run
+(there's nothing new to map). This is the final step, after reporting.
+
 **Success criteria**: Either the gates are genuinely clean, or the user is handed an honest list of
-what still blocks, with the round budget respected.
+what still blocks, with the round budget respected; and the project map is refreshed if requested.
 
 ## Guardrails
 

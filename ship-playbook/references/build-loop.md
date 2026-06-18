@@ -40,12 +40,16 @@ for layer in parallelLayers:
 
 ## The engineer ↔ reviewer pairing
 
-The build loop MUST pick a specialist agent for every task — it MUST NOT run build work on
-`general-purpose`. The plan's `Agent` field names the specialist ENGINEER; its reviewer is the same
-agent name with a `-reviewer` suffix, so whatever engineer a task is assigned, its reviewer is
-`<that-agent>-reviewer`. Use the assigned agent as-is; never invent agent types. If a task arrives
-without an assigned agent, the build loop MUST match it to the closest specialist for its technology
-(and that agent's `-reviewer`) before implementing.
+The build loop picks the closest AVAILABLE specialist for every task. The plan's `Agent` field names
+the specialist ENGINEER; its reviewer is the same agent name with a `-reviewer` suffix, so whatever
+engineer a task is assigned, its reviewer is `<that-agent>-reviewer`. The plan is constrained to the
+agents that exist in THIS environment (the skill passes `availableAgents` in), so it should never
+assign one that isn't installed. If a task still arrives with an agent type this environment lacks,
+the build degrades it to `general-purpose` (recorded in `missingAgents`) rather than crashing —
+**but only because the skill already notified the user a specialist was missing and they chose to
+continue**. Never silently prefer `general-purpose` when a real specialist exists; never invent agent
+types. If a task arrives with no assigned agent, match it to the closest available specialist (and that
+agent's `-reviewer`) before implementing.
 
 ## Enforce the per-stack skill
 

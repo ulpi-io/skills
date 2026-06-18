@@ -315,11 +315,19 @@ async function buildPlan(plan, round) {
     // in-workflow git integrate: merge passed task branches onto the working branch (one sequential agent)
     const passedBranches = built.filter(b => b && b.r && b.r.status === 'passed').map(b => branchFor(b.t))
     if (passedBranches.length) await agent(integrateBrief(passedBranches), { label: `integrate:L${li}r${round}`, phase: 'Build', schema: INTEGRATE_RESULT })
-    // per-task review + bounded fix loop
-    for (const b of built.filter(Boolean)) {
-      const t = b.t
-      if (!b.r || b.r.status !== 'passed') { log.push({ task: t.id, status: 'blocked', reason: 'engineer validate failed', fixes: 0, findings: [] }); continue }
-      let review = await spawnSpecialist(reviewerBrief(t), { label: `review:${t.id}`, phase: 'Build', schema: FINDINGS, agentType: resolveAgent(t.reviewer) }) || { verdict: 'concerns', findings: [] }
+    // engineer-failed tasks are blocked outright
+    for (const b of built.filter(b => b && (!b.r || b.r.status !== 'passed')))
+      log.push({ task: b.t.id, status: 'blocked', reason: 'engineer validate failed', fixes: 0, findings: [] })
+    // initial per-task reviews are READ-ONLY → run them in PARALLEL across the layer
+    const passed = built.filter(b => b && b.r && b.r.status === 'passed')
+    const reviewed = await parallel(passed.map(b => () =>
+      spawnSpecialist(reviewerBrief(b.t), { label: `review:${b.t.id}`, phase: 'Build', schema: FINDINGS, agentType: resolveAgent(b.t.reviewer) })
+        .then(r => ({ t: b.t, review: r || { verdict: 'concerns', findings: [] } }))))
+    // fix→re-integrate MUST stay SERIAL: each git-merges the shared working branch, so concurrent fix
+    // loops would race/conflict on it. The re-review after each integrate sees the updated branch.
+    for (const item of reviewed.filter(Boolean)) {
+      const t = item.t
+      let review = item.review
       let fixes = 0
       while (review.verdict === 'blocked' && fixes < MAX_FIX) {
         fixes++
@@ -374,9 +382,11 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
   if (!plan || !plan.tasks || !plan.tasks.length) { history.push({ round, error: 'planning produced no tasks' }); break }
   plannedAnyTasks = true
 
-  phase('Plan review')
-  await nativeReviewLoop(plan, round)                       // steps 4–6
-  if (HARNESS !== 'none') { phase('Harness plan review'); await harnessReviewLoop(plan, round) } // steps 7–9
+  // Plan review (steps 4–9): harnessReviewLoop already runs native ∥ harness, so a separate
+  // nativeReviewLoop would re-run native review redundantly (up to 2×MAX_REVIEW). Run ONE loop:
+  // native-only when no harness, else the native∥harness loop (which still covers native).
+  if (HARNESS === 'none') { phase('Plan review'); await nativeReviewLoop(plan, round) }   // steps 4–6
+  else { phase('Harness plan review'); await harnessReviewLoop(plan, round) }              // steps 4–9
 
   phase('Build')
   const buildLog = await buildPlan(plan, round)            // steps 10–11
@@ -384,10 +394,16 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
   phase('Impl review')
   const implFindings = await reviewBoth('impl', 'Impl review', implBrief(plan)) // step 12
 
-  // step 13 — go-live audit: COMPOSE the proven go-live-audit workflow (when the skill supplied a
-  // filled script) ∥ a selected-harness audit lane. Falls back to an inline finder pass if no script.
-  let auditFindings = []
-  if (GO_LIVE) {
+  phase('Recurse')                                          // step 14
+  const blockedBuild = buildLog.filter(b => b.status === 'blocked').flatMap(b =>
+    (b.findings.length ? b.findings : [{ severity: 'BLOCK', file: b.task, issue: `task ${b.task} did not pass after ${b.fixes} fixes` }]).map(f => ({ ...f, source: 'native', phase: 'build' })))
+  // Verify build + impl findings FIRST. The go-live audit (step 13) is the heaviest phase (it composes
+  // the whole go-live-audit), so run it ONLY on a round whose build+impl are otherwise clean — a round
+  // that will recurse on build/impl findings anyway would just throw the audit away. Gate on
+  // VERIFIED-clean (post-dedupVerify), not raw findings, so a round whose findings all get refuted still
+  // gets audited and can converge this round instead of burning an extra one.
+  let open = await dedupVerify([...blockedBuild, ...implFindings.map(f => ({ ...f, phase: 'impl' }))], 'Recurse')
+  if (open.length === 0 && GO_LIVE) {                       // step 13 — only when build+impl are clean
     phase('Audit')
     const lanes = []
     if (AUDIT_SCRIPT_PATH) {
@@ -401,13 +417,9 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
         return (r && r.findings ? r.findings : []).map(f => ({ ...f, source: HARNESS, phase: 'audit' }))
       })
     }
-    auditFindings = (await parallel(lanes)).filter(Boolean).flat()
+    const auditFindings = (await parallel(lanes)).filter(Boolean).flat()
+    open = await dedupVerify(auditFindings.map(f => ({ ...f, phase: 'audit' })), 'Recurse')
   }
-
-  phase('Recurse')                                          // step 14
-  const blockedBuild = buildLog.filter(b => b.status === 'blocked').flatMap(b =>
-    (b.findings.length ? b.findings : [{ severity: 'BLOCK', file: b.task, issue: `task ${b.task} did not pass after ${b.fixes} fixes` }]).map(f => ({ ...f, source: 'native', phase: 'build' })))
-  const open = await dedupVerify([...blockedBuild, ...implFindings.map(f => ({ ...f, phase: 'impl' })), ...auditFindings.map(f => ({ ...f, phase: 'audit' }))], 'Recurse')
   history.push({ round, plan: plan.planName, build: buildLog.map(b => ({ task: b.task, status: b.status, fixes: b.fixes })), openFindings: open.length })
   openRegister = open
   if (open.length === 0) break                              // converged
