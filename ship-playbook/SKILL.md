@@ -6,11 +6,12 @@ description: |
   plan, build it task by task, review the build, and optionally audit it for launch — then return the
   verified findings as feedback (one pass, no autonomous loop; the user decides on any fix round). It
   chains the existing skills as one runnable Workflow:
-  plan-to-task-list-with-dag (plan + assign a specialist agent per task) → plan-founder-review (loop
-  to APPROVE) → a specialist engineer/reviewer build across the DAG → a full claude ∥ codex/kiro
-  cross-review → go-live-audit. Up front it asks two things — which harness cross-reviews
-  (claude / codex / kiro / none) and whether to run a go-live audit at the end — then executes every
-  step end to end. Use when the user wants "prompt → planned, built, reviewed, audited" in one go
+  plan-to-task-list-with-dag (plan + assign a specialist agent per task) → plan-founder-review →
+  a specialist engineer/reviewer build across the DAG → a full claude ∥ codex/kiro cross-review →
+  go-live-audit. Up front it asks which gates to run and at what depth — every review is independently
+  dialable from full rigor (claude + a second harness everywhere, build/review delegated to codex/kiro)
+  down to skip, so the user controls token cost. Use when the user wants "prompt → planned, built,
+  reviewed, audited" in one go
   instead of running each phase by hand.
 allowed-tools:
   - Skill
@@ -47,24 +48,28 @@ This skill drives a long-running, multi-agent delivery Workflow. Non-negotiable 
    skill (Phase 3) presents them and the USER decides whether to run a fix round. The Workflow executes
    steps 3–14 as real phases; the skill performs steps 1, 2, 2.1 (the prompt + the intake questions)
    and feeds them in as `args`.
-2. ALWAYS ask the intake questions first (plan-review harness + go-live audit, plus the optional
-   end-of-run project-map refresh). The first two are Workflow inputs, not steps it can skip; the map
-   refresh is a Phase-3 action the skill runs after the Workflow returns.
+2. ALWAYS ask the intake questions first (the seven: second harness, plan review, build handoff,
+   per-task review, impl review, go-live audit, project-map refresh). These select which gates run and
+   at what depth; they are Workflow inputs (except the map refresh, a Phase-3 action). Honor the
+   choices — the user may dial to full rigor or skip gates to save tokens.
 3. The BUILD is a Workflow phase, not a description. Per task across the DAG layers: the ENGINEER
    implements on a task branch in an isolated worktree, an in-workflow INTEGRATE agent git-merges it
-   onto the working branch, the REVIEWER reviews the integrated state, and a bounded fix loop runs
-   until the task passes. Engineer and reviewer default to the plan's matched specialist agents; when
-   the user chose a build/review handoff they route to `codex` or `kiro` instead (`buildHarness` /
-   `taskReviewHarness`).
+   onto the working branch AND removes each merged worktree, the REVIEWER reviews the integrated state
+   (unless `taskReview skip`), and a bounded fix loop runs until the task passes. Engineer routes per
+   `buildHarness` (native specialist / `codex` / `kiro`); reviewer routes per `taskReview` (native
+   `-reviewer` / the second harness / none).
 4. The build picks the closest AVAILABLE specialist per task; it falls back to `general-purpose` ONLY
    with the user's consent after the skill notified them a specialist is missing — never silently. When
    a task's stack skill is installed, the engineer MUST use it (`/nextjs`, `/laravel`, `/rust`, …).
    (This applies to the native path; when the user handed building/reviewing to `codex` or `kiro`,
    those tasks route there instead.)
-5. Gates are real. The founder-review loops review → FIX → re-review until APPROVE / no issues; the
-   build loops engineer → reviewer → fix until the task passes. Never wave a gate through.
-6. Codex delegation goes through the codex plugin (`codex:codex-rescue` agentType). Kiro via the
-   kiro path. "claude" = native. "none" = skip the external cross-review. (See `harness-routing.md`.)
+5. Gates that ARE enabled are real — never wave one through or fake a clean verdict to exit. But the
+   user controls WHICH gates run: a skipped gate (`planReview skip`, `taskReview skip`, `implReview
+   skip`, `goLive no`) is a deliberate choice, not a gate to sneak back in. Warn (don't block) when
+   both per-task and impl review are off — nothing checks the build then.
+6. The `harness` is ONE global external review harness: `none` (claude/native only), `codex` (the
+   `codex:codex-rescue` plugin), or `kiro` (the kiro path). It is the second opinion any `claude+harness`
+   gate or `taskReview harness` uses. `buildHarness` (who writes) is a separate axis. (See `harness-routing.md`.)
 7. There is no autonomous recursion. After one pass, surface the verified findings honestly and let
    the user choose to run a fix round (re-invoke with the findings as the prompt) — NEVER fake a clean
    verdict, and never silently loop.
@@ -89,32 +94,45 @@ plan-vs-implementation gate), and an optional go-live audit — then it RETURNS 
 feedback. It runs ONE pass and does not loop on its own; if findings remain, the user decides whether
 to run a fix round.
 
-The 14 steps map to the Workflow phases: **step 3 → Plan · steps 4–9 → Plan review (native ∥ selected
-harness, one bounded loop) · steps 10–11 → Build · step 12 → Impl review (plan-vs-implementation) ·
-step 14 → Verify (dedup + adversarial verify → feedback) · step 13 → Audit (only if build+impl
-verified-clean)**. Steps 1, 2, 2.1 are the prompt and the questions the skill collects up front. There
-is no automatic recursion — the workflow returns its findings and stops.
+The 14 steps map to the Workflow phases: **step 3 → Plan · steps 4–9 → Plan review (optional, bounded
+loop) · steps 10–11 → Build (per-task review optional) · step 12 → Impl review (optional,
+plan-vs-implementation) · step 14 → Verify (dedup + adversarial verify → feedback) · step 13 → Audit
+(only if `goLive` AND build+impl verified-clean)**. Steps 1, 2, 2.1 are the prompt and the questions
+the skill collects up front. Each review gate runs at the depth the user chose (skip / claude /
+claude+harness); there is no automatic recursion — the workflow returns its findings and stops.
 
 ## Phase 1 — Intake (steps 1, 2, 2.1)
 
-The prompt is `$request` (step 1). Ask the governing questions up front (in one or two
-`AskUserQuestion` calls — the tool allows up to 4 questions each), unless `$request` already pins them:
+The prompt is `$request` (step 1). Ask the governing questions up front (in two `AskUserQuestion` calls
+— the tool allows up to 4 each), in execution order so they make sense, unless `$request` already pins
+them. Each review gate is independently dialable so the user controls token cost — defaults are LIGHT;
+the user can dial every gate UP to full rigor, or DOWN to skip. The questions:
 
-1. **Plan/impl cross-review harness** (step 2) — which second harness cross-reviews the PLAN and the
-   full implementation: `claude`, `codex`, `kiro`, or `none`. (This is the review cross-check; it is
-   separate from who builds/reviews each task below.)
-2. **Go-live audit at the end** (step 2.1) — `yes` adds the go-live audit after the build, `no` stops
-   at the implementation review.
-3. **Refresh the project map at the end** — whether to regenerate the `CLAUDE.md` context map after
-   the build lands so it reflects the new code: `map-project` (single project),
-   `map-project-monorepo` (workspace), or `no`. Detect the repo layout and offer the matching default
-   (a workspace/monorepo → `map-project-monorepo`, otherwise `map-project`). Run only in Phase 3 on a
-   real, non-aborted run.
-4. **Build handoff** — who WRITES the code for each task: `native` (the plan's specialist engineer
-   agents — default), `codex` (the codex plugin), or `kiro` (the Kiro CLI). Passed as `buildHarness`.
-5. **Per-task review handoff** — who REVIEWS each task: `native` (the matched `-reviewer` agent —
-   default), `codex`, or `kiro`. Passed as `taskReviewHarness`. Independent of #1 (which is the
-   one-shot plan/impl cross-review) — this is the per-task reviewer in the build loop.
+1. **Second harness** — the ONE external review harness used wherever a gate below is set to
+   "claude + harness": `none` (default), `codex`, or `kiro`. (claude/native always runs its own side;
+   this is the optional second opinion.) Passed as `harness`.
+2. **Plan (founder) review** — `skip`, `claude` (native founder review only — default), or
+   `claude + harness` (native ∥ the second harness). Passed as `planReview`.
+3. **Build handoff** — who WRITES the code for each task: `native` (the plan's specialist engineer
+   agents — default), `codex`, or `kiro`. Passed as `buildHarness`.
+4. **Per-task review** — who REVIEWS each built task: `skip` (no per-task reviewer or fix loop —
+   biggest token save), `native` (the matched `-reviewer` agent — default), or `harness` (the second
+   harness). Passed as `taskReview`.
+5. **Final implementation review** — the plan-vs-implementation review after the build: `skip`,
+   `claude` (native — default), or `claude + harness`. Passed as `implReview`.
+6. **Go-live audit at the end** — `no` (default) adds nothing; `yes` runs the go-live audit (only if
+   build+impl come back verified-clean). Passed as `goLive`.
+7. **Refresh the project map at the end** — regenerate the `CLAUDE.md` context map after the build:
+   `no` (default), `map-project` (single project), or `map-project-monorepo` (workspace). Detect the
+   repo layout and offer the matching default. Run only in Phase 3 on a real, non-aborted run.
+
+**Defaults** (lighter than full, kept safe): `harness none`, `planReview claude`, `buildHarness native`,
+`taskReview native`, `implReview claude`, `goLive no`, map `no`. The user can choose **full swing** —
+`planReview claude+harness`, `taskReview harness`, `implReview claude+harness`, `buildHarness codex|kiro`,
+`goLive yes`, with `harness codex|kiro` — or delegate building and per-task review to codex/kiro
+(`buildHarness` + `taskReview harness`). **Warn (do not block)** if the user sets BOTH `taskReview skip`
+AND `implReview skip`: nothing then checks the build, so a clean verdict only means the engineer
+validates passed — say so before launching.
 
 Then gather the project facts the Workflow needs (do not ask the user — read the repo): `root`
 (absolute repo path), `workingBranch` (the current branch to build on — never build on a protected
@@ -147,21 +165,23 @@ that wasn't installed):
 
 Never silently substitute `general-purpose` for a missing specialist without telling the user first.
 
-**Verify the chosen build/review handoff harness is installed, and notify if not.** If `buildHarness`
-or `taskReviewHarness` is not `native`, confirm its tooling exists before launching:
-- **kiro build** needs the `hand-over-to-kiro` skill (by Sabeur Thabti, @thabti) **and** `kiro-cli`
-  (`kiro-cli --version`); **kiro review** needs the `kiro-review` skill **and** `kiro-cli`.
-- **codex** (build or review) needs the codex plugin (`codex:codex-rescue`).
+**Verify any chosen harness tooling is installed, and notify if not.** Whenever `harness` is `codex`
+or `kiro`, or `buildHarness` is `codex`/`kiro`, confirm its tooling exists before launching:
+- **codex** (the `harness` second opinion, or `buildHarness codex`) needs the codex plugin (`codex:codex-rescue`).
+- **kiro build** (`buildHarness kiro`) needs the `hand-over-to-kiro` skill (by Sabeur Thabti, @thabti)
+  **and** `kiro-cli` (`kiro-cli --version`); **kiro as the `harness`** (used by any `claude+harness`
+  gate or `taskReview harness`) needs the `kiro-review` skill **and** `kiro-cli`.
 
-If a chosen handoff's tool is missing, NOTIFY the user with `AskUserQuestion` — offer to **install it**
+If a chosen harness's tool is missing, NOTIFY the user with `AskUserQuestion` — offer to **install it**
 (for kiro: `hand-over-to-kiro` via `npx skills add …` + kiro-cli from <https://kiro.dev/docs/cli>) or
-**switch that handoff to `native`** (or another available harness). Do not silently fall back.
+**fall back** (drop the `+harness` to `claude`, set `harness none`, or `buildHarness native`). Do not
+silently degrade.
 
 Open a master `TodoWrite` mirroring the phases in `references/playbook-state.md`.
 
-**Success criteria**: `harness`, `goLive`, `mapRefresh`, `buildHarness`, `taskReviewHarness`, `root`
-(a confirmed git work tree), `workingBranch`, `validate`, `hardRules`, and `availableAgents`
-(+ `allowGeneralFallback` if any specialist is missing) are all resolved.
+**Success criteria**: `harness`, `planReview`, `buildHarness`, `taskReview`, `implReview`, `goLive`,
+`mapRefresh`, `root` (a confirmed git work tree), `workingBranch`, `validate`, `hardRules`, and
+`availableAgents` (+ `allowGeneralFallback` if any specialist is missing) are all resolved.
 
 ## Phase 2 — Run the playbook Workflow (steps 3–14)
 
@@ -174,9 +194,9 @@ Then launch `references/workflow-template.js` via the **Workflow** tool, passing
 
 ```
 Workflow({ scriptPath: ".../references/workflow-template.js",
-           args: { prompt, harness, goLive, root, workingBranch, validate, hardRules,
-                   auditScriptPath, availableAgents, allowGeneralFallback,
-                   buildHarness, taskReviewHarness } })
+           args: { prompt, root, workingBranch, validate, hardRules, goLive,
+                   harness, planReview, buildHarness, taskReview, implReview,
+                   auditScriptPath, availableAgents, allowGeneralFallback } })
 ```
 
 **Pass `args` as a real JSON object, NOT a JSON-encoded string.** A stringified blob reaches the
@@ -185,26 +205,28 @@ script as one string, fails its `typeof args === 'object'` check, and every inpu
 `claude|codex|kiro|none`) instead of returning a fake `converged:true`, so a stringified-args launch
 errors loudly — if you hit it, relaunch as a FRESH run (no resume) with `args` as an object.
 
-The Workflow then executes the rest of the playbook, in order, as real phases — there is no step it
-skips:
+The Workflow then executes the playbook in one pass, running each gate at the level the user chose:
 
 - **Plan (step 3)** — a planning agent follows the plan-to-task-list-with-dag methodology unattended
   (mode auto-selected), grounds every path in the real repo, assigns a specialist engineer +
   `-reviewer` + stack skill to each task, writes `.ulpi/plans/<name>.md`+`.json`, returns `{tasks, layers}`.
-- **Plan review (steps 4–9)** — ONE bounded loop: native founder review (∥ the selected harness when
-  `harness != none`) → fix the plan (JSON-first, re-render MD) → re-review. Exits as soon as no
-  BLOCK/CONCERN remain (OBSERVATIONs never block) OR a fix round stops reducing the blocking count —
+- **Plan review (steps 4–9)** — per `planReview`: `skip` (no review), `claude` (native founder review),
+  or `claude+harness` (native ∥ the second harness). ONE bounded loop → fix the plan (JSON-first,
+  re-render MD) → re-review; exits on no BLOCK/CONCERN (OBSERVATIONs never block) OR non-convergence,
   capped at `MAX_REVIEW` (2).
 - **Build (steps 10–11)** — walk the DAG layers; per task: engineer (worktree, task branch) →
-  in-workflow integrate agent (`git merge` onto the working branch) → reviewer → bounded fix loop
-  until it passes; barrier between layers. Engineer/reviewer = the native specialist by default, or
-  `codex`/`kiro` per the `buildHarness`/`taskReviewHarness` handoff.
-- **Impl review (step 12)** — full implementation review (plan vs implementation), native ∥ selected harness.
+  in-workflow integrate agent (`git merge` onto the working branch, then removes each merged worktree)
+  → reviewer (unless `taskReview skip`) → bounded fix loop until it passes; barrier between layers.
+  Engineer = native specialist / `codex` / `kiro` per `buildHarness`; reviewer = native `-reviewer` or
+  the second harness per `taskReview` (or none if `skip`).
+- **Impl review (step 12)** — per `implReview`: `skip`, `claude`, or `claude+harness`. The
+  plan-vs-implementation review of everything built.
 - **Verify (step 14)** — dedup + adversarially verify the build+impl findings. These become the
   returned `openRegister` — the feedback. No automatic re-plan/re-build; the workflow returns and stops.
-- **Audit (step 13)** — runs only when build+impl are verified-clean: if `goLive`, COMPOSE the proven
-  `go-live-audit` workflow inline via the `workflow()` hook (`auditScriptPath`) — gates → finders →
-  dedup → dual-lens verify → critic — ∥ a selected-harness audit lane; its findings become `openRegister`.
+- **Audit (step 13)** — runs only when `goLive` AND build+impl come back verified-clean: COMPOSE the
+  proven `go-live-audit` workflow inline via the `workflow()` hook (`auditScriptPath`) — gates →
+  finders → dedup → dual-lens verify → critic — ∥ a second-harness audit lane; its findings become
+  `openRegister`.
 
 Watch progress via `/workflows`. To iterate on the script, edit the saved `scriptPath` the tool
 returns and re-invoke with `{scriptPath}` (and `resumeFromRunId` to reuse cached agent results).
@@ -213,7 +235,7 @@ the script re-executes from the top, so omitting `args` empties `CFG` and the sc
 `FILL:` guard. Always include the full `args` object you launched with.
 
 **Success criteria**: The Workflow runs to completion and returns
-`{ converged, ranReal, plan, build, openRegister, missingAgents }`.
+`{ converged, ranReal, plan, build, openRegister, missingAgents, reviewConfig, noReviewGate }`.
 
 ## Phase 3 — Report and escalate
 
@@ -226,8 +248,11 @@ Read the Workflow result:
 - **If `missingAgents` is non-empty**, some tasks ran on `general-purpose` because the assigned
   specialist isn't installed here. Surface the list (which agents, how to install) so the user can
   decide whether to install them and re-run for higher-quality output.
+- **If `noReviewGate: true`** (the user skipped BOTH per-task review and impl review), CAVEAT any
+  clean verdict: it only means the engineer validates passed, nothing reviewed the build. Report
+  `reviewConfig` so the user sees which gates ran.
 - **`converged: true`** (real run, `openRegister` empty) → DONE. Report the build outcome per task,
-  the review/audit verdicts, and where the plan landed.
+  the review/audit verdicts (per `reviewConfig`), and where the plan landed.
 - **`openRegister` non-empty** → PRESENT the feedback and let the user decide. List the verified
   BLOCK/CONCERN findings (file:line, issue, suggested fix, which gate found them). Then offer the next
   move: **run a fix round** (re-invoke the workflow with the findings as the prompt — same intake),
@@ -239,16 +264,17 @@ aborted), run it last** — invoke the chosen skill (`map-project` or `map-proje
 `CLAUDE.md` context map reflects the code the build just landed. Skip it on an aborted/false-clean run
 (there's nothing new to map). This is the final step, after reporting.
 
-**Success criteria**: Either the gates are genuinely clean, or the user is handed an honest list of
-what still blocks, with the round budget respected; and the project map is refreshed if requested.
+**Success criteria**: Either the enabled gates are genuinely clean (caveated by `reviewConfig` /
+`noReviewGate`), or the user is handed an honest list of what still blocks plus next moves; and the
+project map is refreshed if requested.
 
 ## Guardrails
 
 - Do not run proactively; this is explicit-user-only (it spawns many agents across rounds).
-- Round 1 runs the full cycle; recursion rounds are a fix loop (decompose → build → impl review) and
-  deliberately skip founder plan review. Do not re-introduce plan review on recursion, and do not skip
-  Impl review on any round — it is the plan-vs-implementation gate. The Workflow owns 3–14, the skill
-  owns 1–2.1.
+- The workflow runs ONE pass and never loops on its own; a fix round is a deliberate user choice
+  (re-invoke with the findings as the prompt). Review gates are user-selected per run — honor the
+  user's `planReview`/`taskReview`/`implReview` choices, and warn (don't block) when both per-task and
+  impl review are skipped. The Workflow owns 3–14, the skill owns 1–2.1.
 - Do not hand-roll the plan — the Workflow's plan phase follows the plan-to-task-list-with-dag
   methodology and assigns a specialist agent per task.
 - The build assigns the closest AVAILABLE specialist per task; fall back to `general-purpose` only with
@@ -287,9 +313,9 @@ what still blocks, with the round budget respected; and the project map is refre
 
 Report:
 
-1. intake — selected harness and go-live choice, resolved working branch
-2. rounds run and convergence status
-3. per-round plan name + build outcome per task (passed / fixes / blocked)
-4. implementation review — native + harness findings (confirmed vs rejected)
-5. go-live audit — verdict and blockers (or "skipped")
-6. final state — clean, or the honest remaining-findings list with the round budget status
+1. intake — the review config used (`reviewConfig`: harness + which gates ran at what depth), go-live
+   choice, resolved working branch
+2. plan name + build outcome per task (passed / fixes / blocked)
+3. plan review and implementation review — findings by enabled gate (confirmed vs rejected), or "skipped"
+4. go-live audit — verdict and blockers (or "skipped")
+5. final state — clean (caveated if `noReviewGate`), or the honest remaining-findings list + next moves

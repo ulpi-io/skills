@@ -89,8 +89,10 @@ Spawn the task's assigned specialist agent (the plan's `Agent` field) via the Ag
 
 ### 2. Review — the reviewer agent
 
-When the engineer reports done, spawn the MATCHED specialist reviewer (the engineer's name +
-`-reviewer`) read-only over that task's diff:
+This step is gated by `taskReview`: `skip` (no per-task reviewer or fix loop — the task passes on its
+engineer validate alone), `native` (the matched `-reviewer` below), or `harness` (the global review
+harness — codex/kiro). When review is enabled, on engineer-done spawn the reviewer read-only over the
+task's diff:
 
 - `isolation: "worktree"` against the engineer's branch/worktree; do NOT let it edit.
 - Brief: read the task's diff + surrounding context, verify each acceptance criterion is actually

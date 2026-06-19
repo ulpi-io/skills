@@ -15,9 +15,16 @@
 // the playbook; the skill just supplies them as inputs to this script. Everything else runs here.
 //
 // HOW TO USE: the skill launches this with
-//   args = { prompt, harness, goLive, root, workingBranch, validate, hardRules, auditScriptPath,
-//            availableAgents, allowGeneralFallback, buildHarness, taskReviewHarness }
+//   args = { prompt, root, workingBranch, validate, hardRules, goLive,
+//            harness,                                  // 'none' | 'codex' | 'kiro'  (one global external review harness)
+//            planReview,                               // 'skip' | 'claude' | 'claude+harness'
+//            buildHarness,                             // 'native' | 'codex' | 'kiro'  (who WRITES each task)
+//            taskReview,                               // 'skip' | 'native' | 'harness'  (who REVIEWS each task)
+//            implReview,                               // 'skip' | 'claude' | 'claude+harness'
+//            auditScriptPath, availableAgents, allowGeneralFallback }
 //   (auditScriptPath is optional — see the comment at its CFG read below.)
+//   Every review gate is independently dialable: from full-rigor (planReview+implReview claude+harness,
+//   taskReview harness, goLive) down to fast (everything skip). Lighter is the default; skip nothing for max.
 // Or fill the FILL: fallbacks and run directly. Keep `meta` a pure literal or the Workflow tool
 // rejects it. Build agents have Bash, so the in-workflow integrate agent does the git merges.
 
@@ -43,13 +50,28 @@ if (args && typeof args === 'object') CFG = args
 else if (typeof args === 'string' && args.trim()) { try { CFG = JSON.parse(args) } catch { CFG = {} } }
 const ROOT = CFG.root || 'FILL: absolute repo path'
 const WORKING_BRANCH = CFG.workingBranch || 'FILL: branch to build on (e.g. main or a feature branch)'
-const HARNESS = CFG.harness || 'FILL: claude | codex | kiro | none'
-const GO_LIVE = CFG.goLive === true
-const MAX_REVIEW = 2                          // bounded plan-review iterations (a plan isn't code; non-convergence also early-exits)
-const MAX_FIX = 3                             // bounded per-task engineer↔reviewer fix iterations
 const VALIDATE_ALL = CFG.validate || 'FILL: workspace validate, e.g. pnpm -w exec tsc --noEmit && pnpm lint'
 const HARD_RULES = CFG.hardRules || `FILL: load-bearing invariants (import boundaries, Node strip-only,
 money is BIGINT/string, RLS fail-closed, append-only ActivityLog, route-barrel wiring, …)`
+let PROMPT = CFG.prompt || 'FILL: the feature request'
+const GO_LIVE = CFG.goLive === true
+const MAX_REVIEW = 2                          // bounded plan-review iterations (a plan isn't code; non-convergence also early-exits)
+const MAX_FIX = 3                             // bounded per-task engineer↔reviewer fix iterations
+
+// ── review controls (each expensive gate is independently dialable to save tokens) ──
+// HARNESS is the ONE global external review harness used wherever a gate is set to "claude+harness"
+// (claude/native always runs its own side; this is the optional second opinion). 'none' = no external.
+const HARNESS = ['none', 'codex', 'kiro'].includes(CFG.harness) ? CFG.harness : 'none'
+// PLAN_REVIEW: founder review of the plan — 'skip' | 'claude' (native only) | 'claude+harness'.
+const PLAN_REVIEW = ['skip', 'claude', 'claude+harness'].includes(CFG.planReview) ? CFG.planReview : 'claude'
+// TASK_REVIEW: who reviews each built task — 'skip' (no per-task reviewer/fix loop) | 'native' | 'harness'.
+const TASK_REVIEW = ['skip', 'native', 'harness'].includes(CFG.taskReview) ? CFG.taskReview : 'native'
+// IMPL_REVIEW: final plan-vs-implementation review after build — 'skip' | 'claude' | 'claude+harness'.
+const IMPL_REVIEW = ['skip', 'claude', 'claude+harness'].includes(CFG.implReview) ? CFG.implReview : 'claude'
+// BUILD_HARNESS: who WRITES each task — 'native' (plan's specialist agent) | 'codex' | 'kiro'.
+const BUILD_HARNESS = ['codex', 'kiro'].includes(CFG.buildHarness) ? CFG.buildHarness : 'native'
+const useHarness = (gate) => gate === 'claude+harness' && HARNESS !== 'none'   // does this gate add the external lane?
+
 // step 13: path to a FILLED go-live-audit workflow script (the skill authors it via the go-live-audit
 // skill and passes its scriptPath). When set, the Audit phase COMPOSES that proven workflow inline via
 // the workflow() hook; when unset, it falls back to an inline finder pass.
@@ -60,22 +82,14 @@ const AUDIT_SCRIPT_PATH = CFG.auditScriptPath || null
 // specialist to general-purpose (the skill NOTIFIES the user before setting this).
 const AVAILABLE_AGENTS = Array.isArray(CFG.availableAgents) ? CFG.availableAgents : null
 const ALLOW_GENERAL_FALLBACK = CFG.allowGeneralFallback !== false   // default true: degrade, don't crash
-// Per-task work handoff (independent of the plan/impl cross-review HARNESS): who WRITES each task and
-// who REVIEWS each task — 'native' (the plan's specialist agent), 'codex', or 'kiro'. Default native.
-const BUILD_HARNESS = ['codex', 'kiro'].includes(CFG.buildHarness) ? CFG.buildHarness : 'native'
-const TASK_REVIEW_HARNESS = ['codex', 'kiro'].includes(CFG.taskReviewHarness) ? CFG.taskReviewHarness : 'native'
-let PROMPT = CFG.prompt || 'FILL: the feature request'
 
 // Fail LOUD if inputs never reached the script. Without this, the values above stay at their FILL:
 // placeholders, the plan agent is handed "FILL: the feature request", returns no tasks, and the run
 // reports a fake converged:true. Refuse to start on placeholders rather than emit a false clean.
-const _missing = Object.entries({ ROOT, WORKING_BRANCH, HARNESS, VALIDATE_ALL, PROMPT })
+const _missing = Object.entries({ ROOT, WORKING_BRANCH, VALIDATE_ALL, PROMPT })
   .filter(([, v]) => typeof v !== 'string' || v.startsWith('FILL:')).map(([k]) => k)
 if (_missing.length) {
   throw new Error(`ship-playbook: inputs did not reach the script — ${_missing.join(', ')} still at FILL: placeholder (typeof args="${typeof args}"). Pass args as a real JSON object per the skill's Phase 2 contract, NOT a stringified blob, then relaunch as a FRESH run.`)
-}
-if (!['claude', 'codex', 'kiro', 'none'].includes(HARNESS)) {
-  throw new Error(`ship-playbook: harness="${HARNESS}" is invalid — expected one of claude | codex | kiro | none.`)
 }
 
 const harnessAgentType = HARNESS === 'codex' ? 'codex:codex-rescue' : 'general-purpose'
@@ -213,13 +227,14 @@ Implement ONLY this task.`
 }
 function integrateBrief(branches) {
   return `On ${WORKING_BRANCH} in ${ROOT}, integrate these task branches IN ORDER: ${branches.join(', ')}.
-For each: \`git merge --no-edit <branch>\`. If one conflicts: \`git merge --abort\`, record it under
-conflicted[], continue with the rest. Never force-resolve a conflict.
-
-AFTER merging, CLEAN UP this workflow's transient build worktrees BEFORE validating — they are full
-checkouts of the repo and will otherwise pollute the validate. For each merged branch: find its
-worktree path via \`git -C ${ROOT} worktree list --porcelain\`, run \`git -C ${ROOT} worktree remove --force <path>\`,
-then \`git -C ${ROOT} branch -D <branch>\`. Finish with \`git -C ${ROOT} worktree prune\`.
+Process them ONE AT A TIME — merge a branch, then IMMEDIATELY remove its worktree, then move to the
+next. For each branch:
+  1. \`git merge --no-edit <branch>\` (on conflict: \`git merge --abort\`, record it under conflicted[],
+     skip to the next branch — never force-resolve).
+  2. As soon as it merges, REMOVE its transient build worktree so it can't pollute anything: find the
+     path via \`git -C ${ROOT} worktree list --porcelain\`, \`git -C ${ROOT} worktree remove --force <path>\`,
+     then \`git -C ${ROOT} branch -D <branch>\`.
+Finish with \`git -C ${ROOT} worktree prune\` to clear stale admin entries.
 
 THEN run ${VALIDATE_ALL} once. The validate must cover ONLY the project at ${ROOT} — it must NOT scan
 \`.claude/worktrees/**\` or sibling agent dirs (\`.factory\`, \`.gemini\`, \`.opencode\`, \`.trae\`, \`.vibe\`).
@@ -253,10 +268,11 @@ const auditBrief = `READ-ONLY launch-readiness (go-live) audit of ${ROOT}. Check
 (${HARD_RULES}), build/test/lint honesty, secrets (redact values), tenancy/security, dead wiring,
 placeholder/TODO in shipping code. verdict + findings BLOCK/CONCERN/OBSERVATION with file:line + evidence.`
 
-// run native ∥ selected-harness for a read-only review surface; tag each finding's source
-async function reviewBoth(label, phaseTitle, brief) {
+// run native (∥ the external harness when withHarness) for a read-only review surface; tag each
+// finding's source. withHarness = the caller's gate is "claude+harness" AND a harness is configured.
+async function reviewBoth(label, phaseTitle, brief, withHarness) {
   const lanes = [{ source: 'native', run: () => agent(`${brief}\n(native claude)`, { label: `${label}:native`, phase: phaseTitle, schema: FINDINGS }) }]
-  if (HARNESS !== 'none') {
+  if (withHarness && HARNESS !== 'none') {
     lanes.push({ source: HARNESS, run: () => agent(`${harnessRoute}\n${brief}`, { label: `${label}:${HARNESS}`, phase: phaseTitle, schema: FINDINGS, agentType: harnessAgentType }) })
   }
   const out = await parallel(lanes.map(l => l.run))
@@ -345,11 +361,11 @@ Never delete non-worktree files and never remove the main checkout. Report remov
 }
 
 // ── build/review handoff: who WRITES & who REVIEWS each task ─────────────────────
-// Independent of the plan/impl cross-review HARNESS. buildHarness / taskReviewHarness each ∈
-// native|codex|kiro. native = the plan's specialist agent (via resolveAgent + missingAgents reporting);
-// codex = the codex plugin agent (write-capable); kiro = the kiro-review skill for review and the
-// hand-over-to-kiro skill (which wraps the Kiro CLI, run autonomously) for build, each with a
-// self-implementation fallback if the skill/CLI is absent.
+// buildHarness (who WRITES) ∈ native|codex|kiro — independent of the global review HARNESS.
+// taskReview (who REVIEWS) ∈ skip|native|harness; 'harness' routes to the ONE global HARNESS.
+// native = the plan's specialist agent (resolveAgent + missingAgents); codex = the codex plugin agent;
+// kiro = the hand-over-to-kiro skill (build) / kiro-review skill (review) wrapping the Kiro CLI, each
+// with a self-implementation fallback if the skill/CLI is absent.
 function buildSpawn(t, brief, label) {
   if (BUILD_HARNESS === 'codex')
     return spawnSpecialist(`You MAY edit files to implement this task.\n${brief}`, { label, phase: 'Build', schema: TASK_RESULT, agentType: 'codex:codex-rescue', isolation: 'worktree' })
@@ -357,12 +373,13 @@ function buildSpawn(t, brief, label) {
     return spawnSpecialist(`Use the hand-over-to-kiro skill (\`/hand-over-to-kiro\`) to delegate implementing this task to kiro-cli — it builds an injection-safe prompt, runs kiro in this worktree, and verifies the diff. This is UNATTENDED: tell it to run kiro autonomously (\`--trust-all-tools\`), since no human can approve tool calls. If the hand-over-to-kiro skill or kiro-cli is unavailable, say so and implement the task yourself.\n${brief}`, { label, phase: 'Build', schema: TASK_RESULT, agentType: 'general-purpose', isolation: 'worktree' })
   return spawnSpecialist(brief, { label, phase: 'Build', schema: TASK_RESULT, agentType: resolveAgent(t.agent), isolation: 'worktree' })
 }
+// only called when TASK_REVIEW !== 'skip' (the skip case is handled in buildPlan, no reviewer spawned).
 function taskReviewSpawn(t, brief, label) {
-  if (TASK_REVIEW_HARNESS === 'codex')
+  if (TASK_REVIEW === 'harness' && HARNESS === 'codex')
     return spawnSpecialist(`READ-ONLY review — do NOT edit.\n${brief}`, { label, phase: 'Build', schema: FINDINGS, agentType: 'codex:codex-rescue' })
-  if (TASK_REVIEW_HARNESS === 'kiro')
+  if (TASK_REVIEW === 'harness' && HARNESS === 'kiro')
     return spawnSpecialist(`Use the kiro-review skill (\`/kiro-review\`) to review this task via the Kiro CLI, READ-ONLY; if the Kiro CLI is unavailable, say so and return empty findings — do not substitute a native review.\n${brief}`, { label, phase: 'Build', schema: FINDINGS, agentType: 'general-purpose' })
-  return spawnSpecialist(brief, { label, phase: 'Build', schema: FINDINGS, agentType: resolveAgent(t.reviewer) })
+  return spawnSpecialist(brief, { label, phase: 'Build', schema: FINDINGS, agentType: resolveAgent(t.reviewer) })   // native (or harness=none fallback)
 }
 
 // ── steps 10–11: build across DAG layers, engineer → integrate → reviewer → fix ──
@@ -381,8 +398,14 @@ async function buildPlan(plan) {
     // engineer-failed tasks are blocked outright
     for (const b of built.filter(b => b && (!b.r || b.r.status !== 'passed')))
       log.push({ task: b.t.id, status: 'blocked', reason: 'engineer validate failed', fixes: 0, findings: [] })
-    // initial per-task reviews are READ-ONLY → run them in PARALLEL across the layer
     const passed = built.filter(b => b && b.r && b.r.status === 'passed')
+    // TASK_REVIEW === 'skip' (#2): no per-task reviewer / fix loop — a task passes on its engineer
+    // validate alone. Biggest token saver; the user opted out of per-task review.
+    if (TASK_REVIEW === 'skip') {
+      for (const b of passed) log.push({ task: b.t.id, status: 'passed', fixes: 0, findings: [] })
+      continue
+    }
+    // initial per-task reviews are READ-ONLY → run them in PARALLEL across the layer
     const reviewed = await parallel(passed.map(b => () =>
       taskReviewSpawn(b.t, reviewerBrief(b.t), `review:${b.t.id}`)
         .then(r => ({ t: b.t, review: r || { verdict: 'concerns', findings: [] } }))))
@@ -447,17 +470,23 @@ if (!plan || !plan.tasks || !plan.tasks.length) {
   return { converged: false, ranReal: false, aborted: 'no tasks were planned — aborted before any build (verify args/PROMPT reached the script)', harness: HARNESS, goLive: GO_LIVE }
 }
 
-// Plan review (steps 4–9): plan-QUALITY gate (scope, decomposition, phantom paths). ONE bounded loop,
-// native ∥ selected harness; exits on no BLOCK/CONCERN or non-convergence (capped at MAX_REVIEW).
-phase('Plan review')
-if (HARNESS === 'none') await nativeReviewLoop(plan)
-else await harnessReviewLoop(plan)
+// Plan review (steps 4–9) — #4: 'skip' | 'claude' (native only) | 'claude+harness'. Plan-QUALITY gate
+// (scope, decomposition, phantom paths). ONE bounded loop; exits on no BLOCK/CONCERN or non-convergence.
+if (PLAN_REVIEW !== 'skip') {
+  phase('Plan review')
+  if (useHarness(PLAN_REVIEW)) await harnessReviewLoop(plan)
+  else await nativeReviewLoop(plan)
+}
 
 phase('Build')                                             // steps 10–11
 const buildLog = await buildPlan(plan)
 
-phase('Impl review')                                       // step 12 — the plan-vs-implementation gate
-const implFindings = await reviewBoth('impl', 'Impl review', implBrief(plan))
+// Impl review (step 12) — #3: the plan-vs-implementation gate. 'skip' | 'claude' | 'claude+harness'.
+let implFindings = []
+if (IMPL_REVIEW !== 'skip') {
+  phase('Impl review')
+  implFindings = await reviewBoth('impl', 'Impl review', implBrief(plan), useHarness(IMPL_REVIEW))
+}
 
 // Verify (step 14): dedup + adversarially verify the build+impl findings → this is the feedback.
 phase('Verify')
@@ -473,7 +502,7 @@ if (openRegister.length === 0 && GO_LIVE) {                // step 13 — only w
   if (AUDIT_SCRIPT_PATH) {
     lanes.push(async () => ingestGoLive(await workflow({ scriptPath: AUDIT_SCRIPT_PATH }))) // go-live-audit as a sub-workflow
   } else {
-    lanes.push(async () => await reviewBoth('audit', 'Audit', auditBrief))                  // fallback
+    lanes.push(async () => await reviewBoth('audit', 'Audit', auditBrief, false))            // native inline fallback (harness lane added below)
   }
   if (HARNESS !== 'none') {
     lanes.push(async () => {
@@ -497,6 +526,11 @@ return {
   build: buildLog.map(b => ({ task: b.task, status: b.status, fixes: b.fixes })),
   openRegister,                 // verified findings = the feedback to show the user
   missingAgents: [...missingAgents],   // specialist agent types the plan wanted that aren't installed here → skill notifies the user
+  // the review configuration this run used (so the skill can report it honestly and caveat the verdict)
+  reviewConfig: { harness: HARNESS, planReview: PLAN_REVIEW, taskReview: TASK_REVIEW, implReview: IMPL_REVIEW, buildHarness: BUILD_HARNESS },
+  // TRUE when NOTHING checked the build: no per-task reviewer AND no impl review. converged then means
+  // "engineer validates passed", not "reviewed clean" — the skill must caveat this.
+  noReviewGate: TASK_REVIEW === 'skip' && IMPL_REVIEW === 'skip',
   harness: HARNESS,
   goLive: GO_LIVE,
 }

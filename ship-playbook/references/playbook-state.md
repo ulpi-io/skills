@@ -28,11 +28,13 @@ A intake ──> B plan ──> C plan-review loop (native ∥ harness, bounded)
                           DONE                user decides: fix round / hand-fix / accept
 ```
 
-- B (plan) and C (plan review) run ONCE. C is a plan-QUALITY gate (scope, decomposition, phantom
-  paths): ONE bounded loop (native ∥ selected harness; native-only when `harness == none`), exits on no
-  BLOCK/CONCERN (OBSERVATIONs never block) OR non-convergence, capped at `MAX_REVIEW` (2).
-- E barriers between DAG layers; each task loops engineer↔reviewer until it passes.
-- F is the plan-vs-implementation gate.
+- B (plan) runs once. C (plan review) runs per `planReview`: `skip` (omitted), `claude` (native), or
+  `claude+harness` (native ∥ the global harness). When it runs it's a plan-QUALITY gate (scope,
+  decomposition, phantom paths): ONE bounded loop, exits on no BLOCK/CONCERN (OBSERVATIONs never block)
+  OR non-convergence, capped at `MAX_REVIEW` (2).
+- E barriers between DAG layers; each task loops engineer↔reviewer until it passes — unless `taskReview
+  skip`, then there is no per-task reviewer/fix loop and a task passes on its engineer validate alone.
+- F (impl review) runs per `implReview` (`skip` / `claude` / `claude+harness`) — the plan-vs-implementation gate.
 - V dedups + adversarially verifies the build+impl findings. Survivors are `openRegister`.
 - If `openRegister` is empty and `goLive`, G (the heaviest phase) runs; otherwise the workflow RETURNS
   `openRegister` as feedback. There is NO automatic loop back to B/E — a fix round is a deliberate
