@@ -12,7 +12,6 @@ allowed-tools:
   - Glob
   - Grep
   - Bash
-disable-model-invocation: true
 user-invocable: true
 argument-hint: "[project scope or refresh target]"
 arguments:
@@ -30,7 +29,9 @@ This skill mutates durable project memory. Non-negotiable rules:
 2. Perform real codebase discovery before updating `CLAUDE.md` or reference docs.
 3. Prefer updating existing project documentation over replacing it wholesale.
 4. Keep generated memory compact enough to stay useful in Claude's context budget.
-5. Do not run this skill proactively; it is explicit-user-only maintenance.
+5. Do not run this skill PROACTIVELY on your own initiative (it mutates durable project memory) — only
+   on explicit user intent, OR when an explicit user-invoked workflow composes it (e.g. `/ship-playbook`
+   refreshing the map after a build).
 </EXTREMELY-IMPORTANT>
 
 # Map Project
@@ -166,7 +167,9 @@ Do not claim a perfect refresh if the repo has large blind spots or mixed-framew
 
 ## Guardrails
 
-- Do not use this skill proactively; it is explicit-user-only because it mutates durable project memory.
+- Do not use this skill PROACTIVELY (it mutates durable project memory) — run it only on explicit user
+  intent or when an explicit user-invoked workflow composes it (e.g. `/ship-playbook`). It is no longer
+  `disable-model-invocation`, so workflows can call it; that is not license to run it unprompted.
 - Do not add `context: fork`; this workflow writes into the active repository.
 - Do not add `paths:`; this is a generic maintenance skill.
 - Do not overwrite useful human-authored project rules without evidence they are stale.

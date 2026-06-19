@@ -8,7 +8,6 @@ description: |
 allowed-tools:
   - Bash
   - Read
-disable-model-invocation: true
 user-invocable: true
 argument-hint: "[branch review, uncommitted, or specific commit]"
 arguments:
@@ -127,7 +126,10 @@ On later rounds:
 
 ## Guardrails
 
-- Do not run this skill proactively.
+- Do not run this skill PROACTIVELY on your own initiative — only on explicit user intent (e.g.
+  `/kiro-review`) or when an explicit user-invoked workflow composes it as the kiro reviewer (e.g.
+  `/ship-playbook` with a kiro review role). It is no longer `disable-model-invocation`, so workflows
+  can call it; that is not license to run it unprompted.
 - Do not put secrets, tokens, or private config into the prompt.
 - Do not trust findings blindly without local verification.
 - Do not skip diff reading before prompt construction.

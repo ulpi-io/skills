@@ -12,7 +12,6 @@ allowed-tools:
   - Glob
   - Grep
   - Bash
-disable-model-invocation: true
 user-invocable: true
 argument-hint: "[workspace scope or refresh target]"
 arguments:
@@ -30,7 +29,9 @@ This skill mutates durable project memory across multiple workspace members. Non
 2. Document the actual exported or reachable surface, not raw visibility markers alone.
 3. Keep each member file self-contained enough for Claude's lazy-loading model.
 4. Preserve root-level project rules and locked architectural decisions unless discovery proves them stale.
-5. Do not run this skill proactively; it is explicit-user-only maintenance.
+5. Do not run this skill PROACTIVELY on your own initiative (it mutates durable project memory) — only
+   on explicit user intent, OR when an explicit user-invoked workflow composes it (e.g. `/ship-playbook`
+   refreshing the maps after a build).
 </EXTREMELY-IMPORTANT>
 
 # Map Project Monorepo
@@ -172,7 +173,9 @@ Do not claim a perfect refresh if the workspace is only partially covered or if 
 
 ## Guardrails
 
-- Do not use this skill proactively; it is explicit-user-only because it mutates durable project memory.
+- Do not use this skill PROACTIVELY (it mutates durable project memory) — run it only on explicit user
+  intent or when an explicit user-invoked workflow composes it (e.g. `/ship-playbook`). It is no longer
+  `disable-model-invocation`, so workflows can call it; that is not license to run it unprompted.
 - Do not add `context: fork`; this workflow writes into the active repository.
 - Do not add `paths:`; this is a generic maintenance skill.
 - Do not overwrite useful root-level project rules without evidence they are stale.
