@@ -48,10 +48,12 @@ This skill drives a long-running, multi-agent delivery Workflow. Non-negotiable 
    skill (Phase 3) presents them and the USER decides whether to run a fix round. The Workflow executes
    steps 3–14 as real phases; the skill does the intake (dependency check + prompt + gate questions)
    and feeds the choices in as `args`.
-2. FIRST run the dependency check (Phase 1, Step 1): show recommended skills/agents, what's missing
-   with install commands, and offer continue-or-restart. THEN ask the gate questions (code writing,
-   plan review, per-task review, impl review, go-live audit, project-map refresh) — they select which
-   gates run and at what depth. Honor the choices: full rigor or skip-to-save-tokens are both valid.
+2. Intake order is FIXED: (1) dependency check + continue/restart, then (2) the SEVEN gate questions —
+   who writes the plan, who reviews the plan, who writes the code, who reviews the code, impl review,
+   go-live audit, map project — then (3) scope grounding + facts. ALWAYS ask the seven gate questions
+   FIRST, right after the dependency check. NEVER precede them with scope/feature-clarification
+   questions ("full platform or just the API?", "which protocol?") — the prompt is the scope; ground it
+   in step 3 or let the plan phase challenge it. Honor the gate choices: full rigor or skip both valid.
 3. The BUILD is a Workflow phase, not a description. Per task across the DAG layers: the ENGINEER
    implements on a task branch in an isolated worktree, an in-workflow INTEGRATE agent git-merges it
    onto the working branch AND removes each merged worktree, the REVIEWER reviews the integrated state
@@ -143,13 +145,20 @@ with `AskUserQuestion`:
 
 Record what's available — it feeds `availableAgents` and constrains which intake options you offer.
 
-### Step 2 — The prompt and the gate questions
+### Step 2 — The workflow gate questions (ask these FIRST)
 
 The prompt is `$request`. Ask the SEVEN gate questions (across two `AskUserQuestion` calls — up to 4
-each), in EXECUTION order so they read like the run, unless `$request` already pins them. **Every role
-independently picks its executor** (each write and each review is separate — write with codex, review
-with kiro is fine). Only offer `codex`/`kiro` for roles whose tooling Step 1 found installed. Defaults
-are LIGHT to control token cost; the user can dial each up to full rigor or down to skip.
+each), in EXECUTION order so they read like the run, unless `$request` already pins them.
+
+**These gate questions come FIRST — immediately after the dependency check (Step 1).** Do NOT precede
+them with scope/feature-clarification questions ("full platform or just the API?", "which SSO
+protocol?", etc.). The prompt IS the scope; if it's broad or ambiguous, you ground it in Step 3 (AFTER
+these gates) or let the plan phase challenge scope during planning — never with a question round before
+the gates. The user expects the workflow configuration first.
+
+**Every role independently picks its executor** (each write and each review is separate — write with
+codex, review with kiro is fine). Only offer `codex`/`kiro` for roles whose tooling Step 1 found
+installed. Defaults are LIGHT to control token cost; the user can dial each up to full rigor or skip.
 
 **Option ordering rule:** list `native` first (mark it Recommended/default), then `codex`, then
 `kiro`, and put **`skip` as the LAST option you provide** (it then renders second-to-last, right before
@@ -181,7 +190,13 @@ optional gates (plan review, code review, impl review, go-live audit, map) each 
 fast (skip the reviews). **Warn (do not block)** if BOTH `taskReview skip` AND `implReview skip`:
 nothing then checks the build, so a clean verdict only means the engineer validates passed.
 
-### Step 3 — Project facts, git preflight, agent list
+### Step 3 — Scope grounding, project facts, git preflight, agent list
+
+**Now (AFTER the gate questions) ground the scope.** Read the repo to understand what exists. If
+`$request` is broad or ambiguous (e.g. "a self-hostable SaaS platform with SSO"), narrow it HERE: prefer
+inferring scope from the repo, and only ask focused scope questions if you genuinely cannot proceed —
+or pass the broad prompt through and let the plan phase challenge scope. Fold the resolved scope into
+the `prompt` you pass in `args`.
 
 Gather the facts the Workflow needs (do not ask the user — read the repo): `root` (absolute repo path),
 `workingBranch` (never build on a protected branch without confirmation), `validate` (the workspace
