@@ -1,40 +1,37 @@
 # Harness routing
 
-The `harness` intake picks ONE global external review harness: `none`, `codex`, or `kiro`. Native
-claude (this orchestrator) always runs its own side of any enabled review; the harness is the optional
-*external cross-check* run alongside it. It is used wherever a gate is set to **`claude+harness`**
-(`planReview`, `implReview`) or `taskReview` is **`harness`**. `none` = native only, no external lane.
+There is NO global harness. Every role independently picks its own executor — `native` (claude / the
+plan's specialist agent), `codex`, or `kiro`. The four roles: **code writing** (`buildHarness`),
+**plan review** (`planReview`), **per-task review** (`taskReview`), **impl review** (`implReview`).
+Writer and reviewers are independent (write codex, review kiro is fine); each review also allows `skip`.
 
-This file pins how each choice maps to a concrete invocation for the review surfaces the playbook uses:
-**plan review** (a markdown/JSON plan), **code review** (a branch diff), and **go-live audit** (the repo).
+This file pins how each executor maps to a concrete invocation per surface.
 
-## The matrix
+## Review routing — `planReview` / `taskReview` / `implReview` (each ∈ skip | native | codex | kiro)
 
-| Surface | native (claude, always runs its side) | `codex` | `kiro` |
+| Surface | `native` | `codex` | `kiro` |
 |---|---|---|---|
-| Plan review (`planReview claude+harness`) | `plan-founder-review <plan>` (forked) | `codex:codex-rescue` agent, read-only founder-review brief | `kiro-review` adapted to the plan files |
-| Impl review (`implReview claude+harness`) | `claude-review` over the branch (or a `general-purpose` reviewer in a worktree) | `codex-review` over the branch | `kiro-review` over the branch |
-| Go-live audit (Phase G) | `go-live-audit` (multi-agent workflow) | `codex:codex-rescue` agent, read-only launch-audit brief | `kiro-review` whole-repo |
+| Plan review (`planReview`) | native founder review (`founderBrief`) | `codex:codex-rescue` agent, read-only founder-review brief | `kiro-review` skill adapted to the plan files |
+| Per-task review (`taskReview`) | the matched `-reviewer` agent (`resolveAgent(t.reviewer)`) | `codex:codex-rescue` agent, READ-ONLY brief | the `kiro-review` skill via the Kiro CLI, READ-ONLY |
+| Impl review (`implReview`) | native review (`claude-review`-style over the branch) | `codex:codex-rescue` / `codex-review` over the branch | `kiro-review` over the branch |
+| Go-live audit (`goLive`, native) | `go-live-audit` (multi-agent workflow) — composed; native only | — | — |
 
-Native always runs its side when the gate is enabled. With `claude+harness` AND `harness != none`, the
-harness column runs **in parallel** with native. Plan review is a bounded loop (exits clean or
-non-converging); impl review and audit run once and their findings are returned as feedback. Any gate
-can be `skip`ped — then neither lane runs.
+A single reviewer runs per gate (the one the role picked) — not native ∥ harness. Plan review is a
+bounded loop (the FIX is always native; exits clean or non-converging); per-task review drives the
+build fix loop; impl review and audit run once and their findings are returned as feedback. `skip`
+means the gate doesn't run. kiro reviewers that find the CLI unavailable say so and return empty
+findings — they never silently substitute a native review. The go-live audit composes the proven
+`go-live-audit` workflow (already a thorough multi-agent native audit), so it has no per-harness column.
 
-## Per-task build & review handoff
+## Build routing — `buildHarness` (∈ native | codex | kiro)
 
-Two selectors decide who does the per-task work inside the build loop — `buildHarness` (who WRITES each
-task) and `taskReview` (who REVIEWS each task). `buildHarness` ∈ `native | codex | kiro` is an
-independent axis; `taskReview` ∈ `skip | native | harness`, where `harness` routes to the ONE global
-`harness` (codex or kiro):
+| `native` (default) | `codex` | `kiro` |
+|---|---|---|
+| the plan's specialist engineer agent (`resolveAgent(t.agent)`, in a worktree) | `codex:codex-rescue` agent (write-capable), worktree | a `general-purpose` agent that runs the **`hand-over-to-kiro`** skill (by Sabeur Thabti, @thabti) to delegate the build to `kiro-cli` (autonomous); if that skill or the CLI is absent it implements directly |
 
-| Handoff | `native` (default) | `codex` | `kiro` |
-|---|---|---|---|
-| Build (write) — `buildHarness` | the plan's specialist engineer agent (`resolveAgent(t.agent)`, in a worktree) | `codex:codex-rescue` agent (write-capable), worktree, brief allows edits | a `general-purpose` agent that runs the **`hand-over-to-kiro`** skill (by Sabeur Thabti, @thabti) to delegate the build to `kiro-cli` (autonomous); if that skill or the CLI is absent it implements directly |
-| Per-task review — `taskReview` (`harness` → global) | the matched `-reviewer` agent (`resolveAgent(t.reviewer)`) | `codex:codex-rescue` agent, READ-ONLY brief | the **`kiro-review`** skill via the Kiro CLI, READ-ONLY; if unavailable it says so and returns empty findings (never substitutes a native review) |
-
-`taskReview skip` runs no per-task reviewer at all (and no per-task fix loop) — the task passes on its
-engineer validate alone.
+`buildHarness` and `taskReview` are independent — e.g. write with codex, review each task with kiro.
+`taskReview skip` runs no per-task reviewer (and no per-task fix loop) — the task passes on its engineer
+validate alone.
 
 These are wired in `workflow-template.js` (`buildSpawn` / `taskReviewSpawn`). The native path keeps the
 specialist-agent availability handling (`resolveAgent` + `missingAgents` reporting); the codex/kiro
