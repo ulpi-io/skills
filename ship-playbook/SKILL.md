@@ -121,8 +121,14 @@ options) what's present vs missing across:
   …). Missing ones force `general-purpose`, which is lower quality.
 - **Stack skills** — `/nextjs`, `/laravel`, `/rust`, … for the detected stack.
 - **Optional harness tooling** (only if the user might pick codex/kiro): the **codex** plugin
-  (`codex:codex-rescue`); for **kiro**, `kiro-cli` (<https://kiro.dev/docs/cli>) plus the `kiro-review`
-  skill (for reviewing) and `hand-over-to-kiro` skill (for building).
+  (`codex:codex-rescue`); for **kiro**, the CLI plus the `kiro-review` skill (reviewing) and
+  `hand-over-to-kiro` skill (building). **Detecting the kiro CLI — two gotchas:**
+  - The binary is named **`kiro-cli`, NOT `kiro`** (bare `kiro` is usually the Kiro IDE symlink, not the
+    CLI). Check `kiro-cli`.
+  - It's commonly in `~/.local/bin`, which the sandboxed Bash PATH may NOT include — so `command -v
+    kiro-cli` can come back empty even when it's installed. Detect with a location-tolerant check, e.g.
+    `command -v kiro-cli || ls ~/.local/bin/kiro-cli ~/.kiro/bin/kiro-cli /usr/local/bin/kiro-cli 2>/dev/null`,
+    and confirm it runs (`kiro-cli --version`). Docs: <https://kiro.dev/docs/cli>.
 
 Present **TWO separate tables**, each listing ONLY the MISSING items (do NOT list what's already
 installed), with the **full, copy-paste install command** per row (never an abbreviation):
