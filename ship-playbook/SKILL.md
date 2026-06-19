@@ -111,15 +111,23 @@ Before anything else, tell the user what would make this skill do its BEST work,
 and what's missing — with copy-paste install commands. ship-playbook composes other skills and routes
 to specialist agents; the more of these are installed, the better the result.
 
-**How to detect what's installed — use the loaded lists, NOT the disk.** A skill is "present" if it is
-in YOUR available-skills list (the skills you can actually invoke this session); an agent is "present"
-if it is in your Agent tool's `subagent_type` options. Those loaded lists are the source of truth.
-**Do NOT shell out to `find`/`ls` to detect skills or agents** — they're commonly registered as
-*symlinks* into a shared store (e.g. `.claude/skills/map-project → ../../.agents/skills/map-project`),
-so `find -type d` silently misses them and the install root varies; that produces false "missing"
-reports for skills that are clearly installed. Disk/PATH checks are ONLY for external CLIs (`kiro-cli` —
-see below). Sanity check: if your method reports an obviously-present skill (like one you just used) as
-missing, the method is broken — trust the loaded list, not the shell.
+**How to detect — THREE states, not two.** A skill is only loaded into your available-skills list (and
+an agent into your `subagent_type` options) at Claude STARTUP, so "installed on disk" ≠ "usable this
+session". Classify each item:
+
+- **Ready** — in your loaded available-skills list / `subagent_type` options. Usable now. Don't list it.
+- **Installed, needs restart** — NOT in the loaded list, but present on disk. Check disk
+  **symlink-aware** (skills register as symlinks into a shared store, e.g.
+  `.claude/skills/map-project → ../../.agents/skills/map-project`): use `ls -laL .claude/skills/<name>`
+  or `test -e .claude/skills/<name>` (follows symlinks) — NOT `find -type d` (silently misses symlinks).
+  Report these as "installed — RESTART Claude to load", with NO install command (it's already installed).
+- **Missing** — not in the loaded list and not on disk. Show the full install command.
+
+The loaded list is the source of truth for what's USABLE now; the symlink-aware disk check only
+distinguishes "installed but not loaded (restart)" from "truly missing", so an installed-but-not-yet-
+loaded skill is never mislabeled plain "missing". Sanity check: if you'd report an obviously-present
+skill (one you just used) as missing, your method is broken. Disk/PATH probing for the external
+`kiro-cli` binary is separate (see below).
 
 Detect the project's stack(s), then check (against those loaded lists) what's present vs missing across:
 
@@ -139,18 +147,20 @@ Detect the project's stack(s), then check (against those loaded lists) what's pr
     `command -v kiro-cli || ls ~/.local/bin/kiro-cli ~/.kiro/bin/kiro-cli /usr/local/bin/kiro-cli 2>/dev/null`,
     and confirm it runs (`kiro-cli --version`). Docs: <https://kiro.dev/docs/cli>.
 
-Present **TWO separate tables**, each listing ONLY the MISSING items (do NOT list what's already
-installed), with the **full, copy-paste install command** per row (never an abbreviation):
+Present **TWO separate tables** — one for skills, one for agents — listing only items that are NOT
+ready (i.e. "missing" OR "installed, needs restart"). Do NOT list ready items at all (no "present /
+ready" section). Each row shows the item, its state, and the action:
 
-- **Missing skills** — `npx skills add https://github.com/ulpi-io/skills --skill <name>` (complete
-  command per row). Covers the composed skills, stack skills, and the kiro helper skills
-  (`kiro-review`, `hand-over-to-kiro`). `kiro-cli` itself (if missing) goes here too as a note with its
-  docs link <https://kiro.dev/docs/cli>.
-- **Missing agents** — `npx agentshq add ulpi-io/agents@<agent-name>` (complete command per row).
-  Covers the stack's `*-senior-engineer` + `*-reviewer` specialists.
+- **state = installed, needs restart** → action: "Restart Claude to load" (NO install command — it's
+  already on disk).
+- **state = missing** → action: the **full, copy-paste install command**:
+  - skills → `npx skills add https://github.com/ulpi-io/skills --skill <name>` (composed skills, stack
+    skills, kiro helpers `kiro-review`/`hand-over-to-kiro`; `kiro-cli` itself → its docs link
+    <https://kiro.dev/docs/cli>);
+  - agents → `npx agentshq add ulpi-io/agents@<agent-name>` (the stack's `*-senior-engineer` +
+    `*-reviewer` specialists).
 
-If a table has no missing items, omit it (or say "all present" in one line). Then **offer two choices**
-with `AskUserQuestion`:
+If a table has no not-ready items, omit it entirely. Then **offer two choices** with `AskUserQuestion`:
 
 - **Continue now** with what's installed (missing specialists fall back to `general-purpose`; missing
   harness options simply won't be offered).
