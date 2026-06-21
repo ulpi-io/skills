@@ -38,6 +38,10 @@ Root `CLAUDE.md` should stay thin:
 - workspace layout
 - global testing or build guidance
 - routing to member-local docs
+- a compact, INLINE "Available Skills & MCP — prefer these" section listing the repo's project skills
+  and enabled MCP servers, with a one-line "use these first" directive — plus a one-line pointer at the
+  very top of the root file (omit both if the repo has neither; never include MCP secrets). Workspace-
+  wide, so root only — never per-member. See `skills-and-mcp.md`.
 
 Do not duplicate member-local API inventories or file tables in root.
 
@@ -64,5 +68,7 @@ Before completion, confirm:
 - root no longer duplicates member-local detail heavily
 - budget targets remain sane
 - a future agent could work inside a member without searching blind for exports, entry points, or tests
+- if the repo provides skills or MCP servers, the root `CLAUDE.md` has the inline "Available Skills &
+  MCP" section (plus the top-of-file pointer) and it contains no secrets
 
 If any gate fails, tighten and rerun the refresh instead of calling it complete.

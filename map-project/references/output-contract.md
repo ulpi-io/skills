@@ -49,6 +49,10 @@ Should stay thin:
 - imports or references to the detailed docs
 - quick reference for where to look
 - project-level rules or conventions that matter on most turns
+- a compact, INLINE "Available Skills & MCP — prefer these" section listing the repo's project skills
+  and enabled MCP servers, with a one-line "use these first" directive — plus a one-line pointer at the
+  very top of the file (omit both if the repo has neither skills nor MCP; never include MCP secrets).
+  See `skills-and-mcp.md`.
 
 ## Budget Rules
 
@@ -75,6 +79,8 @@ Before completion, confirm:
 - budget targets are still reasonable
 - no major duplication exists across memory files
 - the refreshed docs would help an implementation agent find routes, exports, and common build patterns
+- if the repo provides skills or MCP servers, `CLAUDE.md` has the inline "Available Skills & MCP"
+  section (plus the top-of-file pointer) and it contains no secrets
 
 If any gate fails, tighten and rerun the refresh instead of calling it complete.
 

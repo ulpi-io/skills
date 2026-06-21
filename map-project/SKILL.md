@@ -1,6 +1,6 @@
 ---
 name: map-project
-version: 2.0.0
+version: 2.1.0
 description: |
   Scan the codebase and update project memory files such as `CLAUDE.md` and the imported
   reference docs with real project-specific routes, exports, flows, and implementation guidance.
@@ -75,6 +75,8 @@ Use framework-appropriate discovery to inventory the real codebase:
 - stateful entities and lifecycle flows
 - public surfaces such as API routes, CLI entry points, or package exports
 - key subsystems and their integration boundaries
+- the capabilities the repo itself provides: project-committed skills (`.claude/skills/`) and enabled
+  MCP servers (`.mcp.json` / `.claude/settings*.json`)
 
 Rules:
 
@@ -84,6 +86,7 @@ Rules:
 - if the repo is partially documented already, verify and extend instead of rewriting blindly
 
 Load `references/framework-discovery.md` and complete the discovery steps for the detected project shape.
+Load `references/skills-and-mcp.md` for skill/MCP discovery sources and redaction rules.
 
 **Success criteria**: You have enough concrete inventory to document the project without placeholders or guesswork.
 
@@ -118,6 +121,10 @@ Treat `CLAUDE.md` as the compact router:
 - import the detailed reference files
 - keep only the high-signal quick reference and project-level guidance inline
 - do not duplicate large tables or walkthroughs that now live in the imported files
+- include a compact, INLINE "Available Skills & MCP — prefer these" section, plus a one-line pointer at
+  the very top of `CLAUDE.md`, so future agents use the repo's skills and MCP servers instead of
+  forgetting them — this stays in `CLAUDE.md` itself, never an imported reference, because only
+  always-loaded text changes behavior
 
 Rules:
 
@@ -126,6 +133,7 @@ Rules:
 - make the quick reference actually help agents choose the right imported file
 
 Load `references/output-contract.md` for the expected `CLAUDE.md` shape.
+Load `references/skills-and-mcp.md` for the "Available Skills & MCP" section format and discovery sources.
 
 **Success criteria**: `CLAUDE.md` becomes the compact, accurate entrypoint to the refreshed project memory.
 
@@ -184,6 +192,10 @@ Do not claim a perfect refresh if the repo has large blind spots or mixed-framew
 
 - `references/output-contract.md`
   Use for required output files, required sections, line budgets, and verification rules.
+
+- `references/skills-and-mcp.md`
+  Use to discover the repo's project skills and MCP servers and render the inline "Available Skills &
+  MCP — prefer these" section into `CLAUDE.md`.
 
 ## Output Contract
 

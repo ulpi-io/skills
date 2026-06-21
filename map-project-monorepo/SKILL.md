@@ -1,6 +1,6 @@
 ---
 name: map-project-monorepo
-version: 3.0.0
+version: 3.1.0
 description: |
   Scan a Cargo workspace or package monorepo and refresh per-member `CLAUDE.md` files plus a thin
   root `CLAUDE.md`. User-only maintenance workflow for keeping workspace-local AI context accurate
@@ -77,6 +77,11 @@ For every in-scope member, inventory:
 - tests, benchmarks, or runtime entry points
 - real consumer usage patterns when available
 
+Also inventory workspace-wide capabilities (these belong in the root file, not per-member):
+
+- project-committed skills (`.claude/skills/`) and enabled MCP servers (`.mcp.json` /
+  `.claude/settings*.json`)
+
 Rules:
 
 - do not equate raw `pub` or raw `export` counts with the real public surface
@@ -85,6 +90,7 @@ Rules:
 - preserve existing member docs when they are still correct; extend or tighten them instead of regenerating blindly
 
 Load `references/workspace-discovery.md` and complete the relevant discovery steps for the detected monorepo shape.
+Load `references/skills-and-mcp.md` for skill/MCP discovery sources and redaction rules.
 
 **Success criteria**: You have enough concrete inventory to write self-contained member docs without placeholders or false surface claims.
 
@@ -123,6 +129,9 @@ Treat the root file as the project-wide router:
 - keep project-wide rules, locked decisions, testing policy, and workspace layout
 - remove member-specific API tables or file listings from root
 - ensure the root points clearly to member-local docs rather than duplicating them
+- include a compact, INLINE "Available Skills & MCP — prefer these" section in the ROOT `CLAUDE.md`,
+  plus a one-line pointer at the very top, so future agents use the repo's skills/MCP instead of
+  forgetting them (always-loaded text only — never a lazy reference, never per-member)
 
 Rules:
 
@@ -131,6 +140,7 @@ Rules:
 - move member detail down instead of letting the root become a second copy of every member file
 
 Load `references/output-contract.md` for the root-file expectations and budget rules.
+Load `references/skills-and-mcp.md` for the "Available Skills & MCP" section format and discovery sources.
 
 **Success criteria**: Root stays thin and project-wide while member detail lives where Claude will lazy-load it.
 
@@ -196,6 +206,10 @@ Do not claim a perfect refresh if the workspace is only partially covered or if 
 
 - `references/app-template.md`
   Use when refreshing binaries, apps, servers, or entrypoint-heavy members.
+
+- `references/skills-and-mcp.md`
+  Use to discover the repo's project skills and MCP servers and render the inline "Available Skills &
+  MCP — prefer these" section into the root `CLAUDE.md`.
 
 ## Output Contract
 
