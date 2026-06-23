@@ -1,6 +1,6 @@
 ---
 name: ship-playbook
-version: 1.0.0
+version: 1.1.0
 description: |
   Take one feature request and run the entire delivery playbook automatically: plan it, review the
   plan, build it task by task, review the build, and optionally audit it for launch — then return the
@@ -288,7 +288,12 @@ The Workflow then executes the playbook in one pass, running each gate at the le
   in-workflow integrate agent (`git merge` onto the working branch, removing each merged worktree as it
   goes) → reviewer (unless `taskReview skip`) → bounded fix loop until it passes; barrier between layers.
   Engineer routes per `buildHarness`; reviewer per `taskReview` — and the two are INDEPENDENT (write
-  codex, review kiro is fine).
+  codex, review kiro is fine). The build and verify fan-outs run behind concurrency gates so a wide DAG
+  layer or a long findings list can't trip Claude's API rate limits: at most `MAX_BUILD_PARALLEL` (4)
+  worktree engineers and `MAX_PARALLEL` (6) reviewers/verifiers run at once. Total agent count is
+  unchanged — only how many run simultaneously is bounded. Tune those two constants in
+  `references/workflow-template.js` if you hit 429s (lower) or have a high-limit account (raise); never
+  set them to 1–2.
 - **Impl review (step 12)** — reviewer per `implReview` (`skip` / `native` / `codex` / `kiro`). The
   plan-vs-implementation review of everything built.
 - **Verify (step 14)** — dedup + adversarially verify the build+impl findings. These become the

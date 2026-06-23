@@ -58,6 +58,33 @@ const GO_LIVE = CFG.goLive === true
 const MAX_REVIEW = 2                          // bounded plan-review iterations (a plan isn't code; non-convergence also early-exits)
 const MAX_FIX = 3                             // bounded per-task engineer↔reviewer fix iterations
 
+// ── concurrency caps (avoid Claude API rate limits / 429s) ───────────────────────
+// The runtime only caps concurrent agents at min(16, cpu-2) — too loose to keep a
+// wide fan-out from tripping Claude's API rate limits. These bound how many agents
+// run AT ONCE; the TOTAL number of agents is unchanged. Build engineers are heavy
+// (each is isolation:'worktree' = a full repo checkout), so they get a tighter cap
+// than the light read-only reviewers/verifiers — that also relieves disk + CPU.
+// Keep them sane: NOT 1–2 (that serializes the run). The two gates are independent,
+// but the build fan-out and the read-only phases barely overlap, so peak stays low.
+const MAX_BUILD_PARALLEL = 4                  // concurrent build/fix engineers (worktree-isolated)
+const MAX_PARALLEL = 6                        // concurrent reviewers / verifiers / other read-only agents
+function makeGate(limit) {
+  let inFlight = 0
+  const queue = []
+  return async function gate(fn) {
+    if (inFlight >= limit) await new Promise(resolve => queue.push(resolve))   // park; slot handed over on release (no ++)
+    else inFlight++
+    try { return await fn() }
+    finally {
+      const next = queue.shift()
+      if (next) next()        // hand the in-flight slot straight to the next waiter (no decrement)
+      else inFlight--         // nobody waiting → free the slot
+    }
+  }
+}
+const buildGate = makeGate(MAX_BUILD_PARALLEL)   // gates build/fix engineers (buildSpawn)
+const agentGate = makeGate(MAX_PARALLEL)         // gates reviewers (taskReviewSpawn) + verify lenses
+
 // ── review/build roles (each independently dialable; writer and each reviewer pick their own harness) ──
 // Every role chooses its own executor: 'native' (claude / the plan's specialist agent), 'codex', or
 // 'kiro'. There is NO shared global harness — writing and reviewing can use DIFFERENT harnesses
@@ -296,7 +323,7 @@ async function verifyFinding(f, phaseTitle) {
   const desc = `[${f.severity}] ${f.file}${f.line ? ':' + f.line : ''}\n${f.issue}\nEvidence: ${f.evidence || '(none)'}`
   const lenses = f.severity === 'BLOCK' ? ['code', 'spec'] : ['code']
   const verdicts = (await parallel(lenses.map(lens => () =>
-    agent((lens === 'code' ? REFUTE_CODE : REFUTE_SPEC) + desc, { label: `verify:${lens}`, phase: phaseTitle, schema: VERDICT })))).filter(Boolean)
+    agentGate(() => agent((lens === 'code' ? REFUTE_CODE : REFUTE_SPEC) + desc, { label: `verify:${lens}`, phase: phaseTitle, schema: VERDICT }))))).filter(Boolean)
   const stillReal = verdicts.length === 0 ? true : verdicts.some(v => v.real)   // keep unless every lens refutes
   return stillReal ? f : null
 }
@@ -354,19 +381,23 @@ Never delete non-worktree files and never remove the main checkout. Report remov
 // (build) / kiro-review skill (review) wrapping the Kiro CLI, each with a self-implementation fallback
 // if the skill/CLI is absent.
 function buildSpawn(t, brief, label) {
+  return buildGate(() => {
   if (BUILD_HARNESS === 'codex')
     return spawnSpecialist(`You MAY edit files to implement this task.\n${brief}`, { label, phase: 'Build', schema: TASK_RESULT, agentType: 'codex:codex-rescue', isolation: 'worktree' })
   if (BUILD_HARNESS === 'kiro')
     return spawnSpecialist(`Use the hand-over-to-kiro skill (\`/hand-over-to-kiro\`) to delegate implementing this task to kiro-cli — it builds an injection-safe prompt, runs kiro in this worktree, and verifies the diff. This is UNATTENDED: tell it to run kiro autonomously (\`--trust-all-tools\`), since no human can approve tool calls. If the hand-over-to-kiro skill or kiro-cli is unavailable, say so and implement the task yourself.\n${brief}`, { label, phase: 'Build', schema: TASK_RESULT, agentType: 'general-purpose', isolation: 'worktree' })
   return spawnSpecialist(brief, { label, phase: 'Build', schema: TASK_RESULT, agentType: resolveAgent(t.agent), isolation: 'worktree' })
+  })
 }
 // only called when TASK_REVIEW !== 'skip' (the skip case is handled in buildPlan, no reviewer spawned).
 function taskReviewSpawn(t, brief, label) {
+  return agentGate(() => {
   if (TASK_REVIEW === 'codex')
     return spawnSpecialist(`READ-ONLY review — do NOT edit.\n${brief}`, { label, phase: 'Build', schema: FINDINGS, agentType: 'codex:codex-rescue' })
   if (TASK_REVIEW === 'kiro')
     return spawnSpecialist(`Use the kiro-review skill (\`/kiro-review\`) to review this task via the Kiro CLI, READ-ONLY; if the Kiro CLI is unavailable, say so and return empty findings — do not substitute a native review.\n${brief}`, { label, phase: 'Build', schema: FINDINGS, agentType: 'general-purpose' })
   return spawnSpecialist(brief, { label, phase: 'Build', schema: FINDINGS, agentType: resolveAgent(t.reviewer) })   // native
+  })
 }
 
 // ── steps 10–11: build across DAG layers, engineer → integrate → reviewer → fix ──
