@@ -1,6 +1,6 @@
 ---
 name: go-live-audit
-version: 1.0.0
+version: 1.1.0
 description: |
   Generate and run a project-tailored pre-launch (go-live) audit as a multi-agent workflow:
   parallel build/test/lint gates, one read-only finder per audit dimension, agent-based dedup,
@@ -35,7 +35,9 @@ This skill authors and runs a multi-agent audit workflow. Non-negotiable rules:
 1. You are *authoring* a fresh, project-tailored workflow from the bundled template — never run
    one fixed script blindly. Fill every `FILL:` marker before running.
 2. The workflow architecture is load-bearing. Leave the schemas and the entire control-flow
-   section of the template unchanged: Gates → Find → Dedup → Verify → Critic → report.
+   section of the template unchanged: Gates → Find → Dedup → Verify → Critic → report. The one
+   exception is `MAX_PARALLEL` (the concurrency cap) — you may tune its value, but never remove the
+   gate or the `gAgent` wrapper that enforces it.
 3. Keep `meta` a pure literal (no variables, no interpolation) or the Workflow tool rejects it.
 4. Finders and verifiers are read-only. They must never modify, create, or delete files, and
    never run builds or installs. Only gate agents execute commands (build may write `dist/`).
@@ -64,6 +66,10 @@ pre-launch audit workflow:
   lens plus a spec lens
 - **Critic** — names uncovered areas, spawns follow-up finders, verifies them
 - A structured GO / NO-GO / GO-WITH-FIXES report
+
+All phases fan out through a global concurrency gate (`MAX_PARALLEL`, default 6) so a wide sweep
+never puts more than that many agents in flight at once — the total agent count is unchanged, but
+they run in bounded waves so Claude's API rate limits are not tripped.
 
 ## Step 0: Confirm scope
 
@@ -123,7 +129,10 @@ Copy `references/workflow-template.js` and fill every `FILL:` marker:
 - `FINDERS` — the dimensions from Step 2.
 - `STACK` — the detected commands; set any gate to `null` to skip it.
 
-Leave the schemas and the entire control-flow section **unchanged** — they are generic.
+Leave the schemas and the entire control-flow section **unchanged** — they are generic. The only
+value you may adjust there is `MAX_PARALLEL` (default 6): the cap on how many agents run at once.
+Lower it (e.g. 4) if the account hits rate limits; raise it (e.g. 8–10) on a high-limit account for
+more throughput. Do not set it to 1–2 (that serializes the audit) and never delete the gate itself.
 
 **Success criteria**: No `FILL:` marker remains, `meta` is a pure literal, and the control-flow
 section is byte-identical to the template.
@@ -131,8 +140,10 @@ section is byte-identical to the template.
 ## Step 4: Warn about scale, then run
 
 Tell the user roughly how many agents this will spawn (finders + ~1–2 verifiers each + gates +
-critic round — typically 40–80 agents) so the cost is expected. Then call the **Workflow** tool
-with `script` set to the filled-in template. Watch progress via `/workflows`.
+critic round — typically 40–80 agents *total*, but at most `MAX_PARALLEL` (default 6) run at once,
+so the audit proceeds in bounded waves rather than hammering the API) so the cost and pacing are
+expected. Then call the **Workflow** tool with `script` set to the filled-in template. Watch
+progress via `/workflows`.
 
 To iterate on the script, edit the saved `scriptPath` the tool returns and re-invoke Workflow
 with `{scriptPath}` rather than resending the whole script.

@@ -217,12 +217,46 @@ const GATES = Object.entries(STACK)
 
 // ===========================================================================
 // CONTROL FLOW — reusable verbatim. Do not edit below unless you know why.
+// (The concurrency gate just below is intentional and load-bearing — do not
+// remove it; tune MAX_PARALLEL if needed.)
 // ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Concurrency cap. A wide fan-out — 8–16 finders, then one verifier per finding
+// × up to 2 lenses, plus the critic round — can put enough agents in flight at
+// once to trip Claude's API rate limits (429s). This is a GLOBAL gate: it bounds
+// how many agent() calls run concurrently across the WHOLE audit, independent of
+// the workflow runtime's own min(16, cpu-2) cap. It does NOT reduce the total
+// number of agents (still ~40–80) — only how many run at the same time.
+// Keep it sane: NOT 1–2 (that serializes the audit). 6 is a good default; lower
+// it only if you still see rate-limit errors, raise it on a high-limit account.
+// ---------------------------------------------------------------------------
+const MAX_PARALLEL = 6
+let _inFlight = 0
+const _queue = []
+function _acquire() {
+  if (_inFlight < MAX_PARALLEL) { _inFlight++; return Promise.resolve() }
+  return new Promise((resolve) => _queue.push(resolve))
+}
+function _release() {
+  const next = _queue.shift()
+  if (next) next()        // hand the in-flight slot straight to the next waiter (no decrement)
+  else _inFlight--        // nobody waiting → free the slot
+}
+// gAgent === agent(), but never lets more than MAX_PARALLEL run at once. Every
+// fan-out below calls gAgent so the global cap holds no matter how parallel()
+// nests (verify spawns per-finding AND per-lens). parallel() still supplies the
+// barriers; this only throttles how fast its thunks actually fire.
+async function gAgent(prompt, opts) {
+  await _acquire()
+  try { return await agent(prompt, opts) }
+  finally { _release() }
+}
 
 // Launch gates immediately; don't await until the end (they overlap the finders).
 const gatesPromise = parallel(
   GATES.map((g) => () =>
-    agent(g.prompt, { label: `gate:${g.key}`, phase: 'Gates', schema: GATE_SCHEMA }).then((r) =>
+    gAgent(g.prompt, { label: `gate:${g.key}`, phase: 'Gates', schema: GATE_SCHEMA }).then((r) =>
       r ? { gate: g.key, ...r } : { gate: g.key, passed: false, summary: 'gate agent failed to report', failures: [] },
     ),
   ),
@@ -231,7 +265,7 @@ const gatesPromise = parallel(
 // Finder sweep (barrier needed: dedup requires all findings).
 const finderResults = await parallel(
   FINDERS.map((f) => () =>
-    agent(COMMON + f.prompt, { label: `find:${f.key}`, phase: 'Find', schema: FINDINGS_SCHEMA }).then((r) =>
+    gAgent(COMMON + f.prompt, { label: `find:${f.key}`, phase: 'Find', schema: FINDINGS_SCHEMA }).then((r) =>
       r ? { key: f.key, findings: r.findings.slice(0, 12), notes: r.notes || '' } : null,
     ),
   ),
@@ -253,7 +287,7 @@ if (all.length > 5) {
   const listing = all
     .map((f) => `#${f.id} [${f.category}/${f.severity}] ${f.file}${f.line ? ':' + f.line : ''} — ${f.title} :: ${f.description.slice(0, 180)}`)
     .join('\n')
-  const d = await agent(
+  const d = await gAgent(
     `Below are findings from independent code-audit agents over the same repo. Identify groups that describe the SAME underlying issue (same root cause — typically same file/feature; different finders often phrase it differently). Be conservative: only group when clearly the same defect, not merely the same file. Return groups of ids; pick keepId = the most precise/severe phrasing.\n\n${listing}`,
     { label: 'dedup', phase: 'Dedup', schema: DEDUP_SCHEMA },
   )
@@ -281,7 +315,7 @@ async function verifyFinding(f, phaseTitle) {
   const verdicts = (
     await parallel(
       lenses.map((lens) => () =>
-        agent((lens === 'code' ? REFUTE_CODE : REFUTE_SPEC) + desc, {
+        gAgent((lens === 'code' ? REFUTE_CODE : REFUTE_SPEC) + desc, {
           label: `verify#${f.id}:${lens}`,
           phase: phaseTitle,
           schema: VERDICT_SCHEMA,
@@ -302,14 +336,14 @@ log(`verification done: ${confirmedCount} confirmed, ${verified.filter((v) => v.
 // Completeness critic round.
 const surviving = verified.filter((v) => v.status !== 'rejected')
 const criticInput = `A multi-agent pre-launch audit of ${ROOT} just ran these finder dimensions: ${FINDERS.map((f) => f.key).join(', ')}; plus workspace gates (${GATES.map((g) => g.key).join(', ')}).\n\nSurviving findings so far:\n${surviving.map((f) => `- [${f.severity}] (${f.category}) ${f.file} — ${f.title}`).join('\n') || '(none)'}\n\nFinder coverage notes:\n${finderNotes.map((n) => `- ${n.key}: ${(n.notes || '').slice(0, 250)}`).join('\n')}\n\nYou are the completeness critic. Explore the repo briefly (read the layout, root CLAUDE.md / README, the spec table of contents, anything the dimension list plausibly missed — e.g. deployment/runbook readiness, performance-budget assertions, dependency vulnerabilities, license compliance, release/versioning process, observability/alerting). Name up to 6 genuinely UNCOVERED risk areas worth a follow-up investigation before go-live. For each, write a complete self-contained finder prompt (the finder will not see this conversation). If coverage is genuinely complete, return an empty gaps array.`
-const critic = await agent(criticInput, { label: 'critic', phase: 'Critic', schema: CRITIC_SCHEMA })
+const critic = await gAgent(criticInput, { label: 'critic', phase: 'Critic', schema: CRITIC_SCHEMA })
 
 let extraVerified = []
 if (critic && Array.isArray(critic.gaps) && critic.gaps.length > 0) {
   log(`critic proposed ${critic.gaps.length} follow-up areas: ${critic.gaps.map((g) => g.area).join(', ')}`)
   const extraFound = await parallel(
     critic.gaps.slice(0, 6).map((g) => () =>
-      agent(COMMON + `## Your dimension: ${g.area} (critic follow-up)\n` + g.prompt, {
+      gAgent(COMMON + `## Your dimension: ${g.area} (critic follow-up)\n` + g.prompt, {
         label: `find2:${g.area}`,
         phase: 'Critic',
         schema: FINDINGS_SCHEMA,
