@@ -1,157 +1,170 @@
 ---
 name: frontend-design-ui-ux
-version: 2.0.0
+version: 3.0.0
 description: |
-  Produce implementation-ready UX and UI specifications: user flows, states, component briefs,
-  design tokens, accessibility constraints, and handoff guidance for frontend engineering agents.
-  Use for new features, redesigns, or design-system work where implementation should follow a clear
-  product and interaction spec.
+  Produce a distinctive, LOCKED design language plus an implementation-ready UX/UI spec: a per-brief
+  visual identity (palette, type, signature), user flows and states, component briefs, accessibility
+  constraints, and engineering handoff. Commits to a bold aesthetic direction, bans AI-slop by name,
+  and locks the identity so every screen and future session stays consistent. Can visit inspiration
+  links with the browse skill to extract real design DNA. Use for new features, redesigns, or
+  design-system work. This is a DESIGN-SPEC skill — it does not write production UI code.
 allowed-tools:
   - AskUserQuestion
   - Read
   - Write
-argument-hint: "[feature, screen, or design problem]"
+  - Skill
+argument-hint: "[feature, screen, or design problem] (+ optional inspiration URLs)"
 arguments:
   - request
 when_to_use: |
-  Use when the user wants interface design, flow design, component specification, or design-system
-  work rather than direct implementation. Examples: "design this dashboard", "spec the onboarding
-  flow", "create a handoff for this feature", "define tokens and states for this component".
+  Use when the user wants interface design, flow design, component specification, a design language,
+  or design-system work rather than direct implementation. Examples: "design this dashboard", "spec
+  the onboarding flow", "give this product a visual identity", "make this look less generic", "design
+  it like <url> and <url>". Do not use to write production UI code — hand the spec to an engineer.
 effort: high
 ---
 
 <EXTREMELY-IMPORTANT>
-This is a design-spec skill, not an implementation skill.
-
-Non-negotiable rules:
-1. Understand users, context, and states before proposing screens.
-2. Specify flows, states, accessibility, and responsiveness, not just visuals.
-3. Reuse the templates in `references/` instead of inventing new handoff formats.
-4. Keep implementation handoff concrete enough that an engineering agent can build from it.
-5. Do not start coding the UI from this skill.
+This is a DESIGN-SPEC skill, not an implementation skill. Non-negotiable rules:
+1. Do NOT write production UI code from this skill. Produce a spec + a locked design language; hand off.
+2. Commit to ONE distinctive aesthetic identity BEFORE specifying screens, and pass the counterfactual
+   default test: if you'd produce this same look for any similar brief, it's a default — change it.
+3. Ban AI-slop BY NAME (`references/anti-slop.md`). The slop test gates the work: if someone could say
+   "AI made that" with no doubt, it failed.
+4. LOCK the design language in `DESIGN.md` and bind every screen to it. Variation within identity,
+   NEVER between. Re-read `DESIGN.md` first on every later feature or session.
+5. If the user gives inspiration links, VISIT them with the `browse` skill and synthesize — never clone
+   a single reference, and never inherit its slop.
+6. Run the Design Pre-Flight gate before handoff. If a single box can't be honestly ticked, it is not done.
+7. Keep the rigor that sets us apart: state coverage, flows/edge cases, and accessibility — never skip them.
 </EXTREMELY-IMPORTANT>
 
 # frontend-design-ui-ux
 
 ## Inputs
 
-- `$request`: Feature, page, component, or UX problem to design
+- `$request`: Feature, page, component, or UX problem to design — plus optional inspiration URLs.
 
 ## Goal
 
-Produce a design handoff that covers:
+Produce a design package that is **distinctive, consistent, and buildable**:
 
-- user goals
-- flow and state model
-- component structure
-- design tokens
-- accessibility and responsive behavior
-- target engineering handoff
+- a locked design language (`DESIGN.md`): identity, palette, type, scales, signature, voice
+- user goals, flows, and the full state model
+- component specs with interaction + accessibility rules
+- a handoff target with acceptance criteria
 
-## Step 0: Discovery
+## Step 0: Discovery & inputs
 
-Resolve:
+Resolve: target users · product goal · device/usage context · existing design-system or brand
+constraints · accessibility expectations. Ask once: **"Any reference sites or designs you admire?
+Paste 1–4 URLs."**
 
-- target users
-- product goal
-- device and usage context
-- existing design-system or product constraints
-- accessibility expectations
+If the problem is underspecified, ask — but at most a couple of focused questions; never a long
+interrogation. **Success criteria**: the problem is framed in user + product terms, and inspiration
+links (if any) are collected.
 
-If the problem statement is underspecified, ask before designing.
+## Step 1: Inspiration intake (optional)
 
-**Success criteria**: The design problem is framed in user and product terms, not just screens.
+If the user gave links, VISIT each with the `browse` skill, extract its design DNA (type, color, shape,
+spacing, layout), and distill a one-line DNA note per site. Synthesize across them — never clone one.
+If `browse` is unavailable or a link is unreachable, ask the user to describe the vibe and proceed.
 
-## Step 1: Model flows and states
+Load `references/inspiration-intake.md`. **Success criteria**: each reference reduced to reusable DNA,
+with what to take and what to reject — or cleanly skipped.
 
-Document:
+## Step 2: Design Read & aesthetic direction
 
-- primary user journey
-- edge cases
-- loading, empty, partial, success, and error states
-- key decisions or branching points
+Approach as a design lead who would never ship a templated look. Kill the default-aesthetic reflex
+before any tokens:
 
-Use `references/user-flow-template.md` when writing flow documentation.
+- Emit a one-line **Design Read** (the feeling + the bet).
+- Commit to **one named aesthetic direction** from the menu in `references/anti-slop.md`; justify it
+  from the brief (and the inspiration DNA, if any).
+- Run the **counterfactual default test**: would this look be your answer for ANY similar brief? If so,
+  change it.
+- Optionally set taste dials (`design_variance` / `motion_intensity` / `visual_density`, 1–10) and
+  **match complexity to the direction** (maximalist → elaborate; minimal → restraint, precision, whitespace).
 
-**Success criteria**: The design covers behavior across states, not just the happy path.
+Load `references/anti-slop.md` for the direction menu, the pattern vocabulary, and the named bans.
+**Success criteria**: a committed, brief-specific direction that is not a generic default.
 
-## Step 2: Specify components and interaction rules
+## Step 3: Derive & LOCK the design language → write `DESIGN.md`
 
-For the needed components, define:
+Decide the **register** (brand vs product), then derive and LOCK the identity: palette (OKLCH, tinted
+neutrals, 60-30-10, WCAG-checked), type roles paired on a contrast axis, ONE spacing/radius/motion
+scale, the **Signature** element, and the voice. Write it to `DESIGN.md` — this is the consistency
+source of truth every screen binds to.
 
-- purpose
-- variants
-- props or data needs
-- states
-- interaction feedback
-- responsive behavior
-- accessibility requirements
+Load `references/design-language-lock.md` (artifact + lock rules) and `references/design-tokens-template.md`
+(derivation method). **Success criteria**: a complete, locked `DESIGN.md`; no generic default identity.
 
-Use `references/component-spec-template.md` for structured component briefs.
+## Step 4: Model flows and states
 
-**Success criteria**: The engineering handoff is concrete enough to implement without guessing.
+Document the primary journey, branching/decisions, and the full state model — loading, empty, partial,
+success, error — plus edge cases (refresh, session expiry, back, offline). Use
+`references/user-flow-template.md`. **Success criteria**: behavior is covered across states, not just
+the happy path.
 
-## Step 3: Define tokens and system-level decisions
+## Step 5: Specify components and interaction rules
 
-Specify only the tokens and conventions the feature actually needs:
+For each component define: purpose, variants, props/data, states, interaction feedback, responsive
+behavior, and accessibility (ARIA, keyboard, screen-reader, focus). Bind every visual value to
+`DESIGN.md`. Use `references/component-spec-template.md`. **Success criteria**: an engineer can build it
+without guessing, and nothing drifts from the locked identity.
 
-- color roles
-- typography hierarchy
-- spacing and layout rhythm
-- motion and feedback rules
-- semantic states such as success, warning, danger, disabled
+## Step 6: Design Pre-Flight gate
 
-Use `references/design-tokens-template.md` when a token artifact is required.
+Run `references/design-preflight.md` end to end — identity lock, anti-slop, state coverage,
+accessibility, layout craft, cognitive load, and the scored self-critique. Several items are mechanical
+counts. Fix any failing box or any axis scored ≤ 2, state in one line WHAT you changed and WHY
+(revise-and-justify), then re-run. **Success criteria**: every box ticked and no critique axis ≤ 2.
 
-**Success criteria**: The spec encodes reusable system decisions, not just one-off styling notes.
+## Step 7: Handoff (+ optional visual reference)
 
-## Step 4: Handoff to the right engineering surface
+State the implementation target and why it fits, plus the acceptance criteria. Optionally, if an
+image-generation tool is available, produce a north-star **mock image** per key screen against the
+LOCKED palette as a design artifact (continuity-locked across images) — never code.
 
 ### Agent Selection
 
 | Criteria | Target Agent |
 |----------|-------------|
-| Server-side rendering needed | `nextjs-senior-engineer` |
-| SEO critical | `nextjs-senior-engineer` |
-| App Router / Server Components | `nextjs-senior-engineer` |
-| API routes / Server Actions | `nextjs-senior-engineer` |
-| Pure SPA / client-only | `react-vite-tailwind-engineer` |
-| CLI with web UI | `react-vite-tailwind-engineer` |
-| Electron/Tauri app | `react-vite-tailwind-engineer` |
+| Server-side rendering / SEO / App Router / Server Actions | `nextjs-senior-engineer` |
+| Pure SPA / client-only / CLI web UI / Electron-Tauri | `react-vite-tailwind-engineer` |
 | Static site with no SSR | Either (ask user) |
 | Unclear | Ask user |
 
-State:
-
-- which implementation target and why it fits
-- the acceptance criteria for engineering handoff
-
-**Success criteria**: Another agent can pick up the design package and implement it directly.
+**Success criteria**: another agent can pick up the package — `DESIGN.md` + flows + component specs —
+and implement it directly.
 
 ## Guardrails
 
-- Do not implement production UI code from this skill.
-- Do not skip accessibility, state coverage, or responsive behavior.
+- Do not implement production UI code from this skill; produce the spec and hand off.
+- Do not ship a generic default identity — derive palette and type per brief; the slop test gates output.
+- Do not let screens drift from `DESIGN.md`: variation within identity, never between.
+- Do not clone a single inspiration reference, and never inherit its slop.
+- Do not skip accessibility, state coverage, or responsive behavior — they are our edge.
 - Do not produce vague design prose when a concrete artifact is needed.
-- Do not ignore existing product patterns unless the user asked for a redesign.
+- Do not block if `browse` or an image tool is absent — degrade gracefully and proceed from the brief.
 
 ## When To Load References
 
-- `references/user-flow-template.md`
-  Use for user journeys and acceptance flow documentation.
-
-- `references/component-spec-template.md`
-  Use for component briefs and interface contracts.
-
-- `references/design-tokens-template.md`
-  Use when the task requires tokenized styling decisions or system handoff.
+- `references/inspiration-intake.md` — visiting reference links with `browse` and extracting DNA (Step 1).
+- `references/anti-slop.md` — the direction menu, named AI-slop bans, and the slop test (Steps 2, 3, 6).
+- `references/design-language-lock.md` — the `DESIGN.md` artifact and the consistency lock rules (Step 3).
+- `references/design-tokens-template.md` — the per-brief color/type derivation method + neutral scales (Step 3).
+- `references/user-flow-template.md` — user journeys and acceptance flows (Step 4).
+- `references/component-spec-template.md` — component briefs and interface contracts (Step 5).
+- `references/design-preflight.md` — the pre-handoff quality + consistency gate (Step 6).
 
 ## Output Contract
 
 Report or write:
 
-1. user and context summary
-2. flows and states
-3. component specs
-4. design tokens or styling rules if needed
-5. handoff target and implementation acceptance criteria
+1. the Design Read + committed aesthetic direction (and inspiration DNA, if any)
+2. the locked `DESIGN.md` (register, palette, type, scales, signature, voice)
+3. flows and states
+4. component specs
+5. Pre-Flight result (every box ticked)
+6. handoff target + implementation acceptance criteria
