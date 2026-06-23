@@ -1,7 +1,7 @@
 # Design Language Lock (`DESIGN.md`)
 
-The consistency engine. At Step 3, **write this artifact once per project** (default `./DESIGN.md`, or
-beside the feature spec). Every later screen, component, and session BINDS to it. This is what makes
+The consistency engine. At Step 3, **write this artifact once per project** to
+`.ulpi/design/DESIGN.md`. Every later screen, component, and session BINDS to it. This is what makes
 repeated outputs look like one product instead of a fresh guess each time.
 
 ## Lock rules (non-negotiable)
@@ -24,9 +24,8 @@ repeated outputs look like one product instead of a fresh guess each time.
 The register flips many rules — set it before anything else.
 
 **Design-system routing (product register).** Prefer an established component system over bespoke
-re-creation: pick ONE and record it (e.g. Radix / shadcn, Material 3, Carbon, Fluent, Polaris). Honesty
-rule — do NOT hand-recreate a system's components in CSS; name it and build on it, then spend identity
-on tokens (color, type, radius, motion) and the Signature. (`brand` register may go fully bespoke.)
+re-creation: pick ONE and record it as `design_system:`. See `design-system-routing.md` for the
+brief→system map and the honesty rule. (`brand` register may go fully bespoke.)
 
 ## `DESIGN.md` template
 
@@ -38,6 +37,7 @@ project: <name>
 register: brand | product
 aesthetic_direction: <one named direction from anti-slop.md menu>   # justified by the brief
 color_strategy: restrained | committed | full-palette | drenched
+design_system: <name or "bespoke">   # product register → pick one; see design-system-routing.md
 design_variance: 1-10        # optional taste dials — how far to push from convention
 motion_intensity: 1-10
 visual_density: 1-10
@@ -84,5 +84,5 @@ through a flow ("Publish" → "Published").
 
 ## Cross-session consistency
 
-On any later feature: Read `DESIGN.md` FIRST, design strictly within it, and flag (don't silently
-introduce) anything the brief forces outside it — then update `DESIGN.md` deliberately, never drift.
+On any later feature: Read `.ulpi/design/DESIGN.md` FIRST, design strictly within it, and flag (don't
+silently introduce) anything the brief forces outside it — then update it deliberately, never drift.

@@ -1,6 +1,6 @@
 ---
 name: frontend-design-ui-ux
-version: 3.0.0
+version: 3.1.0
 description: |
   Produce a distinctive, LOCKED design language plus an implementation-ready UX/UI spec: a per-brief
   visual identity (palette, type, signature), user flows and states, component briefs, accessibility
@@ -26,7 +26,8 @@ effort: high
 
 <EXTREMELY-IMPORTANT>
 This is a DESIGN-SPEC skill, not an implementation skill. Non-negotiable rules:
-1. Do NOT write production UI code from this skill. Produce a spec + a locked design language; hand off.
+1. Do NOT write production UI code from this skill. Produce a spec + a locked design language and DELEGATE
+   the build to an engineering agent. We own the design spec; the agent implements it.
 2. Commit to ONE distinctive aesthetic identity BEFORE specifying screens, and pass the counterfactual
    default test: if you'd produce this same look for any similar brief, it's a default — change it.
 3. Ban AI-slop BY NAME (`references/anti-slop.md`). The slop test gates the work: if someone could say
@@ -47,12 +48,13 @@ This is a DESIGN-SPEC skill, not an implementation skill. Non-negotiable rules:
 
 ## Goal
 
-Produce a design package that is **distinctive, consistent, and buildable**:
+Produce a design package that is **distinctive, consistent, and buildable** — a spec a delegated
+engineering agent implements directly. All artifacts are written under `.ulpi/design/`:
 
-- a locked design language (`DESIGN.md`): identity, palette, type, scales, signature, voice
-- user goals, flows, and the full state model
-- component specs with interaction + accessibility rules
-- a handoff target with acceptance criteria
+- `.ulpi/design/DESIGN.md` — the locked design language (identity, palette, type, scales, signature,
+  voice, chosen design system). Project-wide; re-read first every session.
+- `.ulpi/design/<feature>.md` — the per-feature spec: user flows + states, component specs, and the
+  build handoff (target agent + acceptance criteria). Binds to `DESIGN.md`.
 
 ## Step 0: Discovery & inputs
 
@@ -89,29 +91,32 @@ before any tokens:
 Load `references/anti-slop.md` for the direction menu, the pattern vocabulary, and the named bans.
 **Success criteria**: a committed, brief-specific direction that is not a generic default.
 
-## Step 3: Derive & LOCK the design language → write `DESIGN.md`
+## Step 3: Derive & LOCK the design language → write `.ulpi/design/DESIGN.md`
 
-Decide the **register** (brand vs product), then derive and LOCK the identity: palette (OKLCH, tinted
+Decide the **register** (brand vs product) and, for `product`, the **design system** to build on (see
+`references/design-system-routing.md`). Then derive and LOCK the identity: palette (OKLCH, tinted
 neutrals, 60-30-10, WCAG-checked), type roles paired on a contrast axis, ONE spacing/radius/motion
-scale, the **Signature** element, and the voice. Write it to `DESIGN.md` — this is the consistency
-source of truth every screen binds to.
+scale, the **Signature**, and the voice. Write it to `.ulpi/design/DESIGN.md` — the consistency source
+of truth every screen binds to.
 
-Load `references/design-language-lock.md` (artifact + lock rules) and `references/design-tokens-template.md`
-(derivation method). **Success criteria**: a complete, locked `DESIGN.md`; no generic default identity.
+Load `references/design-language-lock.md` (artifact + lock rules), `references/design-tokens-template.md`
+(derivation method), and `references/design-system-routing.md` (brief→system map). **Success criteria**:
+a complete, locked `.ulpi/design/DESIGN.md`; no generic default identity.
 
 ## Step 4: Model flows and states
 
 Document the primary journey, branching/decisions, and the full state model — loading, empty, partial,
-success, error — plus edge cases (refresh, session expiry, back, offline). Use
-`references/user-flow-template.md`. **Success criteria**: behavior is covered across states, not just
-the happy path.
+success, error — plus edge cases (refresh, session expiry, back, offline). Write into
+`.ulpi/design/<feature>.md`. Use `references/user-flow-template.md`. **Success criteria**: behavior is
+covered across states, not just the happy path.
 
 ## Step 5: Specify components and interaction rules
 
 For each component define: purpose, variants, props/data, states, interaction feedback, responsive
 behavior, and accessibility (ARIA, keyboard, screen-reader, focus). Bind every visual value to
-`DESIGN.md`. Use `references/component-spec-template.md`. **Success criteria**: an engineer can build it
-without guessing, and nothing drifts from the locked identity.
+`.ulpi/design/DESIGN.md`; append into the same `.ulpi/design/<feature>.md`. Use
+`references/component-spec-template.md`. **Success criteria**: a delegated engineer can build it without
+guessing, and nothing drifts from the locked identity.
 
 ## Step 6: Design Pre-Flight gate
 
@@ -120,11 +125,12 @@ accessibility, layout craft, cognitive load, and the scored self-critique. Sever
 counts. Fix any failing box or any axis scored ≤ 2, state in one line WHAT you changed and WHY
 (revise-and-justify), then re-run. **Success criteria**: every box ticked and no critique axis ≤ 2.
 
-## Step 7: Handoff (+ optional visual reference)
+## Step 7: Build handoff (delegate the build)
 
-State the implementation target and why it fits, plus the acceptance criteria. Optionally, if an
-image-generation tool is available, produce a north-star **mock image** per key screen against the
-LOCKED palette as a design artifact (continuity-locked across images) — never code.
+Finalize the delegation brief at the end of `.ulpi/design/<feature>.md`: the target engineering agent,
+the chosen `design_system` (+ its setup note), and the acceptance criteria — with the instruction:
+*"Implement exactly this spec. Theme the design system with our locked tokens; do NOT redesign or
+re-implement its components."* The building is delegated to the agent; this skill never writes the UI.
 
 ### Agent Selection
 
@@ -135,8 +141,8 @@ LOCKED palette as a design artifact (continuity-locked across images) — never 
 | Static site with no SSR | Either (ask user) |
 | Unclear | Ask user |
 
-**Success criteria**: another agent can pick up the package — `DESIGN.md` + flows + component specs —
-and implement it directly.
+**Success criteria**: a delegated agent can pick up `.ulpi/design/DESIGN.md` + `.ulpi/design/<feature>.md`
+and implement it directly, without redesigning.
 
 ## Guardrails
 
@@ -153,6 +159,7 @@ and implement it directly.
 - `references/inspiration-intake.md` — visiting reference links with `browse` and extracting DNA (Step 1).
 - `references/anti-slop.md` — the direction menu, named AI-slop bans, and the slop test (Steps 2, 3, 6).
 - `references/design-language-lock.md` — the `DESIGN.md` artifact and the consistency lock rules (Step 3).
+- `references/design-system-routing.md` — the brief→design-system map + honesty rule (Step 3, product register).
 - `references/design-tokens-template.md` — the per-brief color/type derivation method + neutral scales (Step 3).
 - `references/user-flow-template.md` — user journeys and acceptance flows (Step 4).
 - `references/component-spec-template.md` — component briefs and interface contracts (Step 5).
@@ -160,11 +167,11 @@ and implement it directly.
 
 ## Output Contract
 
-Report or write:
+Write under `.ulpi/design/` and report:
 
 1. the Design Read + committed aesthetic direction (and inspiration DNA, if any)
-2. the locked `DESIGN.md` (register, palette, type, scales, signature, voice)
-3. flows and states
-4. component specs
-5. Pre-Flight result (every box ticked)
-6. handoff target + implementation acceptance criteria
+2. `.ulpi/design/DESIGN.md` — the locked design language (register, design system, palette, type, scales, signature, voice)
+3. `.ulpi/design/<feature>.md` — flows and states
+4. — component specs (same file)
+5. Pre-Flight result (every box ticked, no critique axis ≤ 2)
+6. build handoff — target agent + design system + acceptance criteria ("implement exactly this; do not redesign")

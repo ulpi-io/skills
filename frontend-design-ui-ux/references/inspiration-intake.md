@@ -37,5 +37,5 @@ the user to describe the vibe or paste screenshots, and proceed from the brief. 
 
 ## Record provenance
 
-Write the `Inspiration` block into `DESIGN.md`: per source, what you **took** and what you **rejected**,
-plus a one-line synthesis note. This makes the identity auditable and repeatable across the project.
+Write the `Inspiration` block into `.ulpi/design/DESIGN.md`: per source, what you **took** and what you
+**rejected**, plus a one-line synthesis note. This makes the identity auditable and repeatable across the project.
