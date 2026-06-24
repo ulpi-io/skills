@@ -2,12 +2,13 @@
 name: frontend-design-ui-ux
 version: 3.1.0
 description: |
-  Produce a distinctive, LOCKED design language plus an implementation-ready UX/UI spec: a per-brief
-  visual identity (palette, type, signature), user flows and states, component briefs, accessibility
-  constraints, and engineering handoff. Commits to a bold aesthetic direction, bans AI-slop by name,
-  and locks the identity so every screen and future session stays consistent. Can visit inspiration
-  links with the browse skill to extract real design DNA. Use for new features, redesigns, or
-  design-system work. This is a DESIGN-SPEC skill — it does not write production UI code.
+  Produce a distinctive, LOCKED design language plus an implementation-ready UX/UI spec, written to
+  `.ulpi/design/`: a per-brief visual identity (palette, type, signature), the design system to build
+  on, user flows and states, component briefs, and accessibility constraints. Commits to a bold
+  aesthetic direction, bans AI-slop by name, and locks the identity so every screen and future session
+  stays consistent. Can visit inspiration links with the browse skill to extract real design DNA. Ends
+  with a build handoff that a delegated engineering agent implements. Use for new features, redesigns,
+  or design-system work. This is a DESIGN-SPEC skill — it does not write production UI code.
 allowed-tools:
   - AskUserQuestion
   - Read
