@@ -19,8 +19,14 @@ Start an interactive chat session or execute a one-shot task.
 ```bash
 kiro-cli chat "prompt"                                      # interactive session
 kiro-cli chat "prompt" --no-interactive                     # one-shot, stdout only
-kiro-cli chat --no-interactive --trust-all-tools "prompt"   # fully autonomous
+kiro-cli chat --no-interactive --trust-tools=fs_read,execute_bash "prompt"            # read-only (review)
+kiro-cli chat --no-interactive --trust-tools=fs_read,fs_write,execute_bash "prompt"   # implement (edits files)
+kiro-cli chat --no-interactive --trust-all-tools "prompt"   # fully autonomous (unsafe-by-default; opt-in)
 ```
+
+kiro also reads the prompt from **stdin** when no positional arg is given
+(`printf '%s' "$prompt" | kiro-cli chat --no-interactive …`) — verified on kiro-cli 2.6.0.
+`helpers/run-kiro.sh` uses this so the prompt never lands on argv or passes through shell parsing.
 
 **Flags:**
 

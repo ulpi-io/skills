@@ -1,6 +1,6 @@
 ---
 name: hand-over-to-kiro
-version: 1.0.0
+version: 1.1.0
 description: |
   Delegate an implementation task to the Kiro CLI (`kiro-cli`) and report the result. Use when the user
   asks to hand work to kiro — "/hand-over-to-kiro", "delegate to kiro", "let kiro handle/do this",
@@ -11,6 +11,7 @@ description: |
 allowed-tools:
   - Bash
   - Read
+  - Write
   - Glob
   - Grep
 effort: medium
@@ -27,19 +28,19 @@ when_to_use: |
 This skill runs an external CLI (`kiro-cli`) that can modify files. Non-negotiable rules:
 1. Never auto-install kiro-cli or pipe a remote installer to a shell. If it is missing, point the user
    at the official install docs and stop — they install it themselves.
-2. Never interpolate raw user content into a shell command. Build the prompt in a single-quoted
-   heredoc (no expansion at write time) and pass it via a double-quoted command substitution
-   (`"$(cat …)"`), whose result the shell does not re-evaluate — that, plus rephrasing user input
-   (rule 3), is the injection defense. (The temp file keeps large prompts off the inline command and
-   out of shell history; it is not itself the safeguard.)
+2. Never interpolate raw user content into a shell command. WRITE the prompt to a file with the Write
+   tool (literal bytes — no shell, no heredoc, no mktemp), then hand that file to `helpers/run-kiro.sh`.
+   Combined with rephrasing user input (rule 3), that is the injection defense — the prompt text never
+   passes through shell parsing.
 3. Rephrase the user's request into a structured task description with XML-style boundary tags
    (`<task>`, `<plan>`, …). Do not pass raw user input verbatim — it reduces indirect prompt-injection
    surface.
-4. A trust flag is REQUIRED to do real work: `--no-interactive` has NO prompt to approve tools, so
-   without one kiro returns only a plan and makes no edits. Grant the least trust that works — a
-   scoped `--trust-tools <list>` when you know the tools, else `--trust-all-tools` for fully
-   autonomous. When invoked unattended (e.g. by another workflow) autonomous execution is implied —
-   use `--trust-all-tools`.
+4. A trust flag is REQUIRED to do real work (`--no-interactive` has no prompt to approve tools). Let
+   `helpers/run-kiro.sh` scope it to the task: `review` → read-only (`fs_read,execute_bash`),
+   `implement` → least-privilege write (`fs_read,fs_write,execute_bash`). NEVER default to
+   `--trust-all-tools`: it is unsafe-by-default and the auto-mode classifier blocks it (always on
+   read-only tasks). It is reserved for `--mode autonomous`, which the user must pre-authorize (a Bash
+   allow-rule for `kiro-cli`) — being unattended does NOT justify it, since `implement` already edits.
 5. Kiro has no memory of this conversation — the prompt must be self-contained.
 6. Verify what changed on disk before reporting — compare against a pre-run baseline with
    `git diff --stat HEAD` + `git status --short` (and `git log <baseline>..HEAD` if kiro committed);
@@ -155,32 +156,34 @@ matters, don't dump the whole conversation.
 
 ## Step 4: Execute
 
-Build the prompt in a single-quoted heredoc, then pass it via a quoted command substitution. Pick a
-heredoc delimiter that cannot appear in the prompt text (a random sentinel), and `trap` the cleanup so
-the temp file is removed even on timeout or error.
+Pick the **mode** from the task: `review` (read-only — "review / audit / analyze / explain", no edits)
+or `implement` (kiro must create or edit files). Then hand off via the helper — do NOT hand-roll
+mktemp/heredoc or trust flags (that is what broke before):
+
+1. **Write the prompt to a file with the Write tool** (literal bytes — no shell, no heredoc, no mktemp,
+   so no escaping bugs and no BSD-mktemp `.txt`-suffix pitfall). Use an absolute path, e.g.
+   `/tmp/kiro-handover-prompt.txt`, and write a FRESH file each run.
+2. **Run the helper** — it validates the prompt is non-empty, scopes trust by mode, records a git
+   baseline, and launches kiro:
 
 ```bash
-PROMPT_FILE=$(mktemp /tmp/kiro-prompt-XXXXXX.txt)
-trap 'rm -f "$PROMPT_FILE"' EXIT          # cleans up even on timeout / non-zero exit
-cat > "$PROMPT_FILE" <<'KIRO_PROMPT_EOF_9f3a'
-{prompt content here — using a sentinel delimiter that does not appear in the prompt}
-KIRO_PROMPT_EOF_9f3a
-
-# A trust flag is REQUIRED: --no-interactive cannot prompt to approve tools, so without one kiro
-# returns only a plan and makes NO edits. Prefer a scoped --trust-tools whitelist; use
-# --trust-all-tools for fully autonomous (and always when running unattended).
-kiro-cli chat --no-interactive --trust-all-tools "$(cat "$PROMPT_FILE")"
+bash <skill-dir>/helpers/run-kiro.sh --mode implement --prompt-file /tmp/kiro-handover-prompt.txt
 ```
 
-**Tool trust policy:**
-- A trust flag is **required** for the skill to do any work — `--no-interactive` has no confirmation UI.
-- Prefer a scoped **`--trust-tools <comma,list>`** whitelist (least privilege) when you know which
-  tools the task needs.
-- Use **`--trust-all-tools`** for fully autonomous execution — and always when invoked unattended
-  (no human to scope or approve).
-- With NO trust flag, kiro only returns a plan/text and makes no edits.
+Use a Bash timeout of 600000 ms (10 min) for complex tasks. If the helper exits non-zero with "prompt
+file is EMPTY", the Write step did not land — re-write the prompt and retry; never re-run kiro on an
+empty prompt.
 
-Use a Bash timeout of 600000 ms (10 min) for complex tasks.
+**Tool trust policy** (the helper enforces this — never set trust flags by hand):
+
+| Mode | Trust | Use for |
+|------|-------|---------|
+| `review` | `--trust-tools=fs_read,execute_bash` | read-only: kiro reads files + runs `grep`/`find`/`git`, no `fs_write`. The auto-mode classifier BLOCKS `--trust-all-tools` on non-mutating tasks, so review MUST be scoped read-only. |
+| `implement` | `--trust-tools=fs_read,fs_write,execute_bash` | least privilege that can still edit files. |
+| `autonomous` | `--trust-all-tools` | unsafe-by-default, opt-in only; the harness may require a Bash allow-rule for `kiro-cli`. Do NOT reach for it just because a run is unattended — `implement` already edits files. |
+
+**Success criteria**: the prompt file was non-empty, the helper launched kiro with the right scoped
+trust, and kiro ran on the real prompt.
 
 **Success criteria**: kiro-cli ran on the temp-file prompt; its output is captured.
 
@@ -214,8 +217,11 @@ verified against the real diff, not just kiro's self-report.
 
 - Do not install kiro-cli or run any `curl … | bash` style installer; only the user installs it.
 - Do not pass raw user input to kiro-cli; always rephrase and use the heredoc + boundary-tag pattern.
-- Grant the least trust that lets the task run — prefer a scoped `--trust-tools` whitelist over
-  `--trust-all-tools`; but remember `--no-interactive` needs SOME trust flag or nothing is built.
+- Let `helpers/run-kiro.sh` own prompt-passing + trust + launch — never hand-roll `--trust-all-tools`,
+  mktemp, or heredocs (that is what failed). Default to the least trust for the task (`review`
+  read-only / `implement` write); `--trust-all-tools` (`autonomous`) is pre-authorized opt-in only.
+- Write the prompt with the Write tool (a fresh file each run); the helper refuses to launch on an
+  empty prompt, so a missed write fails loudly instead of running kiro on nothing.
 - Do not report success on kiro's word alone — verify against a baseline diff (`git diff --stat HEAD`
   + `git status --short`, and `git log <baseline>..HEAD` if it committed).
 - Keep the full CLI manual in `references/kiro-cli.md`, not inline.

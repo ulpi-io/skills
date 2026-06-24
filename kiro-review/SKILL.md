@@ -1,6 +1,6 @@
 ---
 name: kiro-review
-version: 2.0.0
+version: 2.1.0
 description: |
   Run Kiro CLI as an independent reviewer over the current branch, a specific commit, or
   uncommitted changes. Builds a focused prompt from the real diff and returns a compact review
@@ -8,6 +8,7 @@ description: |
 allowed-tools:
   - Bash
   - Read
+  - Write
 user-invocable: true
 argument-hint: "[branch review, uncommitted, or specific commit]"
 arguments:
@@ -28,6 +29,9 @@ Non-negotiable rules:
 3. Never put secrets or credentials in the prompt.
 4. Carry forward exclusion lists on later rounds.
 5. Verify returned findings before acting on them.
+6. A review is READ-ONLY: launch kiro via `helpers/run-kiro.sh --mode review` (scoped trust
+   `fs_read,execute_bash`). NEVER use `--trust-all-tools` / `-a` — the auto-mode classifier blocks
+   unrestricted trust on a non-mutating task, so all-tools just dead-ends.
 </EXTREMELY-IMPORTANT>
 
 # Kiro Review
@@ -83,23 +87,29 @@ Avoid generic prompts. They produce weak results.
 
 **Success criteria**: The prompt is specific to the change set rather than reusable boilerplate.
 
-## Step 3: Run Kiro in non-interactive mode
+## Step 3: Run Kiro read-only via the helper
 
-Invoke `kiro-cli chat` with:
+Do NOT hand-roll the kiro command (mktemp/heredoc/trust flags broke before). Instead:
 
-- `--no-interactive` -- runs without expecting user input, returns output directly
-- `-a` (trust all tools) -- kiro needs file read access to verify findings against source
+1. **Write the prompt to a file with the Write tool** (literal bytes — no shell, no heredoc, no mktemp).
+   Use an absolute path, e.g. `/tmp/kiro-review-prompt.txt`, and write a FRESH file each round.
+2. **Run the helper in review mode:**
 
-Always capture stderr with `2>&1` (kiro logs to stderr).
+```bash
+bash <skill-dir>/helpers/run-kiro.sh --mode review --prompt-file /tmp/kiro-review-prompt.txt 2>&1
+```
 
-Optional flags:
+`--mode review` scopes trust to **`--trust-tools=fs_read,execute_bash`** — kiro can read files and run
+`grep`/`find`/`git` to verify findings against source, with NO write access. Do NOT use
+`--trust-all-tools` / `-a`: a review is read-only and the auto-mode classifier blocks unrestricted
+trust on non-mutating tasks. The helper feeds the prompt via kiro's stdin, refuses to launch on an
+empty prompt, and captures a git baseline. (If a specific model is required, set kiro's default first:
+`kiro-cli settings chat.defaultModel <model>`.)
 
-- `--model <model>` -- specify a particular model if needed
-- `--agent <agent>` -- use a specific agent profile for the review
+Use a Bash timeout of 600000 ms for a large review. If the helper exits with "prompt file is EMPTY",
+re-write the prompt and retry — never run kiro on an empty prompt.
 
-If the run is likely to take a while, background execution is acceptable, but keep the scope tight enough that the review stays focused.
-
-**Success criteria**: Kiro runs on the intended scope and returns parseable findings.
+**Success criteria**: Kiro runs read-only on the intended scope and returns parseable findings.
 
 ## Step 4: Summarize findings
 
@@ -133,6 +143,8 @@ On later rounds:
 - Do not put secrets, tokens, or private config into the prompt.
 - Do not trust findings blindly without local verification.
 - Do not skip diff reading before prompt construction.
+- Launch kiro only via `helpers/run-kiro.sh --mode review` (scoped read-only trust); never
+  `--trust-all-tools`/`-a` for a review, and never hand-roll mktemp/heredoc to pass the prompt.
 
 ## Output Contract
 
