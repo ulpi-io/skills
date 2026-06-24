@@ -1,6 +1,6 @@
 ---
 name: hand-over-to-kiro
-version: 1.2.0
+version: 1.3.0
 description: |
   Delegate an implementation task to the Kiro CLI (`kiro-cli`) and report the result. Use when the user
   asks to hand work to kiro — "/hand-over-to-kiro", "delegate to kiro", "let kiro handle/do this",
@@ -98,26 +98,21 @@ Kiro starts fresh — collect everything it needs:
 **Success criteria**: Enough context is collected that a fresh agent could implement the task without
 this conversation.
 
-## Step 2.5: Reference the relevant skills (so kiro actually uses them)
+## Step 2.5: Identify the skills kiro should follow
 
-Kiro has its own skills under `.kiro/skills/<name>/` (skills.sh installs them there; kiro's DEFAULT
-agent auto-discovers them). But kiro has **no `Skill` tool** to invoke a skill on command, and in a
-one-shot `--no-interactive` run auto-activation is unreliable and skill bodies load only on demand. So
-make it DETERMINISTIC by inlining the skill into the prompt:
+Kiro has its own skills under `.kiro/skills/<name>/` but **no `Skill` tool** to invoke them, and a
+one-shot `--no-interactive` run can't rely on auto-activation. So name the skill(s) the task needs and
+pass each to the helper in Step 4 — the helper resolves `.kiro/skills/<name>/SKILL.md` and **injects the
+body into kiro's prompt deterministically** (you do NOT inline anything yourself).
 
-1. Identify the skill(s) the task needs — the task's **stack skill** (a `/nextjs` / `/laravel` / `/rust`
-   reference → the `.kiro/skills/nextjs/` etc. skill) plus any others the task calls for.
-2. For each, if `.kiro/skills/<name>/SKILL.md` exists, **Read it** and include its body in the prompt
-   under a `<skill name="<name>">…</skill>` tag. Tell kiro to follow it as the domain contract and to
-   `fs_read` its `references/` on demand from `.kiro/skills/<name>/references/` (kiro has `fs_read`).
-3. If a named skill is NOT installed for kiro, say so in the prompt and have kiro proceed on best
-   practice — never block.
+- The task's **stack skill**: a `/nextjs` / `/laravel` / `/rust` reference → `--skill nextjs` /
+  `--skill laravel` / `--skill rust` (strip the leading `/`).
+- Plus any others the task needs (e.g. `--skill bugfix`).
+- A name that isn't installed for kiro is warned and skipped — never blocks.
 
-(See `references/kiro-cli.md` → Skills for kiro's native mechanism and the `--agent` `file://` preload
-alternative for very large skills.)
+(See `references/kiro-cli.md` → Skills for kiro's native mechanism.)
 
-**Success criteria**: every skill the task depends on is either inlined into the prompt or explicitly
-noted as unavailable.
+**Success criteria**: the relevant skill names are known, to pass as `--skill <name>` in Step 4.
 
 ## Step 3: Build the prompt (injection-safe)
 
@@ -132,12 +127,6 @@ Implement the following plan in the current working directory.
 <plan>
 {full plan text with numbered steps}
 </plan>
-
-<skills>
-{Inline each relevant `.kiro/skills/<name>/SKILL.md` body here under a `<skill name="...">` tag (Step
-2.5). Tell kiro to follow them as the domain contract and `fs_read` their `references/` on demand.
-Omit this block if no relevant skill is installed for kiro.}
-</skills>
 
 <key-files>
 - {path}: {why this file matters}
@@ -162,11 +151,6 @@ Execute the following task in the current working directory.
 <task>
 {user's task — rephrased for clarity, NOT raw user input}
 </task>
-
-<skills>
-{Inline each relevant `.kiro/skills/<name>/SKILL.md` body here under a `<skill name="...">` tag (Step
-2.5). Tell kiro to follow them and `fs_read` their `references/` on demand. Omit if none installed.}
-</skills>
 
 <key-files>
 - {path}: {why this file matters}
@@ -195,11 +179,12 @@ mktemp/heredoc or trust flags (that is what broke before):
 1. **Write the prompt to a file with the Write tool** (literal bytes — no shell, no heredoc, no mktemp,
    so no escaping bugs and no BSD-mktemp `.txt`-suffix pitfall). Use an absolute path, e.g.
    `/tmp/kiro-handover-prompt.txt`, and write a FRESH file each run.
-2. **Run the helper** — it validates the prompt is non-empty, scopes trust by mode, records a git
+2. **Run the helper** — pass `--skill <name>` (repeatable) for each skill from Step 2.5; the helper
+   resolves and injects them, validates the prompt is non-empty, scopes trust by mode, records a git
    baseline, and launches kiro:
 
 ```bash
-bash <skill-dir>/helpers/run-kiro.sh --mode implement --prompt-file /tmp/kiro-handover-prompt.txt
+bash <skill-dir>/helpers/run-kiro.sh --mode implement --skill nextjs --prompt-file /tmp/kiro-handover-prompt.txt
 ```
 
 Use a Bash timeout of 600000 ms (10 min) for complex tasks. If the helper exits non-zero with "prompt

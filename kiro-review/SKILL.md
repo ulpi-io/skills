@@ -1,6 +1,6 @@
 ---
 name: kiro-review
-version: 2.2.0
+version: 2.3.0
 description: |
   Run Kiro CLI as an independent reviewer over the current branch, a specific commit, or
   uncommitted changes. Builds a focused prompt from the real diff and returns a compact review
@@ -82,9 +82,9 @@ Create a compact prompt that includes:
 - any previously fixed issues to exclude on later rounds
 - an instruction to verify findings against the actual code
 - the expected compact output format
-- if a stack/convention skill is installed for kiro (`.kiro/skills/<name>/SKILL.md`), inline its body so
-  kiro reviews against those conventions — kiro has no `Skill` tool to load it itself, and one-shot
-  `--no-interactive` runs can't rely on auto-activation
+- if a stack/convention skill is installed for kiro (`.kiro/skills/<name>/`), pass it to the helper as
+  `--skill <name>` so kiro reviews against those conventions — kiro has no `Skill` tool to load it
+  itself, and one-shot `--no-interactive` runs can't rely on auto-activation
 
 Avoid generic prompts. They produce weak results.
 
@@ -99,7 +99,7 @@ Do NOT hand-roll the kiro command (mktemp/heredoc/trust flags broke before). Ins
 2. **Run the helper in review mode:**
 
 ```bash
-bash <skill-dir>/helpers/run-kiro.sh --mode review --prompt-file /tmp/kiro-review-prompt.txt 2>&1
+bash <skill-dir>/helpers/run-kiro.sh --mode review [--skill <name>]... --prompt-file /tmp/kiro-review-prompt.txt 2>&1
 ```
 
 `--mode review` scopes trust to **`--trust-tools=fs_read,execute_bash`** — kiro can read files and run

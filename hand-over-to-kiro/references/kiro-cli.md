@@ -70,9 +70,9 @@ Kiro discovers `SKILL.md` skills and matches them by description, or exposes the
   `resources`: `file://<path>` preloads the whole file at startup; `skill://<glob>` loads metadata up
   front and the body on demand (e.g. `"resources": ["skill://.kiro/skills/*/SKILL.md"]`).
 - **One-shot `--no-interactive`:** auto-activation/slash-commands are unreliable in a single turn. To
-  make kiro FOLLOW a specific skill deterministically, either (a) **inline the SKILL.md body in the
-  prompt** (what this skill does — see SKILL.md Step 2.5), or (b) run `--agent` with
-  `resources: ["file://.kiro/skills/<name>/SKILL.md"]` preloaded.
+  make kiro FOLLOW a specific skill deterministically, either (a) **inject the SKILL.md body over
+  stdin** — `helpers/run-kiro.sh --skill <name>` resolves `.kiro/skills/<name>/SKILL.md` and prepends it
+  for you — or (b) run `--agent` with `resources: ["file://.kiro/skills/<name>/SKILL.md"]` preloaded.
 
 Docs: <https://kiro.dev/docs/cli/skills/> · <https://kiro.dev/docs/cli/custom-agents/configuration-reference/>
 

@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
 # run-kiro.sh — robust launcher for delegating ONE task to kiro-cli.
 #
-# Encapsulates the fragile mechanics (prompt passing, empty-prompt guard, scoped trust,
-# baseline capture) so the calling agent never hand-rolls mktemp/heredoc — those were the
-# source of the "kiro ran on an empty prompt" and BSD-mktemp `.txt`-suffix failures.
+# Encapsulates the fragile mechanics (prompt passing, empty-prompt guard, scoped trust, SKILL
+# injection, baseline capture) so the calling agent never hand-rolls mktemp/heredoc and never has to
+# remember to inline skills — both were sources of past failures.
 #
-# Contract: the agent writes the rephrased, boundary-tagged prompt to a file with the WRITE
-# TOOL (literal bytes — no shell, no heredoc, no mktemp), then calls:
+# Contract: the agent writes the rephrased, boundary-tagged prompt to a file with the WRITE TOOL
+# (literal bytes — no shell, no heredoc, no mktemp), then calls:
 #
-#   bash <skill-dir>/helpers/run-kiro.sh --mode <review|implement|autonomous> --prompt-file <path>
+#   bash <skill-dir>/helpers/run-kiro.sh --mode <review|implement|autonomous> --prompt-file <path> \
+#        [--skill <name>]...
+#
+# --skill <name>   Make kiro FOLLOW an installed kiro skill (repeatable). The helper resolves
+#                  .kiro/skills/<name>/SKILL.md (or ~/.kiro/skills/<name>/SKILL.md), prepends it to the
+#                  prompt over stdin under a <skill> tag, and tells kiro to read its references/ on
+#                  demand. Kiro has NO Skill tool, so this deterministic inject is how kiro actually
+#                  uses a skill in a one-shot --no-interactive run. An uninstalled name is warned + skipped.
 #
 # Trust is scoped by mode (least privilege — never blanket --trust-all-tools by default):
 #   review      --trust-tools=fs_read,execute_bash          read-only; clears the auto-mode classifier
@@ -19,10 +26,24 @@ set -uo pipefail
 
 MODE=implement
 PROMPT_FILE=
+SKILL_FILES=""   # newline-separated resolved SKILL.md paths (no arrays → bash 3.2 + set -u safe)
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode)        MODE="${2:-}"; shift 2 ;;
     --prompt-file) PROMPT_FILE="${2:-}"; shift 2 ;;
+    --skill)
+      _name="${2:-}"; shift 2
+      _f=""
+      for _base in ".kiro/skills" "$HOME/.kiro/skills"; do
+        if [ -f "$_base/$_name/SKILL.md" ]; then _f="$_base/$_name/SKILL.md"; break; fi
+      done
+      if [ -n "$_f" ]; then
+        SKILL_FILES="${SKILL_FILES}${_f}
+"
+      else
+        echo "run-kiro: skill '$_name' not installed for kiro (.kiro/skills/$_name/ or ~/.kiro/skills/$_name/) — proceeding without it." >&2
+      fi
+      ;;
     -h|--help)     grep '^#' "$0" | cut -c3-; exit 0 ;;
     *) echo "run-kiro: unknown argument: $1" >&2; exit 64 ;;
   esac
@@ -58,14 +79,28 @@ case "$MODE" in
   *) echo "run-kiro: --mode must be review | implement | autonomous (got '$MODE')." >&2; exit 64 ;;
 esac
 
+# Prepend each resolved skill's SKILL.md to the prompt (kiro has no Skill tool — this is how it FOLLOWS
+# a skill in a one-shot run). Body goes over stdin (no argv/shell parsing); references load on demand.
+emit_skills() {
+  [ -z "$SKILL_FILES" ] && return 0
+  printf '%s\n' "$SKILL_FILES" | while IFS= read -r _sf; do
+    [ -z "$_sf" ] && continue
+    printf '<skill name="%s"> — follow this as the domain contract; read its references on demand from %s/ via fs_read.\n' \
+      "$(basename "$(dirname "$_sf")")" "$(dirname "$_sf")/references"
+    cat "$_sf"
+    printf '\n</skill>\n\n'
+  done
+}
+
 # 4. Baseline so the caller can verify what actually changed (never trust kiro's word alone).
 BASE="$(git rev-parse HEAD 2>/dev/null || echo NO_GIT)"
+[ -n "$SKILL_FILES" ] && echo "run-kiro: injecting $(printf '%s\n' "$SKILL_FILES" | grep -c .) skill(s) into the prompt" >&2
 echo "run-kiro: launching kiro — mode=$MODE trust=$TRUST baseline=$BASE" >&2
 
-# 5. Run. Feed the prompt via STDIN (kiro reads it) — never on argv, never through shell parsing of the
-#    prompt text. This matches the codex companion's stdin/spawn approach: no command substitution, no
-#    ARG_MAX ceiling, and the prompt is not exposed in the process list. Validated non-empty above.
-"$KIRO" chat --no-interactive "$TRUST" < "$PROMPT_FILE"
+# 5. Run. Feed (skills + prompt) via STDIN — never on argv, never through shell parsing of the content.
+#    This matches the codex companion's stdin/spawn approach: no command substitution, no ARG_MAX
+#    ceiling, nothing in the process list. The prompt was validated non-empty above.
+{ emit_skills; cat "$PROMPT_FILE"; } | "$KIRO" chat --no-interactive "$TRUST"
 RC=$?
 
 echo "run-kiro: kiro exited $RC. VERIFY changes: git diff --stat $BASE ; git status --short" >&2
