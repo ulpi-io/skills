@@ -9,13 +9,22 @@
 # (literal bytes — no shell, no heredoc, no mktemp), then calls:
 #
 #   bash <skill-dir>/helpers/run-kiro.sh --mode <review|implement|autonomous> --prompt-file <path> \
-#        [--skill <name>]...
+#        [--skill <name>]... [--agent <name>]
 #
 # --skill <name>   Make kiro FOLLOW an installed kiro skill (repeatable). The helper resolves
 #                  .kiro/skills/<name>/SKILL.md (or ~/.kiro/skills/<name>/SKILL.md), prepends it to the
 #                  prompt over stdin under a <skill> tag, and tells kiro to read its references/ on
 #                  demand. Kiro has NO Skill tool, so this deterministic inject is how kiro actually
 #                  uses a skill in a one-shot --no-interactive run. An uninstalled name is warned + skipped.
+#
+# --agent <name>   Run kiro AS a specific custom agent (.kiro/agents/<name>.json in the workspace —
+#                  agent discovery is workspace-relative). The agent supplies the persona/tools; --skill
+#                  still injects skill conventions and --mode still scopes auto-approval (--trust-tools).
+#                  A missing agent → kiro falls back to its default (it says so on stderr). NOTE: the
+#                  agent JSON must be kiro-native — a valid `model` (run `kiro-cli chat --list-models`:
+#                  auto / claude-opus-4.6 / claude-sonnet-4.6 / …) and native `tools`
+#                  (fs_read / fs_write / execute_bash / @<mcp>), NOT Claude names (Read/Write/Skill).
+# --model <name>   Override the model (e.g. `auto`) — handy when an agent pins an invalid model.
 #
 # Trust is scoped by mode (least privilege — never blanket --trust-all-tools by default):
 #   review      --trust-tools=fs_read,execute_bash          read-only; clears the auto-mode classifier
@@ -26,11 +35,15 @@ set -uo pipefail
 
 MODE=implement
 PROMPT_FILE=
+AGENT=
+MODEL=
 SKILL_FILES=""   # newline-separated resolved SKILL.md paths (no arrays → bash 3.2 + set -u safe)
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode)        MODE="${2:-}"; shift 2 ;;
     --prompt-file) PROMPT_FILE="${2:-}"; shift 2 ;;
+    --agent)       AGENT="${2:-}"; shift 2 ;;
+    --model)       MODEL="${2:-}"; shift 2 ;;
     --skill)
       _name="${2:-}"; shift 2
       _f=""
@@ -95,12 +108,16 @@ emit_skills() {
 # 4. Baseline so the caller can verify what actually changed (never trust kiro's word alone).
 BASE="$(git rev-parse HEAD 2>/dev/null || echo NO_GIT)"
 [ -n "$SKILL_FILES" ] && echo "run-kiro: injecting $(printf '%s\n' "$SKILL_FILES" | grep -c .) skill(s) into the prompt" >&2
-echo "run-kiro: launching kiro — mode=$MODE trust=$TRUST baseline=$BASE" >&2
+EXTRA=()
+[ -n "$AGENT" ] && EXTRA+=(--agent "$AGENT")
+[ -n "$MODEL" ] && EXTRA+=(--model "$MODEL")
+echo "run-kiro: launching kiro — mode=$MODE trust=$TRUST agent=${AGENT:-default} model=${MODEL:-agent/default} baseline=$BASE" >&2
 
 # 5. Run. Feed (skills + prompt) via STDIN — never on argv, never through shell parsing of the content.
 #    This matches the codex companion's stdin/spawn approach: no command substitution, no ARG_MAX
 #    ceiling, nothing in the process list. The prompt was validated non-empty above.
-{ emit_skills; cat "$PROMPT_FILE"; } | "$KIRO" chat --no-interactive "$TRUST"
+#    ${EXTRA[@]+"${EXTRA[@]}"} is the bash-3.2 + set -u safe way to expand a possibly-empty array.
+{ emit_skills; cat "$PROMPT_FILE"; } | "$KIRO" chat --no-interactive ${EXTRA[@]+"${EXTRA[@]}"} "$TRUST"
 RC=$?
 
 echo "run-kiro: kiro exited $RC. VERIFY changes: git diff --stat $BASE ; git status --short" >&2

@@ -1,6 +1,6 @@
 ---
 name: hand-over-to-kiro
-version: 1.3.0
+version: 1.4.0
 description: |
   Delegate an implementation task to the Kiro CLI (`kiro-cli`) and report the result. Use when the user
   asks to hand work to kiro — "/hand-over-to-kiro", "delegate to kiro", "let kiro handle/do this",
@@ -199,6 +199,13 @@ empty prompt.
 | `review` | `--trust-tools=fs_read,execute_bash` | read-only: kiro reads files + runs `grep`/`find`/`git`, no `fs_write`. The auto-mode classifier BLOCKS `--trust-all-tools` on non-mutating tasks, so review MUST be scoped read-only. |
 | `implement` | `--trust-tools=fs_read,fs_write,execute_bash` | least privilege that can still edit files. |
 | `autonomous` | `--trust-all-tools` | unsafe-by-default, opt-in only; the harness may require a Bash allow-rule for `kiro-cli`. Do NOT reach for it just because a run is unattended — `implement` already edits files. |
+
+**Run as a specific agent (optional).** `--agent <name>` runs kiro as a custom agent
+(`.kiro/agents/<name>.json`); `--model <name>` overrides its model. The agent JSON must be
+**kiro-native**: a valid `model` (see `references/kiro-cli.md` → Models) and native `tools`
+(`fs_read`/`fs_write`/`execute_bash`/`@<mcp>`) — Claude names (`Read`/`Write`/`Skill`) leave the agent
+with no working tools (verified: it writes nothing). `--model auto` rescues an agent that pins an
+invalid model. `--skill` still injects conventions regardless of the agent.
 
 **Success criteria**: the prompt file was non-empty, the helper launched kiro with the right scoped
 trust, and kiro ran on the real prompt.

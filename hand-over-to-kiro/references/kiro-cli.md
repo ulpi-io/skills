@@ -76,6 +76,32 @@ Kiro discovers `SKILL.md` skills and matches them by description, or exposes the
 
 Docs: <https://kiro.dev/docs/cli/skills/> · <https://kiro.dev/docs/cli/custom-agents/configuration-reference/>
 
+## Models
+
+Valid `--model <name>` / agent `"model"` values. Run `kiro-cli chat --list-models` to refresh — this is
+point-in-time (kiro-cli 2.6.0):
+
+| Model | Credits | Notes |
+|-------|---------|-------|
+| `auto` | 1.00x | **default** — kiro picks per task |
+| `claude-opus-4.8` | 2.20x | Opus 4.8, 1M context |
+| `claude-opus-4.7` | 2.20x | Opus 4.7, 1M context |
+| `claude-opus-4.6` | 2.20x | Opus 4.6 |
+| `claude-opus-4.5` | 2.20x | Opus 4.5 |
+| `claude-sonnet-4.6` | 1.30x | latest Sonnet, 1M context |
+| `claude-sonnet-4.5` | 1.30x | Sonnet 4.5 |
+| `claude-sonnet-4` | 1.30x | hybrid reasoning/coding |
+| `claude-haiku-4.5` | 0.40x | latest Haiku |
+| `deepseek-3.2` | 0.25x | DeepSeek V3.2 preview |
+| `minimax-m2.5` | 0.25x | MiniMax M2.5 |
+| `minimax-m2.1` | 0.15x | MiniMax M2.1 preview |
+| `glm-5` | 0.50x | GLM-5 |
+| `qwen3-coder-next` | 0.05x | Qwen3 Coder Next preview |
+
+Claude-Code names like `opus` / `sonnet` are **NOT valid** — kiro errors `model 'opus' is not available`.
+Map them (`opus` → `claude-opus-4.6` or `auto`). `run-kiro.sh --model <name>` overrides an agent's
+pinned model, so `--model auto` rescues an agent JSON that hard-codes an invalid model.
+
 ## settings
 
 Read and write configuration values.

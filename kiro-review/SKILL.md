@@ -1,6 +1,6 @@
 ---
 name: kiro-review
-version: 2.3.0
+version: 2.4.0
 description: |
   Run Kiro CLI as an independent reviewer over the current branch, a specific commit, or
   uncommitted changes. Builds a focused prompt from the real diff, runs kiro read-only via a bundled
@@ -100,8 +100,12 @@ Do NOT hand-roll the kiro command (mktemp/heredoc/trust flags broke before). Ins
 2. **Run the helper in review mode:**
 
 ```bash
-bash <skill-dir>/helpers/run-kiro.sh --mode review [--skill <name>]... --prompt-file /tmp/kiro-review-prompt.txt 2>&1
+bash <skill-dir>/helpers/run-kiro.sh --mode review [--skill <name>]... [--agent <reviewer> --model auto] --prompt-file /tmp/kiro-review-prompt.txt 2>&1
 ```
+
+Optional: `--agent <name>` runs kiro as a kiro-native reviewer agent (`.kiro/agents/<name>.json` with a
+valid `model` + native `fs_read`/`execute_bash` tools — see the model list via `kiro-cli chat --list-models`);
+`--model auto` overrides an agent that pins an invalid model.
 
 `--mode review` scopes trust to **`--trust-tools=fs_read,execute_bash`** — kiro can read files and run
 `grep`/`find`/`git` to verify findings against source, with NO write access. Do NOT use
