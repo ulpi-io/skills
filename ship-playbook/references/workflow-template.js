@@ -68,13 +68,39 @@ const MAX_FIX = 3                             // bounded per-task engineer↔rev
 // but the build fan-out and the read-only phases barely overlap, so peak stays low.
 const MAX_BUILD_PARALLEL = 4                  // concurrent build/fix engineers (worktree-isolated)
 const MAX_PARALLEL = 6                        // concurrent reviewers / verifiers / other read-only agents
+
+// ── retry transient failures (chiefly Claude API rate limits) ────────────────────
+// Under a rate-limit STORM whole waves of agents get rejected at the door (0 tokens) or cut off
+// mid-flight. agent() surfaces that as a null return (the subagent died on a terminal API error after
+// the runtime's own retries); some transient faults throw. Those are NOT real build/review failures, so
+// re-attempt with exponential backoff before giving up — otherwise a rate-limit wave is mis-recorded as
+// blocked tasks. Fixed delay schedule (no Math.random/Date.now) keeps resume deterministic; holding a
+// gate slot during the backoff also naturally relieves concurrency while the storm clears.
+const RETRY_DELAYS = [3000, 10000, 30000]    // ms; 3 retries ⇒ up to 4 attempts
+const isRateLimit = (e) => /rate.?limit|429|overloaded|529|too many requests|quota/i.test(String((e && (e.message || e)) || ''))
+const sleep = (ms) => (typeof setTimeout === 'function' ? new Promise(r => setTimeout(r, ms)) : Promise.resolve())
+async function withRetry(fn, label) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await fn()
+      if (r != null) return r                  // success
+      // null ⇒ terminal API death (commonly a rate limit) after the runtime's own retries, or a skip
+    } catch (e) {
+      if (!isRateLimit(e)) throw e             // a genuine error → preserve existing behavior, surface it
+    }
+    if (attempt >= RETRY_DELAYS.length) return null   // exhausted ⇒ give up; caller handles null as before
+    log(`${label || 'agent'} came back empty (attempt ${attempt + 1}/${RETRY_DELAYS.length + 1}) — likely a rate limit; backing off ${RETRY_DELAYS[attempt] / 1000}s`)
+    await sleep(RETRY_DELAYS[attempt])
+  }
+}
+
 function makeGate(limit) {
   let inFlight = 0
   const queue = []
   return async function gate(fn) {
     if (inFlight >= limit) await new Promise(resolve => queue.push(resolve))   // park; slot handed over on release (no ++)
     else inFlight++
-    try { return await fn() }
+    try { return await withRetry(fn) }
     finally {
       const next = queue.shift()
       if (next) next()        // hand the in-flight slot straight to the next waiter (no decrement)
@@ -84,6 +110,9 @@ function makeGate(limit) {
 }
 const buildGate = makeGate(MAX_BUILD_PARALLEL)   // gates build/fix engineers (buildSpawn)
 const agentGate = makeGate(MAX_PARALLEL)         // gates reviewers (taskReviewSpawn) + verify lenses
+// retrying wrapper for the NON-gated sequential agent() calls (plan, preflight, integrate, plan-fix,
+// cleanup, routed reviews). The gated fan-out calls already retry inside makeGate.
+const rAgent = (prompt, opts) => withRetry(() => agent(prompt, opts), opts && opts.label)
 
 // ── review/build roles (each independently dialable; writer and each reviewer pick their own harness) ──
 // Every role chooses its own executor: 'native' (claude / the plan's specialist agent), 'codex', or
@@ -120,10 +149,10 @@ if (_missing.length) {
 // native substitute). The brief carries the actual review instructions; this just picks the executor.
 function routeReview(who, brief, label, phaseTitle) {
   if (who === 'codex')
-    return agent(`READ-ONLY review — do NOT edit.\n${brief}`, { label, phase: phaseTitle, schema: FINDINGS, agentType: 'codex:codex-rescue' })
+    return rAgent(`READ-ONLY review — do NOT edit.\n${brief}`, { label, phase: phaseTitle, schema: FINDINGS, agentType: 'codex:codex-rescue' })
   if (who === 'kiro')
-    return agent(`Use the kiro-review skill (\`/kiro-review\`) to drive the Kiro CLI over the surface below, READ-ONLY — do NOT edit. If the Kiro CLI is unavailable, say so and return an empty findings list; do NOT substitute your own native review.\n${brief}`, { label, phase: phaseTitle, schema: FINDINGS, agentType: 'general-purpose' })
-  return agent(`${brief}\n(native claude)`, { label, phase: phaseTitle, schema: FINDINGS })   // native
+    return rAgent(`Use the kiro-review skill (\`/kiro-review\`) to drive the Kiro CLI over the surface below, READ-ONLY — do NOT edit. If the Kiro CLI is unavailable, say so and return an empty findings list; do NOT substitute your own native review.\n${brief}`, { label, phase: phaseTitle, schema: FINDINGS, agentType: 'general-purpose' })
+  return rAgent(`${brief}\n(native claude)`, { label, phase: phaseTitle, schema: FINDINGS })   // native
 }
 const rank = { BLOCK: 3, CONCERN: 2, OBSERVATION: 1 }
 const hasBlocking = (fs) => (fs || []).some(f => f.severity === 'BLOCK' || f.severity === 'CONCERN')
@@ -355,7 +384,7 @@ async function planReviewLoop(plan, who) {
     if (r.verdict === 'approve' || n === 0) return     // clean — OBSERVATIONs never block
     if (n >= prev) return                              // not improving → stop churning, proceed to build
     prev = n
-    await agent(planFixBrief(plan, r.findings), { label: `plan-fix:${i}`, phase: 'Plan review', schema: FIX_RESULT })   // fix is always native
+    await rAgent(planFixBrief(plan, r.findings), { label: `plan-fix:${i}`, phase: 'Plan review', schema: FIX_RESULT })   // fix is always native
   }
 }
 
@@ -367,7 +396,7 @@ async function planReviewLoop(plan, who) {
 // prior run's) so the gate measures the code, not stray worktrees.
 const CLEANUP_SCHEMA = { type: 'object', additionalProperties: false, required: ['removed'], properties: { removed: { type: 'integer' }, remaining: { type: 'integer' }, detail: { type: 'string' } } }
 async function cleanupWorktrees(when) {
-  return agent(`Worktree hygiene in ${ROOT} — remove this workflow's transient build worktrees so they can't pollute later validates. READ git state, then:
+  return rAgent(`Worktree hygiene in ${ROOT} — remove this workflow's transient build worktrees so they can't pollute later validates. READ git state, then:
 1. \`git -C ${ROOT} worktree list --porcelain\` — identify worktrees whose path is under \`.claude/worktrees/\` OR whose branch matches \`wf/build/*\` (these are ship-playbook build worktrees, including prior runs' leftovers). Do NOT touch the main working tree (${ROOT}) or any unrelated worktree.
 2. For each: \`git -C ${ROOT} worktree remove --force <path>\`; then if its branch is \`wf/build/*\` and fully merged or stale, \`git -C ${ROOT} branch -D <branch>\`.
 3. \`git -C ${ROOT} worktree prune\` to clear stale admin entries.
@@ -412,7 +441,7 @@ async function buildPlan(plan) {
       buildSpawn(t, engineerBrief(t), `build:${t.id}`).then(r => ({ t, r }))))
     // in-workflow git integrate: merge passed task branches onto the working branch (one sequential agent)
     const passedBranches = built.filter(b => b && b.r && b.r.status === 'passed').map(b => branchFor(b.t))
-    if (passedBranches.length) await agent(integrateBrief(passedBranches), { label: `integrate:L${li}`, phase: 'Build', schema: INTEGRATE_RESULT })
+    if (passedBranches.length) await rAgent(integrateBrief(passedBranches), { label: `integrate:L${li}`, phase: 'Build', schema: INTEGRATE_RESULT })
     // engineer-failed tasks are blocked outright
     for (const b of built.filter(b => b && (!b.r || b.r.status !== 'passed')))
       log.push({ task: b.t.id, status: 'blocked', reason: 'engineer validate failed', fixes: 0, findings: [] })
@@ -436,7 +465,7 @@ async function buildPlan(plan) {
       while (review.verdict === 'blocked' && fixes < MAX_FIX) {
         fixes++
         await buildSpawn(t, fixBrief(t, review.findings, fixes), `fix:${t.id}#${fixes}`)
-        await agent(integrateBrief([fixBranchFor(t, fixes)]), { label: `reintegrate:${t.id}#${fixes}`, phase: 'Build', schema: INTEGRATE_RESULT })
+        await rAgent(integrateBrief([fixBranchFor(t, fixes)]), { label: `reintegrate:${t.id}#${fixes}`, phase: 'Build', schema: INTEGRATE_RESULT })
         review = await taskReviewSpawn(t, reviewerBrief(t), `review:${t.id}#${fixes}`) || { verdict: 'concerns', findings: [] }
       }
       log.push({ task: t.id, status: review.verdict === 'blocked' ? 'blocked' : 'passed', fixes, findings: review.findings || [] })
@@ -467,7 +496,7 @@ async function dedupVerify(all, phaseTitle) {
 // command fails and the run collapses into blocked-task noise. Verify once up front and abort cleanly.
 phase('Plan')
 const PREFLIGHT_SCHEMA = { type: 'object', additionalProperties: false, required: ['isGitRepo'], properties: { isGitRepo: { type: 'boolean' }, currentBranch: { type: 'string' }, workingBranchExists: { type: 'boolean' }, detail: { type: 'string' } } }
-const pre = await agent(`Report git readiness for a build that will checkout/commit/merge in ${ROOT} — READ-ONLY, do NOT init/create/modify anything. Run \`git -C ${ROOT} rev-parse --is-inside-work-tree\`: isGitRepo=true only if it prints "true" with exit 0 (false on any error / "not a git repository"). If a repo: report currentBranch (\`git -C ${ROOT} rev-parse --abbrev-ref HEAD\`) and workingBranchExists = whether \`git -C ${ROOT} rev-parse --verify --quiet "${WORKING_BRANCH}^{commit}"\` succeeds (the branch exists AND has a commit to branch from).`, { label: 'preflight:git', phase: 'Plan', schema: PREFLIGHT_SCHEMA })
+const pre = await rAgent(`Report git readiness for a build that will checkout/commit/merge in ${ROOT} — READ-ONLY, do NOT init/create/modify anything. Run \`git -C ${ROOT} rev-parse --is-inside-work-tree\`: isGitRepo=true only if it prints "true" with exit 0 (false on any error / "not a git repository"). If a repo: report currentBranch (\`git -C ${ROOT} rev-parse --abbrev-ref HEAD\`) and workingBranchExists = whether \`git -C ${ROOT} rev-parse --verify --quiet "${WORKING_BRANCH}^{commit}"\` succeeds (the branch exists AND has a commit to branch from).`, { label: 'preflight:git', phase: 'Plan', schema: PREFLIGHT_SCHEMA })
 if (!pre || pre.isGitRepo !== true) {
   return { converged: false, ranReal: false, aborted: `ROOT is not a git repository: ${ROOT}. ship-playbook builds by creating task branches and git-merging them onto ${WORKING_BRANCH}, so it needs a git work tree. Run \`git init\` and commit a baseline (or point root at the actual repo), then relaunch.`, goLive: GO_LIVE }
 }
@@ -487,7 +516,7 @@ const planAgentType = PLAN_HARNESS === 'codex' ? 'codex:codex-rescue' : 'general
 const planPrompt = PLAN_HARNESS === 'kiro'
   ? `Use the Kiro CLI to produce this plan; if it is unavailable, do it yourself.\n${planBrief(PROMPT)}`
   : planBrief(PROMPT)
-const plan = await agent(planPrompt, { label: `plan:${PLAN_HARNESS}`, phase: 'Plan', schema: PLAN, agentType: planAgentType })
+const plan = await rAgent(planPrompt, { label: `plan:${PLAN_HARNESS}`, phase: 'Plan', schema: PLAN, agentType: planAgentType })
 if (!plan || !plan.tasks || !plan.tasks.length) {
   return { converged: false, ranReal: false, aborted: 'no tasks were planned — aborted before any build (verify args/PROMPT reached the script)', goLive: GO_LIVE }
 }

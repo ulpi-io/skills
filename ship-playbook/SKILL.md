@@ -1,6 +1,6 @@
 ---
 name: ship-playbook
-version: 1.1.0
+version: 1.2.0
 description: |
   Take one feature request and run the entire delivery playbook automatically: plan it, review the
   plan, build it task by task, review the build, and optionally audit it for launch — then return the
@@ -293,7 +293,9 @@ The Workflow then executes the playbook in one pass, running each gate at the le
   worktree engineers and `MAX_PARALLEL` (6) reviewers/verifiers run at once. Total agent count is
   unchanged — only how many run simultaneously is bounded. Tune those two constants in
   `references/workflow-template.js` if you hit 429s (lower) or have a high-limit account (raise); never
-  set them to 1–2.
+  set them to 1–2. If an agent is still rate-limited despite the caps (returns empty / cut off
+  mid-flight), it is **retried with exponential backoff** (`RETRY_DELAYS`, up to 4 attempts) before
+  being recorded as blocked — so a rate-limit storm no longer turns into false "blocked task" noise.
 - **Impl review (step 12)** — reviewer per `implReview` (`skip` / `native` / `codex` / `kiro`). The
   plan-vs-implementation review of everything built.
 - **Verify (step 14)** — dedup + adversarially verify the build+impl findings. These become the
