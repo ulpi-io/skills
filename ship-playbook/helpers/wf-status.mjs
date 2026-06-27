@@ -30,7 +30,7 @@
 //            agents return instantly; only unfinished/edited tasks re-run. The durable status file
 //            stores the exact resume command under `.resume`.
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -59,7 +59,7 @@ function findWorkflowDirs({ all = false } = {}) {
       for (const run of safeReaddir(wfRoot)) {
         if (!run.startsWith('wf_')) continue;
         const journal = join(wfRoot, run, 'journal.jsonl');
-        if (existsSync(journal)) out.push({ run, slug, journal, mtime: statSync(journal).mtimeMs });
+        if (existsSync(journal)) out.push({ run, slug, dir: join(wfRoot, run), journal, mtime: statSync(journal).mtimeMs });
       }
     }
   }
@@ -110,6 +110,93 @@ function buckets(p) {
   return { total, merged, queued, reviewFix, notStarted };
 }
 
+// ── DEEP reconstruction: join each agent's PROMPT (role + task id, in agent-<id>.jsonl) with its RESULT
+// (journal, keyed by agentId) + whether it has finished. The journal alone can't attribute a review/fix
+// to a task (those results carry no task id) — but the agent's prompt names the task, so this recovers
+// TRUE per-task status incl. review-pending and fix-in-progress. ──
+function firstLine(path) {
+  // read only enough to capture the first record (the prompt) — agent transcripts can be hundreds of KB
+  let fd;
+  try {
+    fd = openSync(path, 'r');
+    const buf = Buffer.allocUnsafe(262144);
+    const n = readSync(fd, buf, 0, buf.length, 0);
+    const s = buf.toString('utf8', 0, n);
+    const nl = s.indexOf('\n');
+    return nl >= 0 ? s.slice(0, nl) : s;
+  } catch { return ''; } finally { if (fd !== undefined) try { closeSync(fd); } catch {} }
+}
+function classifyPrompt(p) {
+  p = String(p || '');
+  let m;
+  if ((m = p.match(/READ-ONLY review of (TASK-\d+)/))) return { role: 'review', task: m[1] };
+  if ((m = p.match(/Fix (TASK-\d+) for these reviewer findings/))) { const it = p.match(/wf\/build\/TASK-\d+-fix(\d+)/); return { role: 'fix', task: m[1], fix: it ? +it[1] : 1 }; }
+  if ((m = p.match(/specialist engineer[^]*?for (TASK-\d+)/))) return { role: 'build', task: m[1] };
+  if (/integrate these task branches/.test(p)) return { role: 'integrate', tasks: [...new Set([...p.matchAll(/wf\/build\/(TASK-\d+)/g)].map(x => x[1]))] };
+  if (/Full implementation review of everything built/.test(p)) return { role: 'impl-review' };
+  if (/Founder-review the plan/.test(p)) return { role: 'plan-review' };
+  if (/plan-to-task-list-with-dag/.test(p)) return { role: 'plan' };
+  return { role: 'other' };
+}
+function reconstruct(dir, journalPath) {
+  const lines = readFileSync(journalPath, 'utf8').split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  const resultById = new Map(); const started = new Set();
+  let plan = null, planTasks = [];
+  for (const l of lines) {
+    if (l.type === 'started') started.add(l.agentId);
+    else if (l.type === 'result') {
+      resultById.set(l.agentId, l.result);
+      const r = l.result; if (r && Array.isArray(r.tasks) && r.tasks[0] && r.tasks[0].id) { plan = r; planTasks = r.tasks.map(t => t.id); }
+    }
+  }
+  const agents = [];
+  for (const f of safeReaddir(dir)) {
+    if (!/^agent-.*\.jsonl$/.test(f)) continue;
+    let rec; try { rec = JSON.parse(firstLine(join(dir, f))); } catch { continue; }
+    if (!rec || !rec.agentId) continue;
+    const c = rec.message && rec.message.content;
+    const prompt = typeof c === 'string' ? c : Array.isArray(c) ? c.map(x => (x && x.text) || '').join(' ') : '';
+    agents.push({ id: rec.agentId, ts: Date.parse(rec.timestamp) || 0, ...classifyPrompt(prompt), result: resultById.get(rec.agentId) || null, running: started.has(rec.agentId) && !resultById.has(rec.agentId) });
+  }
+  agents.sort((a, b) => a.ts - b.ts);
+  const T = {};
+  const ensure = id => (T[id] = T[id] || { id, build: null, integrated: false, review: null, fixes: 0, building: false, reviewing: false, fixing: false });
+  for (const a of agents) {
+    if (a.role === 'build' && a.task) { const t = ensure(a.task); if (a.running) t.building = true; else if (a.result) { t.building = false; t.build = a.result.status; } }
+    else if (a.role === 'integrate' && a.tasks) { for (const id of a.tasks) if (a.result && (a.result.merged || []).some(b => String(b).includes(id))) ensure(id).integrated = true; }
+    else if (a.role === 'review' && a.task) { const t = ensure(a.task); if (a.running) { t.reviewing = true; t.review = 'pending'; } else if (a.result) { t.reviewing = false; t.review = a.result.verdict === 'blocked' ? 'blocked' : 'clean'; } }
+    else if (a.role === 'fix' && a.task) { const t = ensure(a.task); t.fixes = Math.max(t.fixes, a.fix || 1); t.fixing = !!a.running; }
+  }
+  for (const id of planTasks) ensure(id);
+  for (const id of Object.keys(T)) {
+    const t = T[id]; let s;
+    if (t.integrated) s = t.reviewing ? 'reviewing' : t.fixing ? 'fixing' : t.review === 'blocked' ? 'blocked' : t.review === 'clean' ? 'passed' : 'integrated';
+    else if (t.building) s = 'building';
+    else if (t.build === 'passed') s = t.reviewing ? 'reviewing' : t.fixing ? 'fixing' : 'dev_done';
+    else if (t.build === 'blocked') s = 'dev_failed';
+    else if (t.reviewing) s = 'reviewing';
+    else if (t.fixing) s = 'fixing';
+    else s = 'pending';
+    t.status = s;
+  }
+  return { tasks: T, planTasks, planMeta: plan ? { name: plan.planName, path: plan.planPath, taskCount: planTasks.length, layers: (plan.layers || []).length } : null, agentCount: agents.length, runningCount: agents.filter(a => a.running).length };
+}
+// partition the deep per-task map into DISJOINT buckets by status (each task has exactly one status), plus
+// `onBranch` = everything merged onto the working branch (integrated/reviewing/fixing/passed/blocked).
+function deepBuckets(d) {
+  const by = {};
+  for (const t of Object.values(d.tasks)) (by[t.status] = by[t.status] || []).push(t.id);
+  for (const k in by) by[k].sort();
+  const get = k => by[k] || [];
+  return {
+    total: d.planTasks.length || Object.keys(d.tasks).length,
+    passed: get('passed'), blocked: get('blocked'), reviewing: get('reviewing'), fixing: get('fixing'),
+    integrated: get('integrated'),     // merged onto the branch, review not yet started
+    devDone: get('dev_done'), devFailed: get('dev_failed'), building: get('building'), notStarted: get('pending'),
+    onBranch: ['integrated', 'reviewing', 'fixing', 'passed', 'blocked'].flatMap(get).sort(),
+  };
+}
+
 // ── durable .ulpi/workflows/<id>.json (ship-playbook's live status file), if present in cwd ──
 function findStatusFiles() {
   const dir = join(process.cwd(), '.ulpi', 'workflows');
@@ -127,8 +214,8 @@ function statusFileForRun(run) {
 }
 
 // ── render ──
-function render(run, p, durable) {
-  const b = buckets(p);
+function render(run, p, durable, deep) {
+  const db = deepBuckets(deep);
   const n = (a) => a.map(t => t.replace('TASK-', '')).join(' ') || '—';
   const line = '  ' + '─'.repeat(58);
   console.log(`\n  ship-playbook run ${run}`);
@@ -140,19 +227,29 @@ function render(run, p, durable) {
     if (ph) console.log(`  phases     : ${ph}`);
   }
   console.log(line);
-  console.log(`  plan tasks        ${b.total || '?'}`);
-  console.log(`  ✓ integrated      ${b.merged.length}   (merged onto the working branch)`);
-  console.log(`  ~ built, queued   ${b.queued.length}   (engineer passed, not yet integrated)`);
-  console.log(`  ⟳ in review/fix   ${b.reviewFix.length}   (latest attempt not green)`);
-  console.log(`  ○ not started     ${b.notStarted.length}`);
+  console.log(`  plan tasks          ${db.total || '?'}   ·   on branch: ${db.onBranch.length}`);
+  console.log(`  ✓ passed            ${db.passed.length}   (integrated + review clean)`);
+  console.log(`  ✗ blocked           ${db.blocked.length}   (integrated, review BLOCKED)`);
+  console.log(`  ⟳ reviewing         ${db.reviewing.length}   (integrated, review IN PROGRESS)`);
+  console.log(`  ✎ fixing            ${db.fixing.length}   (review found issues, fix running)`);
+  console.log(`  ▸ integrated        ${db.integrated.length}   (merged, review not yet started)`);
+  console.log(`  ~ built, not merged ${db.devDone.length}   (engineer passed, awaiting integrate)`);
+  console.log(`  ⏺ building          ${db.building.length}   (engineer running now)`);
+  console.log(`  ⚠ dev failed        ${db.devFailed.length}   (engineer could not validate)`);
+  console.log(`  ○ not started       ${db.notStarted.length}`);
   console.log(line);
   console.log(`  agents: ${p.started} started · ${p.resultCount} done · ${p.inFlight} running NOW`);
   console.log(`  reviews: ${p.reviews} · integrates: ${p.integrates}` + (p.conflicts.length ? ` · CONFLICTS: ${p.conflicts.join(', ')}` : ''));
   console.log(line);
-  console.log(`  integrated : ${n(b.merged)}`);
-  console.log(`  queued     : ${n(b.queued)}`);
-  console.log(`  review/fix : ${n(b.reviewFix)}`);
-  console.log(`  not started: ${n(b.notStarted)}`);
+  console.log(`  passed     : ${n(db.passed)}`);
+  if (db.blocked.length) console.log(`  blocked    : ${n(db.blocked)}`);
+  if (db.reviewing.length) console.log(`  reviewing  : ${n(db.reviewing)}`);
+  if (db.fixing.length) console.log(`  fixing     : ${n(db.fixing)}`);
+  if (db.integrated.length) console.log(`  integrated : ${n(db.integrated)}`);
+  if (db.devDone.length) console.log(`  not merged : ${n(db.devDone)}`);
+  if (db.building.length) console.log(`  building   : ${n(db.building)}`);
+  if (db.devFailed.length) console.log(`  dev failed : ${n(db.devFailed)}`);
+  console.log(`  not started: ${n(db.notStarted)}`);
   if (durable && durable.data && durable.data.openRegister && durable.data.openRegister.length)
     console.log(`\n  open findings: ${durable.data.openRegister.length} (see ${durable.path})`);
   console.log('');
@@ -181,6 +278,9 @@ if (has('--list')) {
 const target = positional[0] ? runs.find(r => r.run === positional[0] || r.run.includes(positional[0])) : runs[0];
 if (!target) { console.error('run not found: ' + positional[0]); process.exit(1); }
 const parsed = parseJournal(target.journal);
+// DEEP per-task status (joins agent prompts → role+task with their results). This is the accurate one —
+// it sees review-pending / fixing per task; the journal-shape buckets can't attribute reviews to tasks.
+const deep = reconstruct(target.dir, target.journal);
 
 if (has('--write')) {
   // BACKFILL: build/refresh a durable .ulpi/workflows/<run>.json from the journal — for a run that
@@ -190,34 +290,32 @@ if (has('--write')) {
   // NOT hold — the LAUNCH ARGS (gate config, hardRules, validate, the original prompt) were inputs to the
   // script, not agent results — so those can't be recovered here; pass them with --args '<json>' to
   // complete the resume recipe (the session that launched the run knows them).
-  const b = buckets(parsed);
-  const statusByTask = {};
-  for (const t of b.merged) statusByTask[t] = { status: 'integrated' };
-  for (const t of b.queued) statusByTask[t] = { status: 'dev_done' };
-  for (const t of b.reviewFix) statusByTask[t] = { status: 'reviewing' };
-  for (const t of b.notStarted) statusByTask[t] = { status: 'pending' };
-  // task metadata (title/agent/branch) straight from the plan-adoption result
+  const db = deepBuckets(deep);
+  // per-task status from the DEEP reconstruction (true: pending/building/dev_done/integrated/reviewing/
+  // fixing/passed/blocked), plus fix count — then layer task metadata (title/agent/branch) from the plan.
   const taskMeta = {};
   for (const t of (parsed.plan && parsed.plan.tasks) || [])
     taskMeta[t.id] = { title: t.title || '', agent: t.agent || '', branch: `wf/build/${t.id}` };
   const tasksOut = {};
-  for (const id of new Set([...Object.keys(taskMeta), ...Object.keys(statusByTask)]))
-    tasksOut[id] = { ...(taskMeta[id] || {}), ...(statusByTask[id] || {}) };
+  for (const id of new Set([...Object.keys(taskMeta), ...Object.keys(deep.tasks)])) {
+    const dt = deep.tasks[id];
+    tasksOut[id] = { ...(taskMeta[id] || {}), status: dt ? dt.status : 'pending', ...(dt && dt.fixes ? { fixes: dt.fixes } : {}) };
+  }
 
   // optional --args '<json>' = the original launch args (gate config etc.) to complete the recipe
   let argsOverride = null;
   const ai = ARGV.indexOf('--args');
   if (ai >= 0 && ARGV[ai + 1]) { try { argsOverride = JSON.parse(ARGV[ai + 1]); } catch { console.error('--args: not valid JSON, ignoring'); } }
 
-  const allIntegrated = b.total > 0 && b.merged.length === b.total;
-  const planName = parsed.plan && parsed.plan.planName;
-  const planPath = parsed.plan && parsed.plan.planPath;
+  const allDone = db.total > 0 && db.passed.length === db.total;
+  const planName = (deep.planMeta && deep.planMeta.name) || (parsed.plan && parsed.plan.planName);
+  const planPath = (deep.planMeta && deep.planMeta.path) || (parsed.plan && parsed.plan.planPath);
   const branch = (parsed.preflight && parsed.preflight.currentBranch) || (argsOverride && argsOverride.workingBranch) || null;
   const phases = {
-    plan: { status: parsed.plan ? 'done' : 'unknown' },
+    plan: { status: deep.planMeta ? 'done' : 'unknown' },
     plan_review: { status: 'unknown' },
-    build: (parsed.integrates || Object.keys(parsed.engineer).length)
-      ? { status: allIntegrated ? 'done' : 'in_progress', integrated: b.merged.length, total: b.total }
+    build: (parsed.integrates || db.onBranch.length || db.building.length)
+      ? { status: allDone ? 'done' : 'in_progress', onBranch: db.onBranch.length, passed: db.passed.length, blocked: db.blocked.length, reviewing: db.reviewing.length, fixing: db.fixing.length, total: db.total }
       : { status: 'unknown' },
     impl_review: { status: 'unknown' },
     verify: { status: 'unknown' },
@@ -242,7 +340,8 @@ if (has('--write')) {
     root: base.root || process.cwd(),
     workingBranch: base.workingBranch || branch || null,
     config: { ...(base.config || {}), ...((argsOverride && pickConfig(argsOverride)) || {}) },
-    plan: base.plan || (planName ? { name: planName, path: planPath || null, taskCount: b.total, layers: (parsed.plan.layers || []).length } : null),
+    plan: base.plan || (planName ? { name: planName, path: planPath || null, taskCount: db.total, layers: (deep.planMeta && deep.planMeta.layers) || 0 } : null),
+    counts: { onBranch: db.onBranch.length, passed: db.passed.length, blocked: db.blocked.length, reviewing: db.reviewing.length, fixing: db.fixing.length, devFailed: db.devFailed.length, notStarted: db.notStarted.length },
     phases: { ...phases, ...(base.phases || {}) },
     resume: (argsOverride || !base.resume) ? resume : base.resume,   // regenerate when args are supplied
     tasks: { ...(base.tasks || {}), ...mergeTaskStatus(base.tasks || {}, tasksOut) },
@@ -252,27 +351,28 @@ if (has('--write')) {
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, JSON.stringify(merged, null, 2) + '\n');
   console.error(`wrote ${outPath}`);
-  console.error(`  plan: ${planName || '(unknown)'} · branch: ${branch || '(unknown)'} · ${b.merged.length}/${b.total || '?'} integrated · ${parsed.inFlight} running`);
+  console.error(`  plan: ${planName || '(unknown)'} · branch: ${branch || '(unknown)'} · ${db.onBranch.length}/${db.total || '?'} on-branch (${db.passed.length} passed, ${db.blocked.length} blocked, ${db.reviewing.length} reviewing, ${db.fixing.length} fixing) · ${db.notStarted.length} not started`);
   if (!argsOverride) console.error('  note: launch args (gate config/hardRules/validate/prompt) NOT in the journal — add --args \'{…}\' for a complete resume recipe.');
   process.exit(0);
 }
 
 if (has('--json')) {
-  const b = buckets(parsed);
+  const db = deepBuckets(deep);
   const durable = statusFileForRun(target.run);
   console.log(JSON.stringify({
     run: target.run,
     overall: durable && durable.data ? durable.data.status : null,
     phases: durable && durable.data ? durable.data.phases : null,
-    counts: { planTasks: b.total, integrated: b.merged.length, queued: b.queued.length, reviewFix: b.reviewFix.length, notStarted: b.notStarted.length },
+    counts: { planTasks: db.total, onBranch: db.onBranch.length, passed: db.passed.length, blocked: db.blocked.length, reviewing: db.reviewing.length, fixing: db.fixing.length, integrated: db.integrated.length, devDone: db.devDone.length, devFailed: db.devFailed.length, building: db.building.length, notStarted: db.notStarted.length },
     agents: { started: parsed.started, done: parsed.resultCount, running: parsed.inFlight },
     reviews: parsed.reviews, integrates: parsed.integrates, conflicts: parsed.conflicts,
-    tasks: { integrated: b.merged, queued: b.queued, reviewFix: b.reviewFix, notStarted: b.notStarted },
+    perTask: Object.fromEntries(Object.values(deep.tasks).map(t => [t.id, { status: t.status, fixes: t.fixes, review: t.review }])),
+    tasks: { passed: db.passed, blocked: db.blocked, reviewing: db.reviewing, fixing: db.fixing, integrated: db.integrated, devDone: db.devDone, devFailed: db.devFailed, building: db.building, notStarted: db.notStarted },
   }, null, 2));
   process.exit(0);
 }
 
-render(target.run, parsed, statusFileForRun(target.run));
+render(target.run, parsed, statusFileForRun(target.run), deep);
 
 // the gate-config subset of a launch-args object (for the durable file's `config`)
 function pickConfig(a) {

@@ -14,12 +14,21 @@ for an in-flight run. But the journal has two gaps the durable file fills:
 1. **It is session-scoped and runtime-internal**, not a committable artifact in the project. The durable
    file lives in the repo, survives across sessions, and other tooling/humans can read it without a Claude
    session.
-2. **The journal has no labels or phases** — only result *payloads*. So it can't say "we're in plan
-   review" or carry the final verdict. The durable file records real semantics (phase, overall status,
-   `openRegister`) because the orchestrator writes them.
+2. **The journal has no phases** — only result *payloads*. So it can't say "we're in plan review" or carry
+   the final verdict. The durable file records real semantics (phase, overall status, `openRegister`)
+   because the orchestrator writes them.
 
 So: the file is the durable record + cross-session resume pointer; the journal reader is the live view.
 They reference each other by `runId`.
+
+**Per-task review state IS recoverable — join the agent prompts.** A review/fix *result* in the journal
+carries no task id, so result-shapes alone can't tell "TASK-032 is mid-review". But each agent's transcript
+`agent-<id>.jsonl` begins with its PROMPT, which names the role + task (`READ-ONLY review of TASK-032`,
+`Fix TASK-032 …`, `integrate … wf/build/TASK-007`), and `agentId` joins it to the journal result + whether
+it has finished. `wf-status.mjs` does exactly this join (`reconstruct()`) to recover TRUE per-task status —
+`pending → building → dev_done → integrated → reviewing → fixing → passed | blocked` (plus `dev_failed`) —
+including **review-pending** and **fixing**, which the result-shape pass cannot see. `--write` writes these
+true statuses into the durable file.
 
 ## Who writes it, and when
 
