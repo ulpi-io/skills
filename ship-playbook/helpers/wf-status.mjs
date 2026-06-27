@@ -179,8 +179,11 @@ function reconstruct(dir, journalPath) {
     else s = 'pending';
     t.status = s;
   }
-  return { tasks: T, planTasks, planMeta: plan ? { name: plan.planName, path: plan.planPath, taskCount: planTasks.length, layers: (plan.layers || []).length } : null, agentCount: agents.length, runningCount: agents.filter(a => a.running).length };
+  const running = agents.filter(a => a.running).map(a => ({ role: a.role, task: a.task || (a.tasks && a.tasks.join('+')) || null, fix: a.fix || null }));
+  return { tasks: T, planTasks, planMeta: plan ? { name: plan.planName, path: plan.planPath, taskCount: planTasks.length, layers: (plan.layers || []).length } : null, agentCount: agents.length, running };
 }
+// "review:TASK-032", "fix:TASK-032#2", "integrate:TASK-007+TASK-009", or just the role for plan/etc.
+const runLabel = (a) => a.task ? `${a.role}:${a.task}${a.fix ? '#' + a.fix : ''}` : a.role;
 // partition the deep per-task map into DISJOINT buckets by status (each task has exactly one status), plus
 // `onBranch` = everything merged onto the working branch (integrated/reviewing/fixing/passed/blocked).
 function deepBuckets(d) {
@@ -238,7 +241,7 @@ function render(run, p, durable, deep) {
   console.log(`  ⚠ dev failed        ${db.devFailed.length}   (engineer could not validate)`);
   console.log(`  ○ not started       ${db.notStarted.length}`);
   console.log(line);
-  console.log(`  agents: ${p.started} started · ${p.resultCount} done · ${p.inFlight} running NOW`);
+  console.log(`  agents: ${p.started} started · ${p.resultCount} done · ${p.inFlight} running NOW` + (deep.running && deep.running.length ? `  →  ${deep.running.map(runLabel).join(', ')}` : ''));
   console.log(`  reviews: ${p.reviews} · integrates: ${p.integrates}` + (p.conflicts.length ? ` · CONFLICTS: ${p.conflicts.join(', ')}` : ''));
   console.log(line);
   console.log(`  passed     : ${n(db.passed)}`);
@@ -365,6 +368,7 @@ if (has('--json')) {
     phases: durable && durable.data ? durable.data.phases : null,
     counts: { planTasks: db.total, onBranch: db.onBranch.length, passed: db.passed.length, blocked: db.blocked.length, reviewing: db.reviewing.length, fixing: db.fixing.length, integrated: db.integrated.length, devDone: db.devDone.length, devFailed: db.devFailed.length, building: db.building.length, notStarted: db.notStarted.length },
     agents: { started: parsed.started, done: parsed.resultCount, running: parsed.inFlight },
+    runningNow: deep.running.map(runLabel),
     reviews: parsed.reviews, integrates: parsed.integrates, conflicts: parsed.conflicts,
     perTask: Object.fromEntries(Object.values(deep.tasks).map(t => [t.id, { status: t.status, fixes: t.fixes, review: t.review }])),
     tasks: { passed: db.passed, blocked: db.blocked, reviewing: db.reviewing, fixing: db.fixing, integrated: db.integrated, devDone: db.devDone, devFailed: db.devFailed, building: db.building, notStarted: db.notStarted },
