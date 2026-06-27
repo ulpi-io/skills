@@ -40,9 +40,11 @@ const positional = ARGV.filter(a => !a.startsWith('--'));
 
 // ── locate workflow runs under ~/.claude/projects/<slug>/<session>/subagents/workflows ──
 const projectsRoot = join(homedir(), '.claude', 'projects');
-// Claude slugifies the project path by replacing '/' with '-'. Scope to the current project unless
-// --all: a run's <slug> segment and the cwd slug should contain one another (handles subdir launches).
-const cwdSlug = process.cwd().replace(/\//g, '-');
+// Claude slugifies the project path by replacing every non-alphanumeric char with '-' (so '/', '_' and
+// '.' all become '-', e.g. /Users/x/work_cip/ulpi-v6 → -Users-x-work-cip-ulpi-v6). Scope to the current
+// project unless --all: a run's <slug> segment and the cwd slug should contain one another (handles
+// subdir launches).
+const cwdSlug = process.cwd().replace(/[^a-zA-Z0-9]/g, '-');
 const inThisProject = (slug) => cwdSlug.startsWith(slug) || slug.startsWith(cwdSlug);
 
 function findWorkflowDirs({ all = false } = {}) {
