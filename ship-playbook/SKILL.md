@@ -8,10 +8,17 @@ description: |
   chains the existing skills as one runnable Workflow:
   plan-to-task-list-with-dag (plan + assign a specialist agent per task) → plan-founder-review →
   a specialist engineer/reviewer build across the DAG → a full claude ∥ codex/kiro cross-review →
-  go-live-audit. Up front it shows what skills/agents would help (with install commands), then asks
-  which gates to run and at what depth — code writing and each review independently pick native / codex
-  / kiro (reviews can skip; writer and reviewer can differ), so the user controls quality vs token cost.
-  Use when the user wants "prompt → planned, built, reviewed, audited" in one go
+  go-live-audit. It FOLLOWS the DAG — every task declares its dependencies, the plan's layers must be a
+  topological order, plan review blocks an incomplete/mis-ordered graph, and the build aborts a plan that
+  would run a task before its dependencies integrate (never building on a broken base). Per-task review is
+  SLICE-SCOPED — it judges only that task's own change against its acceptance criteria and attributes
+  whole-codebase end-state gaps to the task that owns them (impl review is the end-state gate), so the
+  build isn't drowned in false blocks. Each run writes a live status file at .ulpi/workflows/<id>.json
+  (overall + per-phase + per-task), with a bundled journal reader (helpers/wf-status.mjs) for at-a-glance
+  status / stop / resume. Up front it shows what skills/agents would help (with install commands), then
+  asks which gates to run and at what depth — code writing and each review independently pick native /
+  codex / kiro (reviews can skip; writer and reviewer can differ), so the user controls quality vs token
+  cost. Use when the user wants "prompt → planned, built, reviewed, audited" in one go
   instead of running each phase by hand.
 allowed-tools:
   - Skill
