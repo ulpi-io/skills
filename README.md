@@ -39,6 +39,11 @@ npx skills add https://github.com/ulpi-io/skills --skill browse
 | [bugfix](#bugfix) | Fix bugs with red-green workflow — reproducer, root cause, minimal fix, regression tests |
 | [code-simplify](#code-simplify) | Review code for reuse, quality, efficiency |
 | [frontend-design-ui-ux](#frontend-design-ui-ux) | Locked design language + UX/UI spec in `.ulpi/design` — anti-slop, browse inspiration, design-system routing, a11y; delegates the build (no code) |
+| [launch-product-hunt](#launch-product-hunt) | Prepare & run a Product Hunt launch — grounded, compliant, paste-ready package (listing, plan, hour-by-hour runbook, outreach, pre-flight gate) in `.ulpi/launch`; composes the shared launch-* skills |
+| [launch-hacker-news](#launch-hacker-news) | Prepare & run a Show HN launch — title, honest technical first comment, timing, thread runbook, readiness gate in `.ulpi/launch`; forbids all vote mobilization; composes the launch-* skills |
+| [launch-copy](#launch-copy) | Product-grounded launch copywriting — taglines/descriptions/first-comment in A/B/C/D angles from an asset profile; shared by the launch-* family |
+| [launch-outreach](#launch-outreach) | Compliant supporter outreach — recruit, segment, notify in waves; per-platform compliance dial (PH waves OK, HN no mobilization) |
+| [launch-analytics](#launch-analytics) | Launch attribution — one UTM scheme + GA4 signup/activation tracking for the traffic spike |
 | [update-claude-learnings](#update-claude-learnings) | Extract behavioral learnings to CLAUDE.md |
 | [update-agent-learnings](#update-agent-learnings) | Propagate learnings to agent files |
 | [update-skill-learnings](#update-skill-learnings) | Propagate learnings to skill files |
@@ -377,6 +382,66 @@ npx skills add https://github.com/ulpi-io/skills --skill frontend-design-ui-ux
 **A distinctive, consistent, buildable design language — not generic AI output, and not code.**
 
 Commits to one bold aesthetic direction, then **locks** it in `.ulpi/design/DESIGN.md` (palette, type, scales, signature, voice, and the design system to build on) so every screen and future session stays consistent. Bans AI-slop by name (purple-glow, cream defaults, 3-equal-cards, em-dashes…), and can **visit inspiration links with the `browse` skill** to extract real design DNA and synthesize — never clone. For product UIs it routes to an established design system (Radix/shadcn, Material 3, Carbon, Polaris…) to build on rather than reinvent. Keeps the rigor most design skills skip: full state coverage, user flows with edge cases, and WCAG/ARIA/keyboard accessibility. Ends with a scored pre-flight gate, then **delegates the build** to an engineering agent via an explicit handoff ("implement exactly this"). All artifacts are written under `.ulpi/design/`. For new features, redesigns, design-system work, or making an existing UI look less templated.
+
+---
+
+## launch-product-hunt
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill launch-product-hunt
+```
+
+**A grounded, compliant, paste-ready Product Hunt launch — from checklist to content to plan.**
+
+Reads the real product (README, the live landing page via `browse`, `project-context.md`) and writes a complete launch package to `.ulpi/launch/product-hunt/`: `LISTING.md` (tagline options ≤60 chars, ≤500-char description, a gallery shot-list, demo-video outline, and the maker's first comment), `PLAN.md` (a T-minus countdown + an **hour-by-hour Pacific-time launch-day runbook** + the post-launch plan), `OUTREACH.md` (segmented supporter messages + social posts), and `CHECKLIST.md` (a blocking pre-flight gate). Every PH spec is **verified against current sources** (description limit, gallery dims, the four newsletters, Golden Kitty → Orbit, re-launch rules) and labeled official vs. third-party. **Compliance-first**: it coaches only PH-legal promotion and refuses vote manipulation / "please upvote" solicitation — a banned-phrase scan gates every message. The PH platform skill of the **launch-\*** family: it owns PH mechanics/specs/policy/runbook/gate and composes the shared `launch-copy`, `launch-outreach`, and `launch-analytics` skills (degrading to built-in fallbacks if one isn't installed). Treats PH as a credibility/visibility amplifier, not a primary acquisition channel.
+
+---
+
+## launch-hacker-news
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill launch-hacker-news
+```
+
+**A Show HN that won't get flagged — honest, technical, and ready for skeptical engineers.**
+
+Writes a small, HN-appropriate package to `.ulpi/launch/hacker-news/`: `POST.md` (the `Show HN: <name> – <description>` title in HN's exact no-editorializing form + the URL + the founder's explanatory **first comment** — what it is, why you built it, the real stack, the honest limitations, one specific feedback ask), `PLAN.md` (when to post in US-Eastern time, the first-1–2-hours `/newest` plan, a **thread-engagement plan** with prepared non-defensive answers to the hardest likely questions, and the second-chance/repost plan), and `CHECKLIST.md` (a blocking readiness gate: title format, qualifies as a Show HN, **no signup wall**, survives the "hug of death", zero solicitation). Every rule is **verified verbatim against official HN sources** (showhn.html, the guidelines, the FAQ, dang's second-chance-pool comments); the reverse-engineered ranking formula is labeled non-official. HN is **stricter than Product Hunt**: it **forbids all vote mobilization** (no waves, no asking anyone to upvote — vote rings get detected and banned), punishes hype/marketing-speak, and rewards a present, non-defensive founder. The HN platform skill of the **launch-\*** family — owns HN mechanics/rules/policy/runbook/gate and composes `launch-copy` (the Show HN title + first comment) and `launch-analytics`, with built-in fallbacks.
+
+---
+
+## launch-copy
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill launch-copy
+```
+
+**Product-grounded launch copywriting engine — never generic placeholders.**
+
+Drafts the copy a launch needs — taglines/headlines, short/long descriptions, and the launch post / first comment — in multiple **angle versions** (feature-led, benefit-led, comparison/alternative, audience-led), each within its hard character limit and on-voice, with one marked recommended. The caller passes an **asset profile** (which assets, the limits, the voice, any compliance rules); ships with ready profiles for Product Hunt, Hacker News, directories, and landing pages. Grounds in the live product via `browse` and reuses the shared `.ulpi/launch/positioning.md` brief. Shared building block of the **launch-\*** family (invoked by the platform skills) or run standalone.
+
+---
+
+## launch-outreach
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill launch-outreach
+```
+
+**Compliant supporter outreach — the messages you send to people, never vote-soliciting.**
+
+Builds and notifies a launch audience: recruit off-platform, segment it (team · friends · users/waitlist · communities · followers), and notify in **staggered waves** on launch day. Drafts paste-ready teaser DMs, waitlist and launch-day emails, community heads-ups, 1:1 DMs, and X/LinkedIn posts — all grounded in the product. Parameterized by a per-platform **compliance mode**: Product Hunt allows supporter waves (ask for feedback, never upvotes); Hacker News forbids vote mobilization entirely. A banned-phrase scan keeps every message safe. Shared building block of the **launch-\*** family or run standalone.
+
+---
+
+## launch-analytics
+
+```bash
+npx skills add https://github.com/ulpi-io/skills --skill launch-analytics
+```
+
+**Make the launch traffic spike measurable — UTMs + conversion tracking, not just upvotes.**
+
+Defines one consistent UTM scheme for every launch link, maps the conversion funnel (visit → signup → activation), wires the events into GA4 (or the project's existing stack), and gives a validation + read-out plan so you see **signups by source**, not just vanity visits. Parameterized by launch source; writes to `.ulpi/launch/<channel>/analytics.md`. No PII in links or events. Shared building block of the **launch-\*** family or run standalone.
 
 ---
 
