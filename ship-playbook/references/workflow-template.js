@@ -126,36 +126,23 @@ if [ -f composer.json ]; then       # Laravel / PHP
   if cmp -s composer.lock "$ROOT/composer.lock" 2>/dev/null && cow_clone "$ROOT/vendor" ./vendor
   then say "vendor cloned (lockfile unchanged)"; else composer install --prefer-dist --no-interaction; fi
 fi
-if [ -f Cargo.toml ]; then          # Rust / Cargo — NO target/ clone (redundant with sccache, multi-GB
-  # per worktree, tears if ROOT is mid-build). Instead WIRE sccache into cargo config so it reaches EVERY
-  # cargo here (dev-fast.sh, raw cargo, build.rs) with NO env dependency — an exported RUSTC_WRAPPER does
-  # NOT survive the agent's separate shells / a fresh validate shell, so it silently misses the real cargo
-  # (only the inline-prefixed warm prime ever got wrapped). Worktree-local + git-excluded: never committed.
-  if command -v sccache >/dev/null 2>&1; then
-    mkdir -p .cargo
-    if [ ! -f .cargo/config.toml ] && [ ! -f .cargo/config ]; then
-      printf '[build]\\nrustc-wrapper = "sccache"\\nincremental = false\\n\\n[env]\\nCARGO_INCREMENTAL = { value = "0", force = true }\\n' > .cargo/config.toml
-      ex=$(git rev-parse --git-path info/exclude 2>/dev/null)
-      [ -n "$ex" ] && ! grep -qx '.cargo/config.toml' "$ex" 2>/dev/null && printf '.cargo/config.toml\\n' >> "$ex"
-      say "cargo wired to sccache (worktree .cargo/config.toml, git-excluded)"
-    elif grep -qs rustc-wrapper .cargo/config.toml .cargo/config; then
-      say "cargo config already sets rustc-wrapper — left as-is"
-    else
-      say "repo tracks a .cargo/config without rustc-wrapper — not editing a tracked file; add rustc-wrapper=sccache under [build] to share the cache"
-    fi
-  else
-    say "sccache not installed — Rust builds run uncached"
-  fi
-fi
+# Rust / Cargo: NOTHING to seed — each worktree cold-builds with plain cargo. sccache was tried
+# (v1.10–1.13) and REMOVED (v1.14.0): measured 0.00% Rust hit rate over thousands of compiles. Each
+# worktree's distinct target-dir path destabilises cargo's rustc cache keys (per-worktree --extern/-L
+# paths + path-dependent rlib contents), so every crate is written under one key and read under another
+# → never a hit, just hash+write overhead. Do NOT re-add rustc-wrapper=sccache here without first PROVING
+# a non-zero hit rate on this repo (would need stable paths, e.g. --remap-path-prefix — unverified). A
+# target/ clone is also unsafe: cargo fingerprints embed absolute paths, so a moved target rebuilds anyway.
 # Go: GOCACHE/GOMODCACHE already global — nothing to seed.
 exit 0`
 
 // Short instruction injected into the two build briefs — invoke the tested script, with a plain-install
-// fallback and the one Rust env line. The disabled branch is ~today's setup text (no behavior change).
+// fallback (Rust worktrees just cold-build — sccache removed, see the seed script). The disabled branch
+// is ~today's setup text (no behavior change).
 const WORKTREE_SEED = WARM_WORKTREE
   ? `FAST WORKTREE SETUP — this fresh checkout has empty deps/artifacts. Provision fast FIRST:
   bash ${ROOT}/.ulpi/seed-worktree.sh ${ROOT}
-It CoW-clones node_modules / vendor / Pods from ${ROOT} (instant on the same volume; auto-falls back to a frozen install cross-volume). If that script is ABSENT or errors, do a normal frozen install yourself (pnpm i --frozen-lockfile / npm ci / yarn --immutable / composer install --prefer-dist). For a Rust/Cargo task there is NOTHING to clone: the seed script has already wired sccache into this worktree's \`.cargo/config.toml\` (git-excluded), so EVERY cargo here — dev-fast.sh, raw cargo, build.rs — is sccache-wrapped automatically, no env needed. Do NOT rely on \`export RUSTC_WRAPPER=…\` in a separate shell: it does not survive into the real cargo process (that was the cache-bypass bug). If you ever need to force it, PREFIX your exact validate command inline (\`RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0 <your validate command>\`), never a standalone export. After the build, sanity-check with \`sccache --show-stats\` — compile requests must climb (if they don't, cargo is bypassing sccache and the run is cold). The 80G cap is already applied by the warm prime. ${ENV_AND_SERVICES}`
+It CoW-clones node_modules / vendor / Pods from ${ROOT} (instant on the same volume; auto-falls back to a frozen install cross-volume). If that script is ABSENT or errors, do a normal frozen install yourself (pnpm i --frozen-lockfile / npm ci / yarn --immutable / composer install --prefer-dist). For a Rust/Cargo task there is nothing to clone or prime — the worktree cold-builds with plain cargo. (sccache was removed in v1.14.0: it produced a 0% cache hit rate here because each worktree's target-dir path destabilises cargo's rustc cache keys. Do not add RUSTC_WRAPPER=sccache or any cargo cache config.) ${ENV_AND_SERVICES}`
   : `WORKTREE SETUP (this is a fresh checkout — it may lack deps/env): if your validate needs them and node_modules is absent, run \`pnpm install --frozen-lockfile\` (or the repo's documented install); ${ENV_AND_SERVICES}`
 
 // Warm brief: write the seed script + make ROOT seed-ready. Started EARLY (after preflight) so it
@@ -169,7 +156,7 @@ ${SEED_SCRIPT}
    • package.json present & node_modules absent → frozen install (pnpm i --frozen-lockfile / npm ci / yarn --immutable).
    • composer.json present & vendor absent → composer install --prefer-dist.
    • ios/Podfile present & ios/Pods absent → (cd ${ROOT}/ios && pod install).
-   • Cargo.toml present → if sccache is installed, PRIME its shared cache WITHOUT touching ${ROOT}/target (building there with CARGO_INCREMENTAL=0 would clobber the local incremental fast-loop cargo relies on). First make the 80G cap STICK: sccache reads its size ONLY when the SERVER starts, so a bare \`export\` is IGNORED by an already-running (or later auto-restarted) daemon — the 10G default then LRU-evicts a datafusion+arrow+candle dep graph MID-RUN, silently killing the hit rate. Write the size into sccache's CONFIG FILE (read on EVERY server start — manual, auto, or post-idle-timeout — no matter which shell triggers it), disable idle shutdown so the primed daemon survives the LLM-bound gaps, then restart ONCE to evict any stale 10G daemon: \`CONF="\${XDG_CONFIG_HOME:-$HOME/.config}/sccache"; [ "$(uname)" = Darwin ] && CONF="$HOME/Library/Application Support/Mozilla.sccache"; mkdir -p "$CONF"; [ -f "$CONF/config" ] || printf '[cache.disk]\\nsize = 85899345920\\n' > "$CONF/config"\` (80 GiB in bytes; written only if absent, so an existing sccache config is never clobbered), \`export SCCACHE_IDLE_TIMEOUT=0 SCCACHE_CACHE_SIZE=80G\`, \`sccache --stop-server >/dev/null 2>&1 || true\`, \`sccache --start-server\`. Then build into a THROWAWAY target dir (sccache's cache is target-dir-independent, so only the shared cache is populated, not ${ROOT}/target): \`W=$(mktemp -d); CARGO_TARGET_DIR="$W" RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0 cargo build --manifest-path ${ROOT}/Cargo.toml --workspace\` (tail the output), then \`rm -rf "$W"\`. Report the \`sccache --show-stats\` hit/miss line.
+   • Cargo.toml present → nothing to prime. sccache was removed in v1.14.0 (measured 0.00% Rust hit rate — per-worktree target-dir paths destabilise cargo's cache keys; see the seed-worktree.sh comment). Rust worktrees cold-build with plain cargo; do NOT start sccache or write any cargo/sccache config.
    • Go / other → nothing (caches already global).
 Report ok:true when done (even with build errors — whatever compiled/installed is now seedable).`
 
