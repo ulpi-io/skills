@@ -137,13 +137,13 @@ exit 0`
 const WORKTREE_SEED = WARM_WORKTREE
   ? `FAST WORKTREE SETUP — this fresh checkout has empty deps/artifacts. Provision fast FIRST:
   bash ${ROOT}/.ulpi/seed-worktree.sh ${ROOT}
-It CoW-clones node_modules / vendor / Pods from ${ROOT} (instant on the same volume; auto-falls back to a frozen install cross-volume). If that script is ABSENT or errors, do a normal frozen install yourself (pnpm i --frozen-lockfile / npm ci / yarn --immutable / composer install --prefer-dist). For a Rust/Cargo task there is NOTHING to clone — instead \`export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0\` in your build shell BEFORE the validate/build (raw cargo AND any wrapper script that calls cargo inherit it) so crate compilation is shared via sccache. ${ENV_AND_SERVICES}`
+It CoW-clones node_modules / vendor / Pods from ${ROOT} (instant on the same volume; auto-falls back to a frozen install cross-volume). If that script is ABSENT or errors, do a normal frozen install yourself (pnpm i --frozen-lockfile / npm ci / yarn --immutable / composer install --prefer-dist). For a Rust/Cargo task there is NOTHING to clone — instead \`export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0 SCCACHE_CACHE_SIZE=50G\` in your build shell BEFORE the validate/build (raw cargo AND any wrapper script that calls cargo inherit it) so crate compilation is shared via sccache. ${ENV_AND_SERVICES}`
   : `WORKTREE SETUP (this is a fresh checkout — it may lack deps/env): if your validate needs them and node_modules is absent, run \`pnpm install --frozen-lockfile\` (or the repo's documented install); ${ENV_AND_SERVICES}`
 
 // Warm brief: write the seed script + make ROOT seed-ready. Started EARLY (after preflight) so it
 // overlaps the LLM-bound plan + plan-review phases and is normally done before the build fans out.
 const warmBrief = `Prepare fast worktree provisioning for the build — do NOT edit any SOURCE file. Two steps, in ${ROOT} on ${WORKING_BRANCH}:
-1. Create ${ROOT}/.ulpi/ if needed; ensure ${ROOT}/.ulpi/.gitignore exists containing a single \`*\` line (so nothing under .ulpi — this script included — is ever committed); then write this EXACT content to ${ROOT}/.ulpi/seed-worktree.sh and \`chmod +x\` it:
+1. Create ${ROOT}/.ulpi/ if needed; ensure ${ROOT}/.ulpi/.gitignore contains a \`seed-worktree.sh\` line (append it if that file already exists without it; otherwise create the file with just that one line) — this ignores ONLY the transient seed script, NOT the plans/reviews/status files under .ulpi that the workflow writes and you may commit; do NOT write \`*\` and do NOT remove existing entries. Then write this EXACT content to ${ROOT}/.ulpi/seed-worktree.sh and \`chmod +x\` it:
 === BEGIN seed-worktree.sh ===
 ${SEED_SCRIPT}
 === END seed-worktree.sh ===
@@ -151,7 +151,7 @@ ${SEED_SCRIPT}
    • package.json present & node_modules absent → frozen install (pnpm i --frozen-lockfile / npm ci / yarn --immutable).
    • composer.json present & vendor absent → composer install --prefer-dist.
    • ios/Podfile present & ios/Pods absent → (cd ${ROOT}/ios && pod install).
-   • Cargo.toml present → if sccache is installed: \`sccache --start-server\`, then \`RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0 cargo build --manifest-path ${ROOT}/Cargo.toml --workspace\` (tail the output) so ${ROOT}/target AND the shared compiler cache are warm; then report the \`sccache --show-stats\` hit/miss line.
+   • Cargo.toml present → if sccache is installed, PRIME its shared cache WITHOUT touching ${ROOT}/target (building there with CARGO_INCREMENTAL=0 would clobber the local incremental fast-loop cargo relies on). First raise the cap and (re)start the server so it takes effect — the 10G default LRU-evicts a datafusion+arrow+candle dep graph MID-RUN, silently killing the hit rate: \`export SCCACHE_CACHE_SIZE=50G\`, \`sccache --stop-server >/dev/null 2>&1 || true\`, \`sccache --start-server\`. Then build into a THROWAWAY target dir (sccache's cache is target-dir-independent, so only the shared cache is populated, not ${ROOT}/target): \`W=$(mktemp -d); CARGO_TARGET_DIR="$W" RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0 cargo build --manifest-path ${ROOT}/Cargo.toml --workspace\` (tail the output), then \`rm -rf "$W"\`. Report the \`sccache --show-stats\` hit/miss line.
    • Go / other → nothing (caches already global).
 Report ok:true when done (even with build errors — whatever compiled/installed is now seedable).`
 
