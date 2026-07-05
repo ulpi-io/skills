@@ -64,22 +64,34 @@ checkout, not the main repo.) Set `trackStatus:false` (or omit `statusFile`) to 
   "resume": "Workflow({ scriptPath:\"…/workflow-template.js\", resumeFromRunId:\"wf_51d473f0-204\", args:{…} })",
   "plan": { "name":"mcp-marketplace", "path":".ulpi/plans/mcp-marketplace.json", "taskCount":75 },
   "phases": {
-    "plan":        { "status":"done" },
-    "plan_review": { "status":"done" },
-    "build":       { "status":"in_progress", "layer":"2/3" },
+    "plan":        { "status":"done", "startedAt":"2026-06-27T09:30:10Z", "updatedAt":"2026-06-27T09:33:00Z" },
+    "plan_review": { "status":"done", "startedAt":"2026-06-27T09:33:00Z", "updatedAt":"2026-06-27T09:35:00Z" },
+    "build":       { "status":"in_progress", "layer":"2/3", "startedAt":"2026-06-27T09:35:00Z", "updatedAt":"2026-06-27T09:44:00Z" },
     "impl_review": { "status":"pending" },
     "verify":      { "status":"pending" },
     "audit":       { "status":"skipped", "detail":"goLive off" }
   },
   "tasks": {
-    "TASK-001": { "title":"…","agent":"codex","branch":"wf/build/TASK-001","status":"integrated","fixes":0 },
+    "TASK-001": { "title":"…","agent":"codex","branch":"wf/build/TASK-001","status":"integrated","fixes":0,"startedAt":"2026-06-27T09:35:20Z","updatedAt":"2026-06-27T09:41:00Z" },
     "TASK-008": { "status":"pending" },
-    "TASK-016": { "status":"blocked","fixes":3,"crossTaskDeferred":4 }
+    "TASK-016": { "status":"blocked","fixes":3,"crossTaskDeferred":4,"startedAt":"2026-06-27T09:36:00Z","updatedAt":"2026-06-27T09:43:30Z" }
   },
   "openRegister": [],
   "result": null
 }
 ```
+
+### Timestamps
+Three levels, all ISO-8601 UTC. **File-level** `createdAt` (the skill stamps it once at creation) and
+`updatedAt` (rewritten on every status write) answer "when was this run first seen / last touched".
+**Per-phase and per-task** `startedAt` + `updatedAt` are stamped by the same `statusStep()` merge: the
+first patch that touches an entry sets both; every later patch preserves `startedAt` and refreshes
+`updatedAt`. So `phases.build.startedAt` is when the build phase began (and `updatedAt − startedAt` is how
+long it's been running), and a task's `updatedAt` is when it entered its current status (e.g. when TASK-016
+became `blocked`). Only entries named in a given patch are stamped — a still-`pending` phase/task carries no
+timestamp until it first changes. The time is computed at write time by the status agent (jq `now`), because
+the Workflow sandbox has no clock; per-task times in a **journal backfill** (`wf-status.mjs --write`) come
+from the agent transcript timestamps instead.
 
 ### Overall `status`
 `initializing → running → planning → plan_review → building → impl_review → verifying → auditing →

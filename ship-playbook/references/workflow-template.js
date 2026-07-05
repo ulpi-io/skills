@@ -388,8 +388,13 @@ const STATUS_ACK = { type: 'object', additionalProperties: false, required: ['ok
 // One cheap (haiku, low-effort) Bash agent per call — the workflow sandbox has no FS access, so an agent
 // does the write. ONLY ever called from the SEQUENTIAL orchestrator (never inside parallel()), so writes
 // never overlap and no lock is needed. `tasks` and `phases` are objects keyed by id/name so jq's `*`
-// deep-merges a patch in place. Non-fatal by contract: a failed status write is logged and ignored — it
-// must NEVER block delivery. The `<<'WFPATCH'` heredoc is single-quoted so the JSON is taken verbatim.
+// deep-merges a patch in place. On top of the file-level `updatedAt`, the merge also stamps EACH phase
+// and task touched by this patch with `startedAt` (first write, preserved across later merges via `//`)
+// and `updatedAt` (rewritten every time) — so the durable file records WHEN a phase started / a task
+// changed status, not just that the file was last written. The timestamp is computed at write time by
+// jq's `now` (the Workflow sandbox has no Date.now); only entries present in the patch are stamped.
+// Non-fatal by contract: a failed status write is logged and ignored — it must NEVER block delivery.
+// The `<<'WFPATCH'` heredoc is single-quoted so the JSON is taken verbatim.
 function statusPatchBrief(patch) {
   return `Bookkeeping ONLY — update the ship-playbook live status file. Do NOT touch the run, the git tree, or any other file. Run these bash commands exactly:
 F='${STATUS_FILE}'
@@ -398,8 +403,8 @@ mkdir -p "$(dirname "$F")"
 cat > "$F.patch" <<'WFPATCH'
 ${JSON.stringify(patch)}
 WFPATCH
-jq -s '.[0] * .[1] * {updatedAt:(now|todateiso8601)}' "$F" "$F.patch" > "$F.tmp" && jq -e . "$F.tmp" >/dev/null && mv "$F.tmp" "$F" && rm -f "$F.patch"
-The \`*\` operator deep-merges objects recursively, so tasks/phases keyed by id/name update in place while arrays (openRegister) are replaced. Report ok:true if the final mv succeeded (status file is valid JSON), else ok:false with the error. Keep it to these few commands.`
+jq -s '(now|todateiso8601) as $ts | .[0] as $cur | .[1] as $patch | ($cur * $patch) | reduce ($patch.phases // {} | keys[]) as $k (.; .phases[$k].startedAt = ($cur.phases[$k].startedAt // $ts) | .phases[$k].updatedAt = $ts) | reduce ($patch.tasks // {} | keys[]) as $k (.; .tasks[$k].startedAt = ($cur.tasks[$k].startedAt // $ts) | .tasks[$k].updatedAt = $ts) | . + {updatedAt:$ts}' "$F" "$F.patch" > "$F.tmp" && jq -e . "$F.tmp" >/dev/null && mv "$F.tmp" "$F" && rm -f "$F.patch"
+The \`*\` operator deep-merges objects recursively, so tasks/phases keyed by id/name update in place while arrays (openRegister) are replaced; the two \`reduce\` passes then stamp \`startedAt\`/\`updatedAt\` (\`$ts\` = write time) onto only the phases/tasks named in this patch, and \`. + {updatedAt:$ts}\` refreshes the file-level timestamp. Report ok:true if the final mv succeeded (status file is valid JSON), else ok:false with the error. Keep it to these few commands.`
 }
 async function statusStep(patch, label) {
   if (!TRACK_STATUS) return

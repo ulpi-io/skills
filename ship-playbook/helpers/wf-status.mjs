@@ -202,7 +202,13 @@ function reconstruct(dir, journalPath) {
   agents.sort((a, b) => a.ts - b.ts);
   const T = {};
   const ensure = id => (T[id] = T[id] || { id, build: null, integrated: false, review: null, fixes: 0, building: false, reviewing: false, fixing: false });
+  const tstamp = {};   // per-task first/last agent timestamp (ms) — backfilled `startedAt`/`updatedAt`
   for (const a of agents) {
+    for (const id of (a.task ? [a.task] : (a.tasks || []))) {
+      if (!a.ts) continue;
+      const e = tstamp[id] || (tstamp[id] = { first: a.ts, last: a.ts });
+      e.first = Math.min(e.first, a.ts); e.last = Math.max(e.last, a.ts);
+    }
     if (a.role === 'build' && a.task) { const t = ensure(a.task); if (a.running) t.building = true; else if (a.result) { t.building = false; t.build = a.result.status; } }
     else if (a.role === 'integrate' && a.tasks) { for (const id of a.tasks) if (a.result && (a.result.merged || []).some(b => String(b).includes(id))) ensure(id).integrated = true; }
     else if (a.role === 'review' && a.task) { const t = ensure(a.task); if (a.running) { t.reviewing = true; t.review = 'pending'; } else if (a.result) { t.reviewing = false; t.review = a.result.verdict === 'blocked' ? 'blocked' : 'clean'; } }
@@ -221,7 +227,7 @@ function reconstruct(dir, journalPath) {
     t.status = s;
   }
   const running = agents.filter(a => a.running).map(a => ({ role: a.role, task: a.task || (a.tasks && a.tasks.join('+')) || null, fix: a.fix || null }));
-  return { tasks: T, planTasks, planMeta: plan ? { name: plan.planName, path: plan.planPath, taskCount: planTasks.length, layers: (plan.layers || []).length } : null, agentCount: agents.length, running };
+  return { tasks: T, tstamp, planTasks, planMeta: plan ? { name: plan.planName, path: plan.planPath, taskCount: planTasks.length, layers: (plan.layers || []).length } : null, agentCount: agents.length, running };
 }
 // "review:TASK-032", "fix:TASK-032#2", "integrate:TASK-007+TASK-009", or just the role for plan/etc.
 const runLabel = (a) => a.task ? `${a.role}:${a.task}${a.fix ? '#' + a.fix : ''}` : a.role;
@@ -343,7 +349,9 @@ if (has('--write')) {
   const tasksOut = {};
   for (const id of new Set([...Object.keys(taskMeta), ...Object.keys(deep.tasks)])) {
     const dt = deep.tasks[id];
-    tasksOut[id] = { ...(taskMeta[id] || {}), status: dt ? dt.status : 'pending', ...(dt && dt.fixes ? { fixes: dt.fixes } : {}) };
+    const ts = deep.tstamp[id];   // real per-task times from the journal (agent transcript timestamps)
+    tasksOut[id] = { ...(taskMeta[id] || {}), status: dt ? dt.status : 'pending', ...(dt && dt.fixes ? { fixes: dt.fixes } : {}),
+      ...(ts ? { startedAt: new Date(ts.first).toISOString(), updatedAt: new Date(ts.last).toISOString() } : {}) };
   }
 
   // optional --args '<json>' = the original launch args (gate config etc.) to complete the recipe
