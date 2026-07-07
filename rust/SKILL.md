@@ -1,6 +1,6 @@
 ---
 name: rust
-version: 2.0.0
+version: 2.1.0
 description: |
   Rust systems-programming reference skill for storage engines, binary formats, Arrow/DataFusion,
   search and vectors, async concurrency, testing, and unsafe discipline. Use when the task touches
@@ -11,13 +11,6 @@ allowed-tools:
   - Write
   - Edit
   - Grep
-paths:
-  - "**/*.rs"
-  - "Cargo.toml"
-  - "Cargo.lock"
-  - "rust-toolchain"
-  - "rust-toolchain.toml"
-  - ".cargo/config.toml"
 argument-hint: "[Rust crate, subsystem, or implementation task]"
 arguments:
   - request

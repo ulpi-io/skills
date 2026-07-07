@@ -1,6 +1,6 @@
 ---
 name: docker
-version: 1.0.0
+version: 1.1.0
 description: |
   Docker and container infrastructure skill: Dockerfiles, multi-stage builds, Compose, networking,
   volumes, health checks, registries, BuildKit, security hardening, CI/CD integration, debugging,
@@ -12,17 +12,6 @@ allowed-tools:
   - Write
   - Edit
   - Grep
-paths:
-  - "Dockerfile"
-  - "Dockerfile.*"
-  - "*.dockerfile"
-  - "docker-compose*.yml"
-  - "docker-compose*.yaml"
-  - "compose*.yml"
-  - "compose*.yaml"
-  - ".dockerignore"
-  - "docker/**"
-  - ".github/workflows/*.yml"
 argument-hint: "[Docker task: Dockerfile, Compose, registry, debugging]"
 arguments:
   - request

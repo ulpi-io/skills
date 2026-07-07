@@ -1,6 +1,6 @@
 ---
 name: nextjs
-version: 2.0.0
+version: 2.1.0
 description: |
   Next.js App Router reference skill covering pages, layouts, components, metadata, i18n,
   API-backed data access, server actions, caching, accessibility, analytics, and testing. Use when
@@ -11,20 +11,6 @@ allowed-tools:
   - Write
   - Edit
   - Grep
-paths:
-  - "app/**/*.ts"
-  - "app/**/*.tsx"
-  - "src/**/*.ts"
-  - "src/**/*.tsx"
-  - "components/**/*.ts"
-  - "components/**/*.tsx"
-  - "messages/**/*.json"
-  - "next.config.*"
-  - "proxy.ts"
-  - "middleware.ts"
-  - "tests/**/*.ts"
-  - "tests/**/*.tsx"
-  - "playwright.config.*"
 argument-hint: "[Next.js page, component, route, or caching task]"
 arguments:
   - request

@@ -1,6 +1,6 @@
 ---
 name: laravel-filament
-version: 2.0.0
+version: 2.1.0
 description: |
   Filament v5 admin-panel reference skill: resources, forms, tables, actions, filters, relation
   managers, widgets, panels, and testing. Use when the task touches Filament-specific admin code
@@ -11,13 +11,6 @@ allowed-tools:
   - Write
   - Edit
   - Grep
-paths:
-  - "app/Filament/**/*.php"
-  - "app/Providers/Filament/**/*.php"
-  - "resources/views/filament/**/*.blade.php"
-  - "config/filament.php"
-  - "tests/**/*.php"
-  - "composer.json"
 argument-hint: "[Filament resource, form, table, widget, or panel task]"
 arguments:
   - request

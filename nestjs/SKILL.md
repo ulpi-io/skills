@@ -1,6 +1,6 @@
 ---
 name: nestjs
-version: 1.0.0
+version: 1.1.0
 description: |
   NestJS reference skill: modules, controllers, providers, DTOs with class-validator, TypeORM/Prisma,
   guards, interceptors, pipes, queues (BullMQ), WebSockets, microservices, testing, OpenAPI, and
@@ -12,22 +12,6 @@ allowed-tools:
   - Write
   - Edit
   - Grep
-paths:
-  - "src/**/*.ts"
-  - "src/**/*.module.ts"
-  - "src/**/*.controller.ts"
-  - "src/**/*.service.ts"
-  - "src/**/*.guard.ts"
-  - "src/**/*.interceptor.ts"
-  - "src/**/*.pipe.ts"
-  - "src/**/*.dto.ts"
-  - "src/**/*.entity.ts"
-  - "src/**/*.spec.ts"
-  - "test/**/*.ts"
-  - "nest-cli.json"
-  - "package.json"
-  - "tsconfig.json"
-  - "tsconfig.build.json"
 argument-hint: "[NestJS module, endpoint, or subsystem task]"
 arguments:
   - request

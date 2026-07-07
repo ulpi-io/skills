@@ -1,6 +1,6 @@
 ---
 name: nodejs
-version: 1.0.0
+version: 1.1.0
 description: |
   Node.js/Bun backend reference skill: TypeScript-first, structured error handling, pino logging,
   Zod validation, async patterns, HTTP server conventions, database access, auth, queues,
@@ -13,20 +13,6 @@ allowed-tools:
   - Write
   - Edit
   - Grep
-paths:
-  - "src/**/*.ts"
-  - "lib/**/*.ts"
-  - "server/**/*.ts"
-  - "api/**/*.ts"
-  - "package.json"
-  - "tsconfig.json"
-  - "Dockerfile"
-  - "docker-compose*.yml"
-  - "tests/**/*.ts"
-  - "test/**/*.ts"
-  - "vitest.config.*"
-  - "jest.config.*"
-  - "bunfig.toml"
 argument-hint: "[Node.js/Bun backend task or subsystem]"
 arguments:
   - request

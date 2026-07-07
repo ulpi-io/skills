@@ -1,6 +1,6 @@
 ---
 name: laravel
-version: 2.0.0
+version: 2.1.0
 description: |
   Laravel API and backend reference skill: thin controllers, Form Requests, Action-driven business
   logic, API Resources, strict Eloquent usage, queues, caching, auth, observability, and the
@@ -12,16 +12,6 @@ allowed-tools:
   - Write
   - Edit
   - Grep
-paths:
-  - "app/**/*.php"
-  - "bootstrap/**/*.php"
-  - "config/**/*.php"
-  - "database/**/*.php"
-  - "routes/**/*.php"
-  - "tests/**/*.php"
-  - "resources/views/**/*.blade.php"
-  - "artisan"
-  - "composer.json"
 argument-hint: "[Laravel task or subsystem]"
 arguments:
   - request
