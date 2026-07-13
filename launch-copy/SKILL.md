@@ -2,15 +2,16 @@
 name: launch-copy
 version: 1.0.0
 description: |
-  Product-grounded launch copywriting engine. Drafts the copy a launch needs — taglines/headlines,
-  one-liners, short and long descriptions, and the launch post / first comment — in multiple angle
-  versions (feature-led, benefit-led, comparison/alternative, audience-led), all grounded in the REAL
-  product, never generic placeholders. The caller passes an **asset profile** (which assets, the hard
-  limits, the voice, and any compliance rules); this skill returns drafted, on-brand, within-limit copy.
-  Shared building block for the launch-skill family: invoked by `launch-product-hunt`, `launch-hacker-news`,
-  and others, or run standalone to draft copy for any channel (directory listing, landing page, email).
+  Draft the copy a launch needs, in multiple angles, all bound to the REAL product — never generic
+  placeholders. Produces taglines/headlines, one-liners, short and long descriptions, and the launch post /
+  first comment in feature-led, benefit-led, comparison, and audience-led versions with one recommended each.
   Reads and reuses `.ulpi/launch/positioning.md` (the platform-agnostic product brief) so the product is
-  described once and reused across every channel; grounds via the `browse` skill + repo when it's absent.
+  described once and reused everywhere; grounds via the `browse` skill + repo when it's absent. Honors the
+  caller's **asset profile** — hard character limits, voice, and compliance rules — to the letter. Shared
+  copy block of the launch-* family, feeding the per-platform runners' posts (`launch-product-hunt` listing,
+  `launch-hacker-news` Show HN, `launch-x` / `launch-linkedin` threads) or run standalone; writes to
+  `.ulpi/launch/<channel>/copy.md` or hands drafts back. Use when a launch needs on-brand, within-limit copy
+  grounded in one real product.
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -20,12 +21,12 @@ argument-hint: "[channel + assets to draft, e.g. 'Product Hunt tagline + first c
 arguments:
   - request
 when_to_use: |
-  Use when drafting launch/marketing copy that must be grounded in a specific product — taglines,
-  headlines, descriptions, a launch post or first comment, across one or more channels. Examples: "write
-  my Product Hunt tagline and first comment", "draft launch copy for our directory listings", "give me 4
-  tagline options for the landing hero". Also invoked by platform launch skills, which pass an asset
-  profile. Do not use for long-form content (blog posts, docs) or for visual/gallery design — for the PH
-  gallery shot-list use the platform skill; for full UX copy systems use a design skill.
+  Use when drafting launch copy that must be grounded in a specific product — taglines, headlines,
+  descriptions, a launch post or first comment, across one or more channels. Examples: "write my Product Hunt
+  tagline and first comment", "draft copy for our directory listings", "give me 4 tagline options for the
+  hero". Also invoked by the platform runners, which pass an asset profile. Do NOT use for long-form content
+  (blog posts, docs), the PH gallery shot-list (redirect to `launch-product-hunt`), or person-to-person
+  outreach (`launch-outreach`); this drafts the on-listing copy, nothing else.
 effort: high
 ---
 

@@ -2,20 +2,18 @@
 name: launch-product-hunt
 version: 1.0.0
 description: |
-  Prepare and run a Product Hunt launch end to end, written to `.ulpi/launch/product-hunt/`. Grounds every
-  word in the real product, then produces a complete, paste-ready, PH-COMPLIANT launch package:
-  `LISTING.md` (every PH field filled — tagline options ≤ the current limit, description, topics, a gallery
-  shot-list, demo-video outline, the maker's first comment), `PLAN.md` (a T-minus countdown + an
-  hour-by-hour Pacific-time launch-day runbook + the post-launch plan), `OUTREACH.md` (segmented supporter
-  outreach + social posts, never vote-soliciting), and `CHECKLIST.md` (a blocking pre-flight gate). The
-  PH-specific orchestrator of the launch-skill family: it owns PH mechanics, field specs, policy, the
-  day-of runbook, and the gate, and composes the shared skills — `launch-copy` (the listing copy),
-  `launch-outreach` (the messages, in Product-Hunt compliance mode), and `launch-analytics` (UTM +
-  conversion tracking) — degrading to built-in fallbacks if a companion isn't installed. Reads the shared
-  `.ulpi/launch/positioning.md` so the product is described once and reused across launches. Coaches only
-  compliant promotion — never vote manipulation, vote rings, bought/incentivized votes, or "please upvote"
-  solicitation. Treats Product Hunt as a credibility/visibility amplifier, not a primary acquisition
-  channel, and sets realistic expectations.
+  Prepare and run a Product Hunt launch end to end — COMPLIANT promotion ONLY: never vote manipulation,
+  rings, bought/incentivized votes, or "please upvote". Grounds every word in the real product, then writes a
+  complete, paste-ready package to `.ulpi/launch/product-hunt/`: `LISTING.md` (every PH field — tagline
+  options ≤ the current limit, description, topics, a gallery shot-list, demo-video outline, the maker's
+  first comment), `PLAN.md` (a T-minus countdown + an hour-by-hour Pacific-time launch-day runbook + the
+  post-launch plan), `OUTREACH.md` (segmented supporter outreach + social posts), and `CHECKLIST.md` (a
+  blocking pre-flight gate). The PH orchestrator of the launch-* family: it owns field specs, policy, and the
+  day-of runbook, and composes the shared `launch-copy` (listing), `launch-outreach` (mode `product-hunt`),
+  and `launch-analytics` (UTM + conversion tracking), degrading to built-in fallbacks if a companion isn't
+  installed. Reads the shared `.ulpi/launch/positioning.md`. Treats Product Hunt as a credibility amplifier,
+  not primary acquisition, and sets realistic expectations. Use when the user wants a full Product Hunt
+  launch prepared and run.
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -25,13 +23,11 @@ argument-hint: "[product, launch date, or PH launch goal]"
 arguments:
   - request
 when_to_use: |
-  Use when the user wants to launch on Product Hunt, prepare a PH submission, or plan launch day — hunter,
-  first comment, tagline, gallery, timing, supporter outreach, Product of the Day. Triggers: "Product
-  Hunt", "launch on Product Hunt", "PH launch", "PH submission", "hunter", "first comment", "Product of the
-  Day", "upvotes". Examples: "help me launch on Product Hunt", "write my PH tagline and first comment",
-  "plan my Product Hunt launch day". For a Hacker News launch use `launch-hacker-news`; for multi-platform
-  directory copy use a directory-submission skill if you have one.
-  Do not use this skill to manipulate votes — it refuses that and coaches compliant promotion only.
+  Use when the user wants to launch on Product Hunt, prepare a PH submission, or plan launch day — tagline,
+  first comment, gallery, timing, supporter outreach, Product of the Day. Examples: "help me launch on
+  Product Hunt", "write my PH tagline and first comment", "plan my Product Hunt launch day". For a Hacker
+  News launch use `launch-hacker-news`, for X use `launch-x`, for LinkedIn use `launch-linkedin`. Do NOT use
+  this skill to manipulate votes — it refuses that and coaches compliant promotion only.
 effort: high
 ---
 

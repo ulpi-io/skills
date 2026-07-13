@@ -2,18 +2,17 @@
 name: launch-x
 version: 1.0.0
 description: |
-  Prepare and run a product launch on X (formerly Twitter) end to end, written to `.ulpi/launch/x/`.
-  Grounds in the real product, then produces a paste-ready package: `POST.md` (the launch **thread** — a
-  scroll-stopping hook tweet, the thread body, native media, and the product link placed in a **reply**
-  not the main tweet so reach isn't penalized), `PLAN.md` (when to post, the **golden-hour** engagement
-  runbook, cross-promotion, and the post-launch plan), and `CHECKLIST.md` (a blocking pre-flight gate).
-  The X platform skill of the launch-* family: it owns X mechanics, format rules, timing, the engagement
-  runbook, and the gate, and composes the shared `launch-copy` (the thread copy), `launch-outreach`
-  (cross-channel + team amplification, mode `x`), and `launch-analytics` (UTM + conversion tracking),
-  degrading to built-in fallbacks if a companion isn't installed. Reads the shared
-  `.ulpi/launch/positioning.md`. On X you MAY ask your own audience and team to engage (no vote-ring rules
-  like Product Hunt/Hacker News) — but it avoids the things X penalizes: an external link in the main
-  tweet, engagement-bait, and bought engagement.
+  Prepare and run a product launch on X (formerly Twitter) end to end — the external link goes in a REPLY,
+  not the main tweet, so reach isn't penalized. Grounds in the real product, then writes a paste-ready
+  package to `.ulpi/launch/x/`: `POST.md` (the launch **thread** — a scroll-stopping hook tweet, the thread
+  body, native media, and the product link in a reply), `PLAN.md` (timing, the **golden-hour** engagement
+  runbook, cross-promotion, and the post-launch plan), and `CHECKLIST.md` (a blocking pre-flight gate). The X
+  runner of the launch-* family: it owns X mechanics, format rules, and the gate, and composes the shared
+  `launch-copy` (thread copy), `launch-outreach` (team amplification, mode `x`), and `launch-analytics` (UTM
+  + conversion tracking), degrading to built-in fallbacks if a companion isn't installed. Reads the shared
+  `.ulpi/launch/positioning.md`. Engagement asks to your own audience are fine (no vote-ring rules), but it
+  avoids what X penalizes — a link in the main tweet, engagement-bait, and bought engagement. Use when the
+  user wants an X launch thread written and launch day planned.
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -23,11 +22,11 @@ argument-hint: "[product or X launch goal]"
 arguments:
   - request
 when_to_use: |
-  Use when the user wants to launch a product on X / Twitter, write a launch thread, or plan the launch-day
-  engagement. Triggers: "X", "Twitter", "launch on X", "launch thread", "X thread", "tweet thread launch".
-  Examples: "write my X launch thread", "plan my Twitter launch", "help me launch on X". For a LinkedIn
-  launch use `launch-linkedin`; for Product Hunt use `launch-product-hunt`; for Hacker News use
-  `launch-hacker-news`.
+  Use when the user wants to launch a product on X / Twitter, write a launch thread, or plan launch-day
+  engagement. Examples: "write my X launch thread", "plan my Twitter launch", "help me launch on X". For a
+  LinkedIn launch use `launch-linkedin`, for Product Hunt use `launch-product-hunt`, for Hacker News use
+  `launch-hacker-news`. Do NOT use for the on-listing copy alone (redirect to `launch-copy`) or the
+  cross-channel supporter messages alone (`launch-outreach`) — this runs the whole X launch and composes those.
 effort: high
 ---
 

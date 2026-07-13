@@ -2,9 +2,12 @@
 name: find-bugs
 version: 2.0.0
 description: |
-  Review the current branch diff for real bugs and security issues, verify findings against
-  surrounding code, and report only issues that survive context checks. Runs as a forked review
-  workflow so the audit has separate reasoning budget and stays isolated from the main task flow.
+  Hunt REAL bugs and security holes in the current branch diff — verified, not a raw model dump: map
+  each changed file's attack and defect surface, run the security-and-logic checklist against it, then
+  verify every candidate against surrounding code, callers, and existing mitigations — runs as a forked
+  review workflow with its own reasoning budget, isolated from the main flow. Reports only findings that
+  survive the false-positive check, severity-ranked with file:line evidence and a fix direction, and
+  states an explicit clean result when nothing real is found; stays read-only and never edits code.
   Use when the user asks to find bugs, review changes, or audit branch risk.
 allowed-tools:
   - Bash
@@ -21,7 +24,9 @@ arguments:
 when_to_use: |
   Use when the user explicitly asks to review branch changes for bugs, vulnerabilities, or risky
   regressions. Examples: "find bugs", "review my changes", "security review", "audit this branch".
-  Do not use for style review, full-repository audit, or direct code fixing.
+  Do NOT use to fix what it finds (hand confirmed findings to bugfix), for a whole-repository launch
+  sweep (that's go-live-audit), or for style-only review — find-bugs reports evidence, it does not
+  change code.
 ---
 
 <EXTREMELY-IMPORTANT>

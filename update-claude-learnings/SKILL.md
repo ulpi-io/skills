@@ -2,9 +2,13 @@
 name: update-claude-learnings
 version: 2.0.0
 description: |
-  Extract a validated learning about Claude Code behavior from the current session and add it to
-  the project's CLAUDE.md memory file. User-only maintenance workflow for updating durable
-  main-agent instructions after a session reveals a rule that should persist.
+  Propagate ONE validated learning about Claude Code behavior from this session into the project's
+  CLAUDE.md — the MAIN-AGENT memory Claude loads every session, not agent or skill files. Extract the
+  smallest useful workflow/scope/session rule, place it in the correct section (Workflow Rules / Session
+  Management / Scope Control / Behavioral Patterns), and preserve the surrounding structure. User-only
+  maintenance workflow that mutates durable project memory: it grounds the rule in what THIS session
+  revealed, never invents, checks for duplicates, and confirms wording and placement before writing. Use to
+  make a Claude-behavior rule persist into future sessions.
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -18,10 +22,11 @@ argument-hint: "[learning candidate or session focus]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks to record a Claude Code behavior or workflow learning in
-  the project's CLAUDE.md. Examples: "/update-claude-learnings", "add this Claude behavior to
-  CLAUDE.md", or "record this workflow rule for future sessions". Do not use for application-code
-  patterns, agent instructions, or skill-authoring learnings.
+  Use when the user explicitly asks to record a Claude Code behavior or workflow learning in the project's
+  CLAUDE.md — "/update-claude-learnings", "add this Claude behavior to CLAUDE.md", "record this workflow
+  rule for future sessions". Do NOT use for agent-behavior rules (update-agent-learnings), skill-authoring
+  learnings (update-skill-learnings), or application-code patterns; confirm before writing — it mutates
+  durable Claude memory and is user-only.
 ---
 
 <EXTREMELY-IMPORTANT>

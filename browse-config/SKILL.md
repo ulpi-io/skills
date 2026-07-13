@@ -2,9 +2,12 @@
 name: browse-config
 version: 1.0.0
 description: |
-  Guided configuration generator for the browse CLI's camoufox integration.
-  Asks the user questions to build a browse.json camoufox section or a named
-  profile JSON file for stealth, fast-scraping, Google-safe, or custom setups.
+  Generate camoufox configuration for the `browse` CLI by INTERVIEW, not hand-edited JSON — an
+  AskUserQuestion-guided flow that turns a chosen preset (stealth, fast-scraping, Google-safe, or a
+  fully custom walkthrough) into a valid `browse.json` camoufox section or a named
+  `.browse/camoufox-profiles/<name>.json`, using camelCase keys, merging without clobbering existing
+  fields, and writing proxy credentials to file only. Use to create or tune an anti-detection browse
+  profile before stealth browsing.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -14,9 +17,11 @@ argument-hint: "[preset or 'custom']"
 arguments:
   - request
 when_to_use: |
-  Use when the user asks to configure camoufox, set up stealth browsing, create a browse
-  profile, tune anti-detection settings, or says /browse-config. Do NOT use for general
-  browse CLI usage or non-camoufox configuration.
+  Use when the user asks to configure camoufox, set up a stealth/anti-detection profile, or create a
+  named browse profile. Examples: "/browse-config", "make me a Google-safe camoufox profile", "tune my
+  anti-detection settings". Do NOT use for general `browse` CLI usage or non-camoufox config (browse),
+  or to actually run the stealth session (browse-stealth); this only produces the config file the
+  stealth runtime then consumes.
 effort: medium
 ---
 

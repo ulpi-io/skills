@@ -2,10 +2,14 @@
 name: plan-founder-review
 version: 2.0.0
 description: |
-  Review an implementation plan before execution. Verify markdown and JSON consistency, challenge
-  scope and architecture, check file-path reality against the codebase, audit risk and test gaps,
-  and deliver a verdict of APPROVE, REVISE, or REJECT. Runs as a forked review workflow so the plan
-  audit has separate reasoning budget and stays isolated from the main execution flow.
+  Gate an implementation plan BEFORE agents execute it — catch phantom paths and false reuse, not typos:
+  read the full plan markdown and its companion JSON, reality-check every file path and reuse claim
+  against the actual repo, challenge scope, architecture, the dependency graph, and risk and test
+  coverage, then score each section and render an APPROVE / REVISE / REJECT verdict — runs as a forked
+  review workflow with its own reasoning budget, isolated from the main execution flow. The verdict
+  follows only from evidence-backed findings: never rubber-stamps a non-trivial plan and never invents
+  findings, but a genuinely clean section is allowed to pass; read-only, never edits the plan. Use when
+  the user asks to review or gate a plan before execution.
 allowed-tools:
   - Read
   - Glob
@@ -18,10 +22,11 @@ argument-hint: "<plan-name|plan-path> [--quick|--full]"
 arguments:
   - request
 when_to_use: |
-  Use when the user explicitly asks to review a plan, check a DAG plan, or gate an implementation
-  plan before execution. Examples: "review my plan", "/plan-founder-review auth-system",
-  "/plan-founder-review --quick", or "founder review this plan before we run agents". Do not use
-  to generate plans, execute tasks, or review code changes.
+  Use when the user asks to review a plan, check a DAG plan, or gate an implementation plan before
+  execution. Examples: "review my plan", "/plan-founder-review auth-system", "/plan-founder-review
+  --quick", or "founder review this plan before we run agents". Do NOT use to generate the plan (that's
+  plan-to-task-list-with-dag), to execute its tasks, or to review code changes (that's find-bugs) —
+  this audits the plan artifact, nothing else.
 ---
 
 <EXTREMELY-IMPORTANT>

@@ -2,9 +2,13 @@
 name: map-project-monorepo
 version: 3.1.0
 description: |
-  Scan a Cargo workspace or package monorepo and refresh per-member `CLAUDE.md` files plus a thin
-  root `CLAUDE.md`. User-only maintenance workflow for keeping workspace-local AI context accurate
-  after refactors, member additions, export changes, or major architectural shifts.
+  Refresh a Cargo WORKSPACE or package monorepo's durable AI context — a self-contained `CLAUDE.md` per
+  member that Claude lazy-loads, plus a thin project-wide root, so a change in any member has local guidance
+  without bloating the root. Discovers each member's real reachable surface, key files, wiring, and
+  inter-member dependencies, then keeps the root project-wide. User-only maintenance workflow that mutates
+  durable memory across many members: it documents the ACTUAL exported/reachable surface (not raw
+  `pub`/`export` counts), grounds every claim in code, and preserves locked root decisions. Use to refresh
+  workspace-local context after refactors, member additions, or export changes.
 allowed-tools:
   - Read
   - Edit
@@ -17,10 +21,11 @@ argument-hint: "[workspace scope or refresh target]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks to refresh workspace or monorepo documentation, regenerate
-  per-member `CLAUDE.md` files, or sync the root and member memory files with the real repository
-  shape. Examples: "/map-project-monorepo", "refresh all crate docs", or "update the monorepo
-  CLAUDE files after the refactor". Do not use proactively after routine edits.
+  Use when the user explicitly asks to refresh workspace or monorepo docs, regenerate per-member `CLAUDE.md`
+  files, or sync the root and member memory with the real repo shape — "/map-project-monorepo", "refresh all
+  crate docs", "update the monorepo CLAUDE files after the refactor". Do NOT use on a single-app repo (use
+  map-project), and do NOT run proactively after routine edits — it mutates durable project memory across
+  members, so it is user-only. It documents what each member IS; it does not author coding rules.
 ---
 
 <EXTREMELY-IMPORTANT>

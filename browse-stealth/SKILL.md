@@ -2,11 +2,12 @@
 name: browse-stealth
 version: 3.0.0
 description: |
-  Stealth web browsing for AI coding agents using the browse CLI's camoufox runtime.
-  Same workflow as the `browse` skill — navigate, inspect, interact, report — but with
-  an anti-detection Firefox that passes Cloudflare Turnstile, Google unusual-traffic,
-  DataDome, and PerimeterX checks. Covers named camoufox profiles, authenticated
-  sessions, and proxy rotation.
+  Reach sites that BLOCK ordinary automation — the same navigate/inspect/interact/report loop as the
+  `browse` skill, but on browse's camoufox runtime: a hardened Firefox with C++-level fingerprint
+  spoofing, geoip, and humanized timing that passes Cloudflare Turnstile, Google "unusual traffic",
+  DataDome, and PerimeterX, with named profiles, authenticated sessions, and proxy rotation. Honest
+  about its limit: fingerprint spoofing alone will not defeat IP-reputation blocks — pair it with a
+  residential proxy. Use when a page challenges or 403s a normal browser.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -15,14 +16,11 @@ argument-hint: "[URL or site that blocks normal browsers]"
 arguments:
   - request
 when_to_use: |
-  Use when the user asks for stealth browsing, anti-detection, bot bypass, Turnstile,
-  CAPTCHA bypass, or says /browse-stealth. Signs you need this:
-  - Page shows CAPTCHA or "verify you are human" challenge
-  - Page returns blank/403/challenge page instead of content
-  - Google shows "unusual traffic" block
-  - Site uses Cloudflare, DataDome, PerimeterX, or similar bot protection
-  Do NOT use for sites that load fine with regular `browse` — camoufox is slower to start
-  and consumes more resources. Prefer the `browse` skill first, switch here only when blocked.
+  Use when a target actively blocks headless browsers — CAPTCHA / "verify you are human", 403 or
+  challenge pages, Google "unusual traffic", or Cloudflare/DataDome/PerimeterX protection. Do NOT use
+  for sites that load fine under the base `browse` skill (camoufox is slower to start and heavier),
+  for native-app targets (browse), or to author the camoufox profile itself (browse-config); reach for
+  stealth only once plain browsing is actually blocked.
 effort: high
 ---
 

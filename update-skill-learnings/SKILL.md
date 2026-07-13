@@ -2,9 +2,12 @@
 name: update-skill-learnings
 version: 2.0.0
 description: |
-  Extract a validated learning about skill design or skill quality from the current session and
-  add it to the central skill learnings file. User-only maintenance workflow for updating durable
-  skill-authoring guidance after a session reveals a pattern worth preserving.
+  Propagate ONE validated learning about SKILL design or quality from this session into the central
+  skill-learnings file — extract the smallest useful pattern or anti-pattern, categorize it (Structural
+  Patterns / Content Patterns / Anti-Patterns / Skill-Specific), and add it once without touching any actual
+  skill file. User-only maintenance workflow that mutates durable skill-authoring guidance: it grounds the
+  rule in what THIS session revealed, never invents, checks for duplicates, and confirms category and wording
+  before writing. Use to capture a skill-authoring rule so future skill work inherits it.
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -18,10 +21,11 @@ argument-hint: "[learning candidate or session focus]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks to record a skill-design learning, anti-pattern, or
-  skill-specific improvement rule. Examples: "/update-skill-learnings", "record this skill
-  pattern", or "add this anti-pattern to the skill learnings". Do not use for application-code
-  learnings, agent behavior, or direct skill rewrites.
+  Use when the user explicitly asks to record a skill-design learning, anti-pattern, or skill-specific
+  improvement rule — "/update-skill-learnings", "record this skill pattern", "add this anti-pattern to the
+  skill learnings". Do NOT use for agent-behavior learnings (update-agent-learnings), main-agent CLAUDE.md
+  rules (update-claude-learnings), or a direct skill rewrite now (normalize-skill-for-claude); confirm
+  before writing — it mutates durable authoring guidance and is user-only.
 ---
 
 <EXTREMELY-IMPORTANT>

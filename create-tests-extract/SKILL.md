@@ -2,9 +2,13 @@
 name: create-tests-extract
 version: 2.0.0
 description: |
-  Extract large inline test modules into adjacent test files while preserving the same effective
-  visibility, helper access, and coverage shape. Use when the user wants implementation files
-  slimmed down without accidentally turning private unit tests into weaker integration tests.
+  Move a bulky inline test block out of its source file WITHOUT weakening it — same coverage, same
+  private access: read the source and its inline tests, pick the smallest safe extraction boundary
+  (an adjacent `#[cfg(test)] mod`, not a top-level `tests/`, when private access matters), move tests
+  and their helpers with names and attributes intact plus the minimal module wiring, then run the
+  narrowest relevant tests. Preserves the original visibility model and touches production code only as
+  far as wiring requires — never silently downgrades private unit tests into weaker public-API
+  integration tests. Use when the user asks to split large inline tests out of a source file.
 allowed-tools:
   - Bash
   - Read
@@ -16,9 +20,11 @@ argument-hint: "[source file or module to clean up]"
 arguments:
   - request
 when_to_use: |
-  Use when the user explicitly asks to split large inline tests out of source files or reduce test
-  clutter without weakening private-access coverage. Examples: "extract these Rust tests",
-  "move this giant #[cfg(test)] block out", "clean up this file by moving tests next to it".
+  Use when the user explicitly asks to slim a source file by moving its large inline tests out.
+  Examples: "extract these Rust tests", "move this giant #[cfg(test)] block out", "clean up this file
+  by moving tests next to it". Do NOT use to author new test cases or fix failing ones (that's bugfix),
+  and do NOT broaden it into a general refactor — it relocates existing tests without changing what
+  they cover.
 effort: high
 ---
 

@@ -2,13 +2,15 @@
 name: hand-over-to-kiro
 version: 1.4.0
 description: |
-  Delegate an implementation task to the Kiro CLI (`kiro-cli`) and report the result. Use when the user
-  asks to hand work to kiro — "/hand-over-to-kiro", "delegate to kiro", "let kiro handle/do this",
-  "pass to kiro", "hand over to kiro", or any variant requesting kiro-cli execution. Two modes: Plan
-  mode passes an existing plan to kiro for implementation; Direct mode passes the user's task. Claude
-  gathers context, builds a self-contained injection-safe prompt, injects the task's relevant kiro
-  skills (`--skill <name>`, since kiro has no Skill tool of its own), invokes kiro-cli via a bundled
-  helper with scoped trust, captures output, verifies the diff, and reports back.
+  Delegate an implementation task to the Kiro CLI and report exactly what it changed — verified
+  against a git baseline, never on kiro's SELF-REPORT. Gathers the context a fresh agent needs,
+  rephrases the request into a self-contained, injection-safe prompt with XML boundary tags, injects
+  the task's kiro convention skills (`--skill`), launches kiro via the bundled helper with trust
+  scoped to the mode (`implement` = least-privilege write, `review` = read-only), then diffs the
+  working tree against a pre-run baseline. Never auto-installs kiro or pipes a remote installer to a
+  shell, never passes raw user input through the shell or defaults to `--trust-all-tools`, and
+  reports partial completion and errors honestly rather than trusting kiro's own summary. Use only
+  when the user explicitly asks to delegate implementation to kiro.
 allowed-tools:
   - Bash
   - Read
@@ -20,9 +22,10 @@ argument-hint: "[task or plan to hand to kiro]"
 arguments:
   - request
 when_to_use: |
-  Use when the user explicitly asks to delegate implementation to the Kiro CLI. Examples:
-  "/hand-over-to-kiro", "delegate to kiro", "let kiro build this", "pass this to kiro". Do not use for
-  reviewing changes with kiro (use kiro-review), and do not use to delegate to a different tool.
+  Use only when the user explicitly asks to delegate implementation to the Kiro CLI —
+  "/hand-over-to-kiro", "delegate to kiro", "let kiro build this", "pass this to kiro". Do NOT use
+  to review changes with kiro (kiro-review) or to delegate to a different tool; keep it
+  explicit-user-only and confirm before an autonomous, write-capable run.
 ---
 
 <EXTREMELY-IMPORTANT>

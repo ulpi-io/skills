@@ -2,9 +2,14 @@
 name: codex-review
 version: 2.0.0
 description: |
-  Run OpenAI Codex CLI as an independent reviewer over the current branch, a specific commit, or
-  uncommitted changes. Builds a focused instruction file from the real diff and returns a compact
-  review summary.
+  Get an INDEPENDENT second opinion from the OpenAI Codex CLI — a separate reviewer runtime run over
+  the real diff, not Claude reviewing its own work. Verifies Codex is available, resolves the scope
+  (branch, a commit, or uncommitted), writes a focused instruction file grounded in the actual
+  change set, runs `codex review` with disk-read sandbox so it can verify findings against source,
+  then summarizes them by priority. Keeps secrets and credential values out of the instruction file,
+  treats findings as candidates to verify locally before any fix, and reports an explicit clean
+  result rather than fabricating one. Use only when the user explicitly asks for a Codex review or
+  cross-review.
 allowed-tools:
   - Bash
   - Read
@@ -14,9 +19,10 @@ argument-hint: "[branch review, uncommitted, or specific commit]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks for a Codex review or cross-review. Examples:
-  "/codex-review", "run codex on this branch", "get a second opinion from codex". Do not use for
-  direct code editing or when the user asked for Claude or Kiro instead.
+  Use only when the user explicitly asks for a Codex review or cross-review — "/codex-review", "run
+  codex on this branch", "get a second opinion from codex". Do NOT use for direct code editing, or
+  when the user asked for a different reviewer — route to the sibling that names it (claude-review,
+  kiro-review); for critical code run all three and cross-reference. Explicit-user-only.
 effort: high
 ---
 

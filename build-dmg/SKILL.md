@@ -2,9 +2,13 @@
 name: build-dmg
 version: 2.0.0
 description: |
-  Build a distributable DMG for a macOS Xcode project by resolving the project, scheme,
-  signing/export inputs, then running the local helper script that archives, exports, and packages
-  the app. Use only when the user explicitly asks to build or package a DMG.
+  Build a distributable macOS DMG from an Xcode project via the bundled local helper — archive → export →
+  package into one signed artifact. Resolves the project/workspace, scheme, team ID, and export options,
+  regenerates the project first when `xcodegen` is detected, then runs `helpers/build-dmg.sh` from the
+  project root instead of inlining xcodebuild. User-only workflow that touches code signing and
+  provisioning: it never GUESSES the signing identity, never overwrites `ExportOptions.plist` without
+  approval, and reports the built DMG path, version, and signing status. Use only when the user explicitly
+  asks to build or package a DMG.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -16,9 +20,10 @@ argument-hint: "[project, workspace, or scheme hint]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks to build a DMG, package a macOS app for distribution, or
-  create a signed installer. Examples: "build a DMG", "package this Mac app", "create a
-  distributable installer". Do not use proactively.
+  Use when the user explicitly asks to build a DMG, package a macOS app for distribution, or create a
+  signed installer — "build a DMG", "package this Mac app", "create a distributable installer". Do NOT use
+  proactively or to run ad-hoc xcodebuild commands; it drives code signing and export, so it is user-only
+  and asks before guessing any signing or export input.
 effort: high
 ---
 

@@ -2,9 +2,13 @@
 name: bugfix-crate
 version: 3.0.0
 description: |
-  Fix the findings recorded in a crate issue file one at a time, with failing test first, minimal
-  fix second, full crate verification third, and issue-file status updates after each successful
-  fix. Use for Rust crate issue lists that already exist and need disciplined sequential repair.
+  Work a Rust crate's recorded issue file to green — one finding at a time, disciplined and sequential:
+  for each finding, write the failing regression test first, apply the smallest correct fix, run the full
+  crate's `cargo test` and `cargo clippy -D warnings`, then mark the finding FIXED / Deferred / Not-a-bug
+  in the issue file before moving on. Never marks a finding fixed without its verification pass, never
+  batches findings, and never buries a warning under `#[allow]` or swaps a real fix for a comment — the
+  issue file and crate state stay in sync after every fix. Use only when the user asks to fix findings
+  from an existing crate issue file.
 allowed-tools:
   - Bash
   - Read
@@ -18,9 +22,11 @@ argument-hint: "[path to .ulpi/issues/<crate>.md]"
 arguments:
   - issues_file
 when_to_use: |
-  Use only when the user explicitly asks to fix findings from an existing crate issue file.
-  Examples: "/bugfix-crate .ulpi/issues/hgdb-storage.md", "fix the issues in this crate review",
-  "work through the findings for hgdb-types". Do not use for first-pass review or broad refactors.
+  Use only when the user explicitly points at an existing crate issue file to repair. Examples:
+  "/bugfix-crate .ulpi/issues/hgdb-storage.md", "fix the issues in this crate review", "work through
+  the findings for hgdb-types". Do NOT use to produce that issue file in the first place (that's
+  review-crate) or for broad multi-crate refactors — this skill is explicit-user-only and consumes
+  findings that already exist.
 effort: high
 ---
 

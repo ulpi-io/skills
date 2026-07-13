@@ -2,10 +2,13 @@
 name: nestjs
 version: 1.1.0
 description: |
-  NestJS reference skill: modules, controllers, providers, DTOs with class-validator, TypeORM/Prisma,
-  guards, interceptors, pipes, queues (BullMQ), WebSockets, microservices, testing, OpenAPI, and
-  CLI scaffolding. Use when the task touches NestJS application code and should follow the project's
-  module-based architecture.
+  Build NestJS the way THIS project's module architecture already does it, not by framework
+  defaults — a reference carrying the real module boundaries and dependency-injection discipline
+  behind thin controllers, class-validator DTOs, TypeORM/Prisma data access, guards, interceptors,
+  pipes, exception filters, BullMQ queues, WebSockets, microservices, OpenAPI, and testing, so a
+  change lands idiomatic and review-ready instead of bypassing the framework. Use when a task
+  touches this project's NestJS modules and should follow its DI-driven architecture rather than
+  framework defaults.
 allowed-tools:
   - Bash
   - Read
@@ -19,8 +22,9 @@ when_to_use: |
   Use when the task touches NestJS application code: modules, controllers, services, guards,
   interceptors, pipes, DTOs, entities, queues, WebSockets, microservices, or tests. Examples:
   "add a NestJS endpoint", "create a new module", "add a guard", "wire up BullMQ", "fix this
-  interceptor", "add OpenAPI decorators". Do not use for plain Express/Fastify work without
-  NestJS decorators, or when the nodejs skill is a better match.
+  interceptor", "add OpenAPI decorators". Do NOT use for plain Express/Fastify or other Node
+  backend work without NestJS decorators (nodejs); this is the decorator-and-DI framework surface
+  only.
 effort: high
 ---
 

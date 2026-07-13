@@ -2,11 +2,13 @@
 name: nodejs
 version: 1.1.0
 description: |
-  Node.js/Bun backend reference skill: TypeScript-first, structured error handling, pino logging,
-  Zod validation, async patterns, HTTP server conventions, database access, auth, queues,
-  caching, testing, security, CLI tooling, and observability. Covers both Node.js and Bun runtimes.
-  Use when the task touches server-side TypeScript/JavaScript code and should follow the project's
-  backend conventions.
+  Write Node.js and Bun backend code the way THIS project already does it, not by generic
+  defaults — a TypeScript-first reference that detects the runtime and carries the real
+  conventions for HTTP servers, Zod boundary validation, typed error handling, pino logging,
+  database access, auth, BullMQ queues, caching, async and graceful-shutdown patterns, security,
+  CLI tooling, testing, and observability, so a change lands idiomatic and review-ready instead
+  of merely running. Use when a task touches this project's Node.js or Bun backend and should
+  follow its conventions rather than generic defaults.
 allowed-tools:
   - Bash
   - Read
@@ -20,8 +22,9 @@ when_to_use: |
   Use when the task touches Node.js or Bun backend code: HTTP servers, API endpoints, database
   queries, auth, jobs, caching, logging, testing, CLI tools, or deployment. Examples: "add an API
   endpoint", "fix this async error", "set up BullMQ jobs", "add request validation", "build a CLI
-  command", "containerize this service". Do not use for frontend-only work or when a framework-specific
-  skill (nextjs, laravel) is a better match.
+  command", "containerize this service". Do NOT use for frontend-only work, or when a framework
+  owns the surface — Next.js (nextjs), NestJS (nestjs), or Laravel (laravel); this is the
+  framework-agnostic backend surface.
 effort: high
 ---
 

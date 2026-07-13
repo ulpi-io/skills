@@ -2,18 +2,17 @@
 name: launch-hacker-news
 version: 1.0.0
 description: |
-  Prepare and run a Hacker News "Show HN" launch end to end, written to `.ulpi/launch/hacker-news/`.
-  Grounds in the real product, then produces a small, paste-ready, HN-appropriate package: `POST.md`
-  (the standard `Show HN: <thing> – <plain description>` title + the URL + the founder's explanatory first
-  comment, in technical/no-hype voice), `PLAN.md` (when to post in US-Eastern time, the first-1–2-hours
-  plan, a thread-engagement plan with prepared answers to likely hard questions, and the post-launch /
-  second-chance plan), and `CHECKLIST.md` (a blocking readiness gate). The HN platform skill of the
-  launch-* family: it owns HN mechanics, the Show HN rules, HN policy, the thread runbook, and the gate,
-  and composes the shared `launch-copy` (the title + first comment) and `launch-analytics` (UTM +
-  conversion tracking), degrading to built-in fallbacks if a companion isn't installed. Reads the shared
-  `.ulpi/launch/positioning.md`. HN is STRICTER than other channels: it **forbids all vote mobilization**
-  (no supporter waves, no asking anyone to upvote — ever), punishes hype/marketing-speak and unfinished or
-  signup-walled products, and rewards technical honesty and a present, non-defensive founder in the thread.
+  Prepare and run a Hacker News "Show HN" launch end to end — HN is STRICTER than every other channel: it
+  **forbids all vote mobilization** (no supporter waves, no asking anyone to upvote, ever). Grounds in the
+  real product (real stack, honest limits), then writes a small, paste-ready package to
+  `.ulpi/launch/hacker-news/`: `POST.md` (the standard `Show HN: <thing> – <plain description>` title + the
+  URL + the founder's technical, no-hype first comment), `PLAN.md` (US-Eastern timing, the first-1–2-hours
+  plan, a thread-engagement plan with prepared answers to hard questions, and the post-launch / second-chance
+  plan), and `CHECKLIST.md` (a blocking readiness gate). The HN runner of the launch-* family: it owns Show
+  HN rules, HN policy, the thread runbook, and the gate, and composes the shared `launch-copy` (title + first
+  comment) and `launch-analytics` (UTM + conversion tracking), degrading to built-in fallbacks if a companion
+  isn't installed. Rewards technical honesty and a present, non-defensive founder; punishes hype and
+  signup-walled products. Use when the user wants to post a Show HN or plan an HN launch.
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -23,12 +22,11 @@ argument-hint: "[product or Show HN goal]"
 arguments:
   - request
 when_to_use: |
-  Use when the user wants to launch on Hacker News, post a "Show HN", or plan an HN launch — the title,
-  the first comment, timing, and handling the thread. Triggers: "Hacker News", "Show HN", "HN launch",
-  "post on HN", "front page of HN". Examples: "help me post a Show HN", "write my Show HN title and first
-  comment", "plan my HN launch". For a Product Hunt launch use `launch-product-hunt`; for multi-platform
-  directory copy use a directory-submission skill if you have one. Do not use this skill to mobilize votes —
-  HN forbids it and this skill refuses; it coaches genuine, compliant posting only.
+  Use when the user wants to launch on Hacker News, post a "Show HN", or plan an HN launch — the title, the
+  first comment, timing, and running the thread. Examples: "help me post a Show HN", "write my Show HN title
+  and first comment", "plan my HN launch". For a Product Hunt launch use `launch-product-hunt`, for X use
+  `launch-x`, for LinkedIn use `launch-linkedin`. Do NOT use this skill to mobilize votes — HN forbids it and
+  this skill refuses; it coaches genuine, compliant posting only.
 effort: high
 ---
 

@@ -2,9 +2,12 @@
 name: branch-review-before-pr
 version: 2.0.0
 description: |
-  Pre-landing diff review against the default branch for structural defects that tests often miss:
-  unsafe queries, race conditions, trust-boundary mistakes, conditional side effects, and similar
-  branch risks. Use as a branch gate before shipping or creating a PR.
+  Gate a branch before it becomes a PR — catch the STRUCTURAL defects tests miss, not style: read the
+  full diff against the default base, run a two-pass checklist (blocking pass first — unsafe queries,
+  race conditions, trust-boundary and auth mistakes, conditional side effects — then the non-blocking
+  remainder), and verify each candidate against surrounding code before reporting. Stays read-only and
+  reports blocking-first; only becomes mutating after you explicitly approve a specific fix per issue —
+  never batches decisions or auto-fixes. Use as the branch gate right before shipping or opening a PR.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -15,10 +18,11 @@ argument-hint: "[review focus or branch risk hint]"
 arguments:
   - request
 when_to_use: |
-  Use when the user explicitly asks for a pre-PR review, when a ship workflow needs a blocking
-  branch gate, or when a PR draft needs a fast structural audit. Examples: "/branch-review-before-pr",
-  "review this branch before PR", "check for blocking issues before I ship". Do not use for
-  full-repository audits or style-only review.
+  Use when the user asks for a pre-PR review, when a ship workflow needs a blocking branch gate, or
+  when a PR draft needs a fast structural audit. Examples: "/branch-review-before-pr", "review this
+  branch before PR", "check for blocking issues before I ship". Do NOT use for a whole-repository
+  launch sweep (that's go-live-audit), for the deep forked bug hunt (that's find-bugs), or for
+  style-only nitpicks — this gate is scoped to the branch diff and reports structural risk, not preference.
 effort: high
 ---
 

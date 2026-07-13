@@ -2,10 +2,14 @@
 name: plan-to-task-list-with-dag
 version: 2.0.1
 description: |
-  Create a safe implementation plan as both markdown and JSON DAG artifacts. Challenge scope with
-  the user first, explore real code before decomposing, then emit atomic TASK-NNN entries with
-  explicit dependencies, write scope, validation, and assigned agents. Use when the user asks to
-  plan, decompose, or break work into execution-ready tasks.
+  Turn a request into a SCHEDULABLE task DAG — atomic tasks with real dependencies, not planning prose:
+  challenge scope and pick a planning mode with the user first, explore the real repo so no path is
+  invented, then decompose into atomic TASK-NNN entries — each with a ≤3-file write scope, 2-3 testable
+  acceptance criteria, a slice-scoped validate command, explicit dependencies, and an assigned agent —
+  emitted as one canonical object into matching `.ulpi/plans/<name>.md` and `.json`. Every named path
+  comes from observed repo state, the dependency graph stays acyclic, and JSON is the source of truth the
+  markdown is rendered from — no phantom files, no circular edges, no task that hides side effects it
+  never provisions. Use when the user asks to plan, decompose, or break work into execution-ready tasks.
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -18,10 +22,11 @@ argument-hint: "[feature or planning request]"
 arguments:
   - request
 when_to_use: |
-  Use when the task is to produce a structured implementation plan rather than to code immediately.
+  Use when the task is to produce a structured, execution-ready plan rather than to code immediately.
   Examples: "plan this feature", "break this into tasks", "make a DAG plan", "decompose this for
-  parallel agents". Do not use for trivial single-file work, high-level brainstorming, code review,
-  or direct execution requests.
+  parallel agents". It opens with a scope-challenge question, so confirm intent first. Do NOT use for
+  trivial single-file work, high-level brainstorming, code review, direct execution, or to gate a
+  finished plan (that's plan-founder-review) — this produces the plan, it does not run or judge it.
 ---
 
 <EXTREMELY-IMPORTANT>

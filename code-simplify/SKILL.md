@@ -2,10 +2,13 @@
 name: code-simplify
 version: 2.0.0
 description: |
-  Simplify existing code without changing behavior. Focus on local complexity reduction such as
-  flattening nesting, extracting readable helpers, removing dead code, consolidating obvious
-  duplication, and improving names. Use when the user explicitly asks to simplify, clean up, or
-  reduce complexity in existing code.
+  Reduce a change's complexity WITHOUT altering behavior — lower cognitive load, not line count: read
+  the target plus its callers and tests, take a baseline check, then apply the smallest clarifying edits
+  in safest order (dead code and boolean cleanup → flatten nesting with guard clauses → consolidate
+  duplication → local renames and helper extraction), respecting Chesterton's Fence. Re-runs the
+  baseline after each edit and reverts any change that alters observable behavior or regresses, keeping
+  only the safe improvements — a simplification that changes semantics is a bug, not a cleanup. Use only
+  when the user explicitly asks to simplify or clean up existing code.
 allowed-tools:
   - Read
   - Edit
@@ -20,8 +23,9 @@ arguments:
 when_to_use: |
   Use only when the user explicitly asks to simplify or clean up existing code. Examples:
   "simplify this", "clean up this file", "reduce complexity here", or "/code-simplify auth.ts".
-  Do not use proactively during unrelated implementation work, and do not use it for architectural
-  redesign, pure performance tuning, or generated code.
+  Do NOT run it proactively during unrelated work, and do NOT use it to change behavior or fix defects
+  (that's bugfix), tune speed, redesign architecture, or touch generated code — those alter what the
+  code does; simplification must not.
 ---
 
 <EXTREMELY-IMPORTANT>

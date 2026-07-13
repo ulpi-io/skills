@@ -2,8 +2,11 @@
 name: secrets
 version: 2.0.0
 description: |
-  Manage encrypted local credentials for agent tooling with the `secrets` CLI: add, rotate, list,
-  enable, disable, and inspect service integrations without exposing secret values in agent output.
+  Manage local service credentials WITHOUT ever exposing their values — the `secrets` CLI adds,
+  rotates, lists, enables, disables, and inspects encrypted integrations (including MCP/agent tooling)
+  through interactive entry, reporting only service names and enablement status. Hard invariant:
+  secret material never enters arguments, logs, or output and `--reveal` is never used — the reporting
+  surface is the service, not the value. Use only on explicit request to wire or inspect credentials.
 allowed-tools:
   - Bash
   - Read
@@ -13,10 +16,11 @@ argument-hint: "[service or secret-management action]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks to manage credentials, wire secrets into MCP servers or
-  agent tooling, or inspect secret-management status. Examples: "/secrets add github", "enable the
-  Jira secret", "what credentials are configured?", "rotate the OpenAI secret". Do not use
-  proactively.
+  Use only when the user explicitly asks to manage credentials, wire secrets into MCP servers or agent
+  tooling, or inspect secret-management status. Examples: "/secrets add github", "rotate the OpenAI
+  secret", "what credentials are configured?". Do NOT use proactively, and never to display or restate
+  a secret's value; enabling a service is not the same as proving it works — report status, not
+  contents.
 effort: high
 ---
 

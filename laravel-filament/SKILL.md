@@ -2,9 +2,12 @@
 name: laravel-filament
 version: 2.1.0
 description: |
-  Filament v5 admin-panel reference skill: resources, forms, tables, actions, filters, relation
-  managers, widgets, panels, and testing. Use when the task touches Filament-specific admin code
-  and needs the v5 namespace and API conventions rather than generic Laravel patterns.
+  Build Filament admin panels on the v5 API surface THIS project targets, not deprecated v3
+  patterns — a reference carrying the current namespaces and conventions for Resources, forms,
+  tables, actions, filters, relation managers, widgets, infolists, panels, and testing, with
+  business logic kept in application Actions, so a change lands idiomatic and review-ready
+  instead of tripping over renamed APIs. Use when a task touches this project's Filament admin
+  panels and should target the v5 surface rather than deprecated patterns.
 allowed-tools:
   - Bash
   - Read
@@ -17,8 +20,9 @@ arguments:
 when_to_use: |
   Use when the task is specifically about Filament resources, forms, tables, actions, filters,
   relation managers, widgets, navigation, or panel configuration. Examples: "fix this Filament
-  table action", "create a Resource", "update Filament filters", "add an admin widget". Do not use
-  for general Laravel API work when the main Laravel skill is the better match.
+  table action", "create a Resource", "update Filament filters", "add an admin widget". Do NOT
+  use for general Laravel application code — routes, APIs, Eloquent, queues (laravel); this is the
+  admin-panel surface only.
 effort: high
 ---
 

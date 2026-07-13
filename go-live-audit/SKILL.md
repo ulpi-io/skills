@@ -2,12 +2,15 @@
 name: go-live-audit
 version: 1.1.0
 description: |
-  Generate and run a project-tailored pre-launch (go-live) audit as a multi-agent workflow:
-  parallel build/test/lint gates, one read-only finder per audit dimension, agent-based dedup,
-  adversarial verification of every finding, and a completeness critic round. Fills the bundled
-  workflow template for the target project and runs it via the Workflow tool. Use when the user
-  wants a launch-readiness review, pre-launch audit, "are we ready to ship", or a deep
-  adversarial code/security/correctness sweep of a repo before release.
+  Author and run a project-TAILORED pre-launch audit as a bounded multi-agent workflow — a real launch
+  verdict, not a checklist skim: fill the bundled workflow template from the repo's real stack and hard
+  rules, then run Gates (typecheck / test / lint / build in parallel) → Find (one read-only finder per
+  applicable audit dimension) → Dedup (merge shared-root-cause findings) → Verify (adversarial agents try
+  to refute every finding; blockers get a code lens plus a spec lens) → Critic (name uncovered areas,
+  spawn follow-up finders) → a GO / NO-GO / GO-WITH-FIXES report, all fanned out under a MAX_PARALLEL cap.
+  Finders and verifiers stay read-only — the skill audits and reports, never fixes; a gate that didn't
+  actually run is treated as a blocker, never counted clean; secret values are redacted to type and
+  location. Confirms scope and warns about the agent count (typically 40-80) before running.
 allowed-tools:
   - Bash
   - Read
@@ -24,9 +27,9 @@ arguments:
 when_to_use: |
   Use when the user asks to audit a repo before launch, shipping, or release. Examples: "go live
   audit", "pre-launch audit", "launch readiness", "are we ready to ship", "final review before
-  release", "deep audit of <repo>". Do not use for a quick review of the current branch diff —
-  prefer find-bugs or branch-review-before-pr for that; this skill spawns dozens of agents over
-  the whole repository.
+  release", "deep audit of <repo>". It spawns dozens of agents over the whole repository, so confirm
+  scope first. Do NOT use for a quick check of the current branch diff — redirect to
+  branch-review-before-pr or the forked find-bugs for that; this is a whole-repo, multi-agent launch gate.
 ---
 
 <EXTREMELY-IMPORTANT>

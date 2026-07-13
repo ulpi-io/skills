@@ -2,9 +2,14 @@
 name: git-merge-expert-worktree
 version: 2.0.0
 description: |
-  Worktree-native git merge workflow for isolated merges, conflict resolution, validation, and
-  cleanup. User-only mutation workflow: use when the user explicitly wants merge or worktree
-  operations performed in an isolated worktree.
+  Run merges and conflict resolution inside a dedicated git worktree so the MAIN tree is never
+  touched — isolation is the whole point. Lists existing worktrees and current context first,
+  creates or reuses the right isolated workspace, tags a backup and performs the merge/rebase/
+  cherry-pick there, validates the result, then closes the lifecycle with `git worktree remove` +
+  `prune` and verifies the main tree stayed clean. Uses `git worktree remove` (never `rm -rf`) for
+  normal cleanup, never auto-deletes non-ephemeral branches, and requires explicit confirmation
+  before force-removing a dirty worktree. Use only when the user explicitly wants merge work done in
+  an isolated worktree.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -19,10 +24,10 @@ argument-hint: "[merge target, source branch, or worktree task]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks for worktree-based merge operations such as "merge this in
-  a worktree", "create an isolated merge workspace", "resolve merge conflicts in a worktree", or
-  "clean up stale worktrees". Do not use for read-only git inspection, generic code review, or
-  normal non-worktree editing tasks.
+  Use only when the user explicitly asks for worktree-based merge operations — "merge this in a
+  worktree", "create an isolated merge workspace", "resolve conflicts in a worktree", "clean up
+  stale worktrees". Do NOT use for a standard in-place merge (git-merge-expert), read-only git
+  inspection, or normal non-worktree editing; explicit-user-only, confirm before force cleanup.
 ---
 
 <EXTREMELY-IMPORTANT>

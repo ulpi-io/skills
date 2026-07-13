@@ -2,19 +2,19 @@
 name: launch-linkedin
 version: 1.0.0
 description: |
-  Prepare and run a product/company launch on LinkedIn end to end, written to `.ulpi/launch/linkedin/`.
-  Grounds in the real product, then produces a paste-ready package: `POST.md` (the launch **post** — a
-  strong hook in the first ~2 lines before the "…see more" cut, a skimmable body, the format that earns
-  reach, hashtags, and the product link placed in the **first comment** not the post body so reach isn't
-  penalized), `PLAN.md` (when to post, the **golden-hour** engagement runbook, team amplification, and the
-  post-launch plan), and `CHECKLIST.md` (a blocking pre-flight gate). The LinkedIn platform skill of the
-  launch-* family: it owns LinkedIn mechanics, format rules, timing, the engagement runbook, and the gate,
-  and composes the shared `launch-copy` (the post copy), `launch-outreach` (cross-channel + team
-  amplification, mode `linkedin`), and `launch-analytics` (UTM + conversion tracking), degrading to
-  built-in fallbacks if a companion isn't installed. Reads the shared `.ulpi/launch/positioning.md`. On
-  LinkedIn you MAY ask your network and team to engage genuinely (no vote-ring rules) — but it avoids what
-  LinkedIn penalizes: an external link in the post body, engagement-bait, engagement pods, and editing the
-  post right after publishing.
+  Prepare and run a product/company launch on LinkedIn end to end — the launch link goes in the FIRST
+  COMMENT, not the post body, and you never edit the post right after publishing. Grounds in the real
+  product, then writes a paste-ready package to `.ulpi/launch/linkedin/`: `POST.md` (the launch **post** — a
+  strong hook in the first ~2 lines before the "…see more" cut, a skimmable body, the reach-earning format,
+  hashtags, and the product link as the **first comment**), `PLAN.md` (timing, the **golden-hour** engagement
+  runbook, team amplification, and the post-launch plan), and `CHECKLIST.md` (a blocking pre-flight gate). The
+  LinkedIn runner of the launch-* family: it owns LinkedIn mechanics, format rules, and the gate, and
+  composes the shared `launch-copy` (post copy), `launch-outreach` (team amplification, mode `linkedin`), and
+  `launch-analytics` (UTM + conversion tracking), degrading to built-in fallbacks if a companion isn't
+  installed. Reads the shared `.ulpi/launch/positioning.md`. Engagement asks to your network and team are
+  fine (no vote-ring rules), but it avoids what LinkedIn penalizes — a link-preview card in the body,
+  engagement-bait, pods, and an early edit. Use when the user wants a LinkedIn launch post written and launch
+  day planned.
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -24,11 +24,12 @@ argument-hint: "[product or LinkedIn launch goal]"
 arguments:
   - request
 when_to_use: |
-  Use when the user wants to launch a product or company on LinkedIn, write a launch post, or plan the
-  launch-day engagement. Triggers: "LinkedIn", "launch on LinkedIn", "LinkedIn post", "LinkedIn launch",
-  "company announcement post". Examples: "write my LinkedIn launch post", "plan my LinkedIn launch", "help
-  me announce on LinkedIn". For an X/Twitter launch use `launch-x`; for Product Hunt use
-  `launch-product-hunt`; for Hacker News use `launch-hacker-news`.
+  Use when the user wants to launch a product or company on LinkedIn, write a launch post, or plan launch-day
+  engagement. Examples: "write my LinkedIn launch post", "plan my LinkedIn launch", "help me announce on
+  LinkedIn". For an X / Twitter launch use `launch-x`, for Product Hunt use `launch-product-hunt`, for Hacker
+  News use `launch-hacker-news`. Do NOT use for the post copy alone (redirect to `launch-copy`) or the
+  cross-channel supporter messages alone (`launch-outreach`) — this runs the whole LinkedIn launch and
+  composes those.
 effort: high
 ---
 

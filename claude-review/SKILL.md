@@ -2,9 +2,14 @@
 name: claude-review
 version: 2.0.0
 description: |
-  Launch an isolated Claude reviewer for the current branch, a specific commit, or uncommitted
-  changes. Uses Claude's agent runtime with worktree isolation so the review has an independent
-  read-only view of the code before findings are reported back.
+  Get an INDEPENDENT second-opinion review from a separate Claude agent in a read-only worktree —
+  findings only, never edits to your working copy. Reads the real diff (branch, a commit, or
+  uncommitted) to build a focused, risk-targeted brief, launches the reviewer under worktree
+  isolation with report-only instructions, then summarizes findings by priority with `file:line`,
+  carrying an exclusion list forward on later rounds. Treats returned findings as candidates to
+  verify locally, not truth; states an explicit clean result rather than inventing issues; keeps
+  secrets out of the prompt and never lets the reviewer mutate code. Use only when the user
+  explicitly asks for a Claude review.
 allowed-tools:
   - Bash
   - Read
@@ -15,9 +20,10 @@ argument-hint: "[branch review, last commit, or uncommitted]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks for a Claude review or a self-review pass. Examples:
-  "/claude-review", "run a Claude review on this branch", "self-review the last commit". Do not
-  use for direct code fixing or when the user asked for Codex or Kiro instead.
+  Use only when the user explicitly asks for a Claude review or self-review pass — "/claude-review",
+  "run a Claude review on this branch", "self-review the last commit". Do NOT use for direct code
+  fixing, or when the user asked for a different reviewer — route to the sibling that names it
+  (codex-review, kiro-review); for critical code run all three and cross-reference. Explicit-user-only.
 effort: high
 ---
 

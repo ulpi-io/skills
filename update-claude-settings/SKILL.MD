@@ -2,9 +2,13 @@
 name: update-claude-settings
 version: 2.0.0
 description: |
-  Detect the real project stack and generate or update Claude Code settings files such as
-  `.claude/settings.local.json`, `.claude/settings.json`, and `.mcp.json`. User-only maintenance
-  workflow for permission and integration configuration.
+  Generate or update Claude Code settings from the project's REAL stack, not a generic allowlist —
+  `.claude/settings.local.json`, `.claude/settings.json`, and `.mcp.json`. Detects the real toolchain and
+  frameworks from lock files and manifests, diffs that against current settings, and proposes only the
+  command permissions, doc domains, and MCP integrations the detected tools justify. User-only maintenance
+  workflow that mutates durable config: every entry is EVIDENCE-driven (detected tools only), destructive,
+  absolute, and user-specific paths are excluded, existing customizations are preserved, and nothing is
+  written without explicit approval. Use to audit or refresh Claude settings for the current repo.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -19,10 +23,11 @@ argument-hint: "[settings focus or stack hint]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks to audit, generate, or update Claude Code settings or
-  MCP configuration. Examples: "/update-claude-settings", "audit settings", "configure Claude
-  permissions", or "update .mcp.json suggestions". Do not use for running project commands, code
-  changes, or general stack discovery with no settings intent.
+  Use when the user explicitly asks to audit, generate, or update Claude Code settings or MCP configuration
+  — "/update-claude-settings", "audit settings", "configure Claude permissions", "update .mcp.json
+  suggestions". Do NOT use to run project commands, change code, or do general stack discovery with no
+  settings intent; confirm before writing — it mutates durable config and is user-only, adding permissions
+  only for tools actually detected.
 ---
 
 <EXTREMELY-IMPORTANT>

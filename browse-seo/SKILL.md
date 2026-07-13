@@ -2,9 +2,12 @@
 name: browse-seo
 version: 1.0.0
 description: |
-  SEO auditing for AI agents using the browse CLI. Extracts meta tags, headings, structured data,
-  performance metrics, link structure, and mobile rendering. Generates actionable audit reports
-  with findings and recommendations. Works with any URL.
+  Run a full on-page technical SEO audit from a LIVE render — real rendered signals, not source
+  guesses — extracting meta tags, heading hierarchy, structured data, navigation timing, link
+  structure, and multi-viewport mobile rendering via the `browse` CLI (meta/headings/schema/perf/
+  links/responsive plus targeted JS checks), then rating each area PASS/WARNING/FAIL with prioritized
+  fixes. The agent interprets the raw signals browse extracts; no scores are invented. Use to audit a
+  page's technical/on-page SEO health.
 allowed-tools:
   - Bash
   - Read
@@ -12,13 +15,11 @@ argument-hint: "[URL to audit]"
 arguments:
   - request
 when_to_use: |
-  Use when the user asks for an SEO audit, SEO check, SEO analysis, on-page SEO review,
-  or says /browse-seo. Signs you should use this skill:
-  - User wants to check meta tags, structured data, or heading hierarchy
-  - User wants a technical SEO report for a page or site
-  - User asks about Open Graph tags, Twitter cards, or schema markup
-  - User wants to check mobile-friendliness or Core Web Vitals
-  Do NOT use for general browsing, form filling, or non-SEO tasks.
+  Use when the user wants an SEO audit, on-page/technical SEO review, or checks of meta tags, schema,
+  headings, Open Graph/Twitter cards, mobile-friendliness, or Core Web Vitals. Examples: "SEO audit
+  this URL", "check my meta tags and schema". Do NOT use for AI-answer optimization or citation
+  visibility (browse-aeo for one page, browse-geo for cross-engine monitoring), or general browsing
+  and form-filling (browse); this covers classic ranking signals, not AI-answer presence.
 effort: medium
 ---
 

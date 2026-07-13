@@ -2,9 +2,14 @@
 name: git-merge-expert
 version: 2.0.0
 description: |
-  User-only git merge workflow for branch merges, PR merges, conflict resolution, validation,
-  rollback, and branch cleanup. Handles standard merges directly and routes to the worktree
-  specialist when isolated merge execution is the safer choice.
+  Run a git merge, PR merge, conflict resolution, or rollback safely — readiness-checked and BACKED
+  UP before anything touches shared history. Assesses branch/CI/review state and conflict risk, tags
+  a backup point before non-trivial merges, resolves conflicts without dropping either side
+  (regenerating lockfiles, not hand-editing), validates the result, then cleans up or rolls back —
+  routing to the worktree specialist when isolated execution is safer. Never claims success with
+  unresolved conflicts or failing validation, prefers `git revert` over `reset` on shared branches,
+  and requires explicit confirmation before destructive rollback, force-push, or branch deletion.
+  Use only when the user explicitly asks to merge, resolve conflicts, or roll back.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -21,9 +26,10 @@ arguments:
   - request
 when_to_use: |
   Use only when the user explicitly asks to merge a branch or PR, resolve git conflicts, review
-  merge readiness, or roll back a bad merge. Examples: "/git-merge-expert", "merge this branch",
-  "resolve these merge conflicts", or "roll back that merge". Do not use for read-only git
-  inspection or unrelated code changes.
+  merge readiness, or roll back a bad merge — "/git-merge-expert", "merge this branch", "resolve
+  these conflicts", "roll back that merge". Do NOT use for read-only git inspection or unrelated
+  code changes, and hand off to the worktree specialist (git-merge-expert-worktree) when the merge
+  should run in an isolated worktree; explicit-user-only, confirm before destructive cleanup.
 ---
 
 <EXTREMELY-IMPORTANT>

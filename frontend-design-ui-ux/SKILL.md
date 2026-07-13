@@ -7,8 +7,9 @@ description: |
   on, user flows and states, component briefs, and accessibility constraints. Commits to a bold
   aesthetic direction, bans AI-slop by name, and locks the identity so every screen and future session
   stays consistent. Can visit inspiration links with the browse skill to extract real design DNA. Ends
-  with a build handoff that a delegated engineering agent implements. Use for new features, redesigns,
-  or design-system work. This is a DESIGN-SPEC skill — it does not write production UI code.
+  with a build handoff that a delegated engineering agent implements — a DESIGN-SPEC skill that produces
+  the spec, never production UI code. Use for new features, redesigns, or design-system work where the
+  build should follow a locked spec.
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -21,7 +22,8 @@ when_to_use: |
   Use when the user wants interface design, flow design, component specification, a design language,
   or design-system work rather than direct implementation. Examples: "design this dashboard", "spec
   the onboarding flow", "give this product a visual identity", "make this look less generic", "design
-  it like <url> and <url>". Do not use to write production UI code — hand the spec to an engineer.
+  it like <url> and <url>". Do NOT use to write production UI code — this is the design spec; hand it
+  to an engineering agent to build.
 effort: high
 ---
 

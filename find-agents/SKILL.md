@@ -2,9 +2,11 @@
 name: find-agents
 version: 2.0.0
 description: |
-  Search, install, list, remove, update, or scaffold AI agents with the `agentshq` CLI across many
-  coding CLIs and IDEs. Use when the user wants to discover agents, install them into specific
-  clients, or manage an existing agent catalog.
+  Discover, install, and manage AI agents across 43+ coding CLIs and IDEs from ONE source —
+  auto-translated to each client's native format, not hand-ported — with the `agentshq` CLI: `find`,
+  `add`, `list`, `remove`, `check`/`update`, and `init` scaffolding, scoped by `-g` (global) and
+  `--ide` targets. Explicit-user-only and precise: it never installs, removes, or updates agents the
+  user didn't ask for. Use to find agents or manage an existing agent catalog.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -15,9 +17,11 @@ argument-hint: "[search query, source repo, or management action]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks to find, install, list, remove, update, or scaffold
-  agents. Examples: "/find-agents react reviewer", "install agents from owner/repo", "list my
-  installed agents", "update all agents". Do not use proactively.
+  Use only when the user explicitly asks to find, install, list, remove, update, or scaffold agents.
+  Examples: "/find-agents react reviewer", "install agents from owner/repo", "list my installed
+  agents", "update all agents". Do NOT use proactively, do NOT install globally unless global scope was
+  requested, and do NOT guess target IDEs when the user named a specific client; confirm scope and
+  target before mutating the agent inventory.
 effort: high
 ---
 

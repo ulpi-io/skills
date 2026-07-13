@@ -2,11 +2,12 @@
 name: bugfix
 version: 4.0.0
 description: |
-  Fix confirmed bugs from user reports, runtime failures, failing tests, or verified `/find-bugs`
-  findings. Reproduce the bug first, diagnose the real root cause, apply the smallest correct fix,
-  verify against regressions, and report exactly what changed. Loads framework-specific references
-  and category-specific playbooks as needed. Use when the user says "fix this bug", "fix the findings",
-  "/bugfix", or asks to repair a confirmed defect.
+  Fix a CONFIRMED bug at its root cause, smallest correct change only — reproduce before you touch code:
+  write a failing reproducer, diagnose the first broken assumption in the data flow, load the matching
+  framework reference and category playbook, apply the minimal fix, then verify the reproducer goes green
+  and run the regression scope. Never writes fix code without a reproducer (or a documented reason one is
+  impossible), never patches the symptom while the root cause stands, and never weakens a test to pass.
+  Use when the user says "fix this bug", "fix the findings", "/bugfix", or asks to repair a confirmed defect.
 allowed-tools:
   - Bash
   - Read
@@ -20,8 +21,9 @@ arguments:
 when_to_use: |
   Use when the task is to fix a confirmed defect, failing test, runtime error, or verified finding.
   Examples: "fix this bug", "fix finding #3", "fix the critical bugs", "repair the checkout crash",
-  "make this failing test pass without regressions". Do not use for feature requests, speculative cleanup,
-  or refactors that are not rooted in a confirmed bug.
+  "make this failing test pass without regressions". Do NOT use to discover bugs (that's find-bugs),
+  for behavior-neutral cleanup (that's code-simplify), or for feature work and speculative refactors —
+  bugfix changes only what a confirmed root cause requires.
 ---
 
 <EXTREMELY-IMPORTANT>

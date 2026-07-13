@@ -2,9 +2,14 @@
 name: create-pr
 version: 2.0.0
 description: |
-  Create a GitHub pull request from the current branch after validating branch readiness, reading
-  the real diff, drafting a precise title and body, pushing the branch, and verifying the created
-  PR. User-only workflow: use when the user explicitly asks to open or create a PR.
+  Open a GitHub pull request that matches what the branch ACTUALLY changed — validated against the
+  real base, not the branch name or an optimistic summary. Reads the full diff against the true base
+  branch, blocks on protected-branch/empty-branch/conflict-marker states, invokes `commit` first if
+  the tree is dirty, classifies type/scope/breaking-changes from the diff, runs the narrowest
+  relevant checks, pushes the branch, then creates the PR with `gh` and verifies its number, URL, and
+  state. Never fabricates passing test status or an absent breaking change, and never creates the PR
+  before the branch is on remote; falls back to a prepared title/body/compare URL if `gh` is missing.
+  Use only when the user explicitly asks to open or create a PR.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -18,9 +23,10 @@ argument-hint: "[PR guidance]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks to create or open a pull request. Examples: "create PR",
-  "/pr", "open a draft PR", or "push and make a PR". Do not use proactively, do not use for
-  branch review only, and do not use when the user only wants a commit or planning.
+  Use only when the user explicitly asks to create or open a pull request — "create PR", "/pr",
+  "open a draft PR", "push and make a PR". Do NOT use to only build a commit (commit) or for branch
+  review only; keep it explicit-user-only and confirm first when title, base, scope, or reviewer
+  intent is ambiguous.
 ---
 
 <EXTREMELY-IMPORTANT>

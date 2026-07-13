@@ -2,9 +2,13 @@
 name: map-project
 version: 2.1.0
 description: |
-  Scan the codebase and update project memory files such as `CLAUDE.md` and the imported
-  reference docs with real project-specific routes, exports, flows, and implementation guidance.
-  User-only maintenance workflow for refreshing durable AI context after meaningful project changes.
+  Refresh a SINGLE app's durable AI context — a thin `CLAUDE.md` router over discovered reference docs so
+  future sessions start knowing the repo without paying for stale guesswork. Detects the framework shape,
+  discovers the real routes, exports, flows, and subsystems from code, rewrites the imported references,
+  then keeps `CLAUDE.md` compact and always-loaded. User-only maintenance workflow that mutates durable
+  project memory: every claim is GROUNDED in the real codebase, never invented, and human-authored rules are
+  preserved rather than overwritten. Use to initialize or refresh one app's context map after meaningful
+  changes.
 allowed-tools:
   - Read
   - Edit
@@ -17,10 +21,11 @@ argument-hint: "[project scope or refresh target]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks to refresh project documentation, sync `CLAUDE.md` with
-  the real codebase, or regenerate the project context map after meaningful architecture changes.
-  Examples: "/map-project", "update CLAUDE.md for this repo", or "refresh the project docs after
-  the refactor". Do not use proactively after routine edits.
+  Use when the user explicitly asks to refresh project memory, sync `CLAUDE.md` with the real codebase, or
+  regenerate the context map after meaningful architecture changes — "/map-project", "update CLAUDE.md for
+  this repo", "refresh the docs after the refactor". Do NOT use on a Cargo workspace or package monorepo
+  (use map-project-monorepo), and do NOT run proactively after routine edits — it mutates durable project
+  memory, so it is user-only. It maps what IS; it does not legislate coding rules.
 ---
 
 <EXTREMELY-IMPORTANT>

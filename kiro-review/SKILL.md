@@ -2,10 +2,15 @@
 name: kiro-review
 version: 2.4.0
 description: |
-  Run Kiro CLI as an independent reviewer over the current branch, a specific commit, or
-  uncommitted changes. Builds a focused prompt from the real diff, runs kiro read-only via a bundled
-  helper (scoped `fs_read,execute_bash` trust), can inject stack-convention skills (`--skill <name>`),
-  and returns a compact review summary.
+  Get an INDEPENDENT second opinion from the Kiro CLI run strictly READ-ONLY — a separate reviewer
+  runtime over the real diff, with no write access to the repo. Reads the real diff (branch, a
+  commit, or uncommitted) to build a focused prompt, optionally injects the stack's convention
+  skills (`--skill`, since kiro can't load them itself), then launches kiro via the bundled helper
+  with trust scoped to `fs_read,execute_bash` so it can grep/git to verify findings but never edit.
+  Never uses `--trust-all-tools` (the auto-mode classifier dead-ends read-only tasks on it) or
+  hand-rolls the prompt through the shell; keeps secrets out, treats findings as candidates to
+  verify, and reports an explicit clean result. Use only on explicit user intent or when a
+  user-invoked workflow composes it as the kiro reviewer.
 allowed-tools:
   - Bash
   - Read
@@ -15,9 +20,11 @@ argument-hint: "[branch review, uncommitted, or specific commit]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks for a Kiro review or cross-review. Examples:
-  "/kiro-review", "run kiro on this branch", "get a second opinion from kiro". Do not use for
-  direct code editing or when the user asked for Claude or Codex instead.
+  Use only when the user explicitly asks for a Kiro review or cross-review, or when an explicit
+  user-invoked workflow composes it as the kiro reviewer — "/kiro-review", "run kiro on this
+  branch", "get a second opinion from kiro". Do NOT use for direct code editing, do NOT run it
+  unprompted, and when the user asked for a different reviewer route to the sibling that names it
+  (claude-review, codex-review); for critical code run all three and cross-reference.
 effort: high
 ---
 

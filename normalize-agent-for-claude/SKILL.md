@@ -2,11 +2,13 @@
 name: normalize-agent-for-claude
 version: 1.0.0
 description: |
-  Convert a local AGENT.md into a Claude Code optimized agent. Audits one agent against Claude Code
-  runtime behavior, creates a per-agent DAG rewrite plan with source-backed guardrails, and optionally
-  rewrites the frontmatter and system-prompt body so the agent is thinner, more role-specific, and
-  better aligned with Claude's agent runtime. Use when the user says "convert this agent to Claude",
-  "normalize this AGENT.md", "thin this agent", or "rewrite this persona for Claude Code".
+  Convert a local AGENT.md into a Claude Code optimized agent — an AUDIT-then-rewrite that ties every
+  change to real Claude agent-runtime behavior, not taste. Inventories the agent, checks it against the
+  runtime reference (the whole body becomes the system prompt; role identity stays, procedure moves to
+  skills), writes a per-agent DAG rewrite plan with source-backed guardrails, and — only when asked —
+  rewrites the frontmatter and prompt body thinner and more role-specific. Defaults to PLAN mode, never a
+  blind rewrite, uses agent-native frontmatter only, and grounds each decision in the runtime source rather
+  than inventing conventions. Use to migrate or thin an AGENT.md for Claude's agent runtime.
 allowed-tools:
   - Bash
   - Read
@@ -20,10 +22,11 @@ arguments:
   - target
   - mode
 when_to_use: |
-  Use when a repository contains custom markdown agents that should be migrated or rewritten to take
-  maximum advantage of Claude Code's agent runtime. Examples: "convert this agent to Claude",
-  "rewrite this reviewer agent for Claude Code", "thin these AGENT.md files", "add Claude-native
-  frontmatter to this agent", or "create a detailed Claude rewrite plan for this agent".
+  Use when a repository has custom markdown agents to migrate or rewrite for Claude's agent runtime —
+  "convert this agent to Claude", "rewrite this reviewer agent for Claude Code", "thin these AGENT.md
+  files", "create a detailed Claude rewrite plan for this agent". Do NOT use on a SKILL.md or skill folder
+  (use normalize-skill-for-claude), and do NOT jump straight to rewrite without the plan unless the user
+  explicitly asks — audit first, rewrite only on request.
 ---
 
 <EXTREMELY-IMPORTANT>

@@ -2,14 +2,15 @@
 name: launch-analytics
 version: 1.0.0
 description: |
-  Instrument a launch so the traffic spike is measurable and attributable — define one consistent UTM
-  scheme for every launch link, wire the key conversion events (visit → signup → activation) into GA4
-  (or the project's existing analytics), and set up a quick validation + read-out. Parameterized by the
-  launch source (e.g. producthunt, hackernews) so each link and report is correctly attributed. Shared
-  building block for the launch-skill family: invoked by `launch-product-hunt`, `launch-hacker-news`, and
-  others to close the measurement loop, or run standalone to add UTMs + event tracking to any campaign.
-  Writes the UTM map and event plan to `.ulpi/launch/<channel>/analytics.md`. Measures durable outcomes
-  (signups, activation), not just upvotes/visits; never collects PII in links or events.
+  Instrument a launch so the traffic spike is ATTRIBUTABLE, not a vanity number — one consistent UTM scheme
+  on every launch link, the conversion funnel (visit → signup → activation) wired into GA4 or the project's
+  existing analytics, and a validate + read-out step. Writes the UTM map + event plan to
+  `.ulpi/launch/<channel>/analytics.md`, parameterized by launch source (e.g. producthunt, hackernews) so
+  each link and report is correctly attributed. Shared measurement block of the launch-* family — invoked by
+  the per-platform runners (`launch-product-hunt`, `launch-hacker-news`, `launch-x`, `launch-linkedin`) to
+  close the loop, or run standalone. Measures durable outcomes (signups, activation), extends the real stack,
+  and NEVER puts PII in links or events. Use when a launch needs UTMs on every link and signup tracking, not
+  just an upvote count.
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -21,11 +22,12 @@ argument-hint: "[launch source + site, e.g. 'Product Hunt, our Next.js app with 
 arguments:
   - request
 when_to_use: |
-  Use when a launch needs attribution: a UTM scheme for the launch links, event tracking for signups and
-  activation, and a way to read the traffic spike. Examples: "add UTMs and tracking for my Product Hunt
-  launch", "how do I measure launch-day signups", "wire GA4 events for the launch". Also invoked by
-  platform launch skills to tag links and instrument conversions. Do not use for full product analytics
-  architecture or BI dashboards — this is launch-scoped attribution.
+  Use when a launch needs attribution — a UTM scheme for the links plus signup/activation tracking and a way
+  to read the spike. Examples: "add UTMs and tracking for my Product Hunt launch", "measure launch-day
+  signups", "wire GA4 events for the launch". Also invoked by the platform runners to tag links and
+  instrument conversions. Do NOT use for full product-analytics architecture or BI dashboards, and do NOT
+  write channel copy or outreach (redirect to `launch-copy` / `launch-outreach`) — this is launch-scoped
+  attribution only.
 effort: medium
 ---
 

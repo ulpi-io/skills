@@ -2,10 +2,14 @@
 name: docker
 version: 1.1.0
 description: |
-  Docker and container infrastructure skill: Dockerfiles, multi-stage builds, Compose, networking,
-  volumes, health checks, registries, BuildKit, security hardening, CI/CD integration, debugging,
-  and orchestration patterns. Use when the task touches container configuration, images, or
-  deployment infrastructure.
+  Write and change container infrastructure the way THIS project already builds and ships it, not
+  by generic defaults — a Docker reference carrying the real conventions for Dockerfiles,
+  multi-stage builds, Compose services, networking, volumes, health checks, registries, BuildKit,
+  security hardening, CI/CD integration, and debugging. Holds the invariants that keep images
+  small and safe: multi-stage builds, non-root runtime, pinned base images, no baked secrets, a
+  mandatory .dockerignore, and frozen lockfiles — so an image lands small, secure, reproducible,
+  and review-ready instead of merely building. Use when a task touches container configuration,
+  images, or deployment infrastructure.
 allowed-tools:
   - Bash
   - Read
@@ -19,8 +23,8 @@ when_to_use: |
   Use when the task touches Dockerfiles, docker-compose, container configuration, image builds,
   registry workflows, or container debugging. Examples: "write a Dockerfile", "optimize this image",
   "add a service to compose", "debug why the container won't start", "set up multi-stage build",
-  "push to ECR/GCR", "add health checks". Do not use for Kubernetes manifests (use a k8s skill)
-  or for application code that happens to run in containers.
+  "push to ECR/GCR", "add health checks". Do NOT use for Kubernetes manifests (k8s skill) or for
+  application code that happens to run in containers — it configures the container, not the app.
 effort: high
 ---
 

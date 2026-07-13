@@ -2,10 +2,12 @@
 name: browse-qa
 version: 2.0.0
 description: |
-  QA a web or app feature from a ticket, URL, acceptance criteria, or plain-language description,
-  then generate reusable browse flows for regression coverage. Uses the `browse` skill for the
-  actual browser or simulator interaction and keeps the QA loop focused on scenarios, evidence, and
-  report quality.
+  Turn a ticket, URL, or plain-language spec into an executed QA run AND reusable regression flows —
+  scenarios and evidence, not ad-hoc clicking — by decomposing the request into happy/error/edge/
+  exploratory scenarios, driving each against the real target through the `browse` skill (web or
+  iOS/Android/macOS), capturing pass/fail evidence, and recording cleanly-scoped browse flows worth
+  rerunning. Saves a flow only when it is well-scoped and valuable, never noisy half-recordings. Use
+  to QA a feature and leave behind rerunnable coverage.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -16,10 +18,11 @@ argument-hint: "[feature, ticket, URL, or QA target]"
 arguments:
   - request
 when_to_use: |
-  Use when the user asks to QA a feature, validate a story, test a page or app flow, or generate
-  reusable regression coverage. Examples: "QA this checkout flow", "validate LINEAR-123", "test
-  this localhost page", "turn this manual QA into rerunnable browse flows". Do not use for pure
-  static code review.
+  Use when the user asks to QA a feature, validate a story, test a page or app flow, or convert manual
+  QA into rerunnable coverage. Examples: "QA this checkout flow", "validate LINEAR-123", "turn this
+  manual QA into browse flows". Do NOT use for pure static code review or bug-hunting a diff (find-bugs
+  / branch-review-before-pr), nor as the low-level browser driver itself (browse); this owns the QA
+  plan, evidence, and regression artifacts, and delegates the clicking to browse.
 effort: high
 ---
 

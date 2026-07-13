@@ -2,9 +2,15 @@
 name: run-parallel-agents-feature-build
 version: 2.0.0
 description: |
-  Orchestrate multiple code-writing agents in parallel when the work contains 3 or more genuinely
-  independent build tasks. Use for execution lanes with disjoint write scope, clear task boundaries,
-  and no dependency edges that would force sequencing.
+  Run 3+ genuinely INDEPENDENT build tasks concurrently on Claude Code's real parallel agent runtime
+  — throughput without file conflicts or fake orchestration. Proves independence (disjoint write
+  scope, no dependency edges) before launching, matches each lane to the best specialized agent,
+  writes a complete self-contained brief per fresh agent, launches them all in one message with
+  background execution and worktree isolation, then conflict-checks and reviews each finished lane
+  before treating it as merged. Refuses to parallelize fewer than 3 lanes or lanes that share write
+  scope or dependencies, never assumes fresh agents inherit context, and reports partial success per
+  lane rather than a blurred merged summary. Use when an approved plan or the user gives 3+
+  independent build lanes.
 allowed-tools:
   - Agent
   - Skill
@@ -18,9 +24,11 @@ argument-hint: "[plan path or parallel-build request]"
 arguments:
   - request
 when_to_use: |
-  Use when the user explicitly asks to build in parallel, split execution across agents, or when an
-  approved task list contains 3 or more independent implementation lanes. Do not use for research,
-  debugging, or tightly coupled work that shares files, state, or sequencing requirements.
+  Use when the user explicitly asks to build in parallel, split execution across agents, or an
+  approved task list has 3 or more independent implementation lanes. Do NOT use for research or
+  debugging (run-parallel-agents-feature-debug), for tightly coupled work that shares files, state,
+  or sequencing, or for fewer than 3 lanes — just do those inline; confirm the decomposition first
+  when parallel safety is ambiguous.
 ---
 
 <EXTREMELY-IMPORTANT>

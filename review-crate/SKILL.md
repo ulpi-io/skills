@@ -2,9 +2,14 @@
 name: review-crate
 version: 2.0.0
 description: |
-  Deep-review a Rust crate end to end: read every file, run the crate tests, verify real findings,
-  and write or append a canonical issue file under the current repository's `.ulpi/issues/`
-  directory. Runs as a forked analysis workflow so the audit has separate reasoning budget.
+  Deep-audit ONE Rust crate end to end — read every file, don't sample: enumerate and read the whole
+  crate, run its `cargo test`, check the existing `.ulpi/issues/<crate>.md` to avoid duplicates, then
+  write or append evidence-backed findings (correctness, panic, validation, race, data-corruption,
+  coverage gaps) each with severity and exact file:line — runs as a forked analysis workflow with its
+  own reasoning budget, isolated from the main flow. Only valid if it actually read the entire crate;
+  grounds every finding in real file:line evidence, labels uncertain claims INFERENCE, and never invents
+  issues from intuition or writes outside this repository's issue file. Use when the user asks for a deep
+  review of a single Rust crate.
 allowed-tools:
   - Bash
   - Read
@@ -20,8 +25,9 @@ arguments:
   - crate_path
 when_to_use: |
   Use when the user explicitly asks for a deep review of one Rust crate. Examples:
-  "/review-crate crates/hgdb-storage", "audit this crate", "deep review of hgdb-common". Do not
-  use for branch diff review or broad multi-crate audits in one pass.
+  "/review-crate crates/hgdb-storage", "audit this crate", "deep review of hgdb-common". Do NOT use
+  for branch-diff review (that's find-bugs), to fix the findings it records (that's bugfix-crate), or
+  to sweep many crates in one pass — this reads one crate whole and produces its issue file.
 ---
 
 <EXTREMELY-IMPORTANT>

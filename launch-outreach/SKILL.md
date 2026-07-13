@@ -2,16 +2,16 @@
 name: launch-outreach
 version: 1.0.0
 description: |
-  Build and notify a launch supporter audience with paste-ready, platform-COMPLIANT outreach — recruit an
-  audience before launch, segment it (team · friends · existing users/waitlist · communities · public
-  followers), and notify it in well-timed waves on launch day. Drafts the messages you send to PEOPLE:
-  teaser DMs, waitlist and launch-day emails, community heads-ups, personal 1:1 DMs, and the X/LinkedIn
-  amplification posts — all grounded in the real product and free of vote-soliciting or spammy language.
-  Parameterized by a per-platform COMPLIANCE MODE the caller passes (e.g. Product Hunt: supporter waves
-  allowed, ask for feedback not upvotes; Hacker News: NO vote mobilization at all). Shared building block
-  for the launch-skill family: invoked by `launch-product-hunt`, `launch-hacker-news`, and others, or run
-  standalone. Reads `.ulpi/launch/positioning.md`. It does NOT write the on-listing copy (tagline,
-  description, first comment) — that's `launch-copy`.
+  Build and notify a launch's supporter audience with paste-ready, platform-COMPLIANT outreach — the
+  messages you send to PEOPLE, never the on-listing copy. Recruits an audience before launch, segments it
+  (team · friends · users/waitlist · communities · public followers), and notifies it in timed waves on the
+  day. Drafts the teaser DMs, waitlist and launch-day emails, community heads-ups, 1:1 DMs, and X/LinkedIn
+  amplification posts, and writes them to `.ulpi/launch/<channel>/OUTREACH.md`. Parameterized by a
+  per-platform COMPLIANCE MODE the caller passes (Product Hunt: supporter waves allowed, ask for feedback not
+  upvotes; Hacker News: NO vote mobilization at all); grounds every message in `.ulpi/launch/positioning.md`
+  and NEVER solicits/incentivizes votes or mass-spams. Shared audience block of the launch-* family, invoked
+  by the per-platform runners (`launch-product-hunt`, `launch-hacker-news`, `launch-x`, `launch-linkedin`) or
+  run standalone. Use when a launch needs who-to-tell and what-to-say, compliant to each platform's rules.
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -20,12 +20,12 @@ argument-hint: "[platform + audience to reach, e.g. 'Product Hunt launch, ~200 e
 arguments:
   - request
 when_to_use: |
-  Use when planning who to tell about a launch and what to say to them — recruiting a pre-launch audience,
-  segmenting supporters, and drafting compliant DMs/emails/community posts/social broadcasts. Examples:
-  "who do I notify for my launch and what do I say", "draft my launch-day emails", "write the supporter
-  outreach without breaking the rules". Also invoked by platform launch skills, which pass a compliance
-  mode. Do not use to write the product listing copy itself (tagline, description, first comment) — that's
-  `launch-copy`; and do not use to manipulate votes — this skill refuses that.
+  Use when planning who to tell about a launch and what to say — recruiting a pre-launch audience, segmenting
+  supporters, and drafting compliant DMs/emails/community posts/social broadcasts. Examples: "who do I notify
+  for my launch and what do I say", "draft my launch-day emails", "write the supporter outreach without
+  breaking the rules". Also invoked by the platform runners, which pass a compliance mode. Do NOT use to
+  write the listing copy — tagline, description, first comment (redirect to `launch-copy`) — and do NOT use
+  to manipulate votes; this skill refuses that.
 effort: high
 ---
 

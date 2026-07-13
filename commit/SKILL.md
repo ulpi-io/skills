@@ -2,9 +2,14 @@
 name: commit
 version: 2.0.0
 description: |
-  Create one or more git commits from the current working tree after reading the diff, scanning
-  for obvious blockers, running the narrowest relevant checks, staging explicit files, and
-  verifying the result. User-only workflow: use when the user explicitly asks to commit changes.
+  Create one or more intentional git commits from the working tree — grounded in the REAL diff,
+  never a guessed message over blind staging. Reads `git diff HEAD` and branch/log context first,
+  scans the changed files for blockers (secrets, conflict markers, stray or debug artifacts), runs
+  the narrowest relevant checks for the changed surface, stages files EXPLICITLY by name, drafts a
+  Conventional Commit subject, then verifies the resulting hash and any leftover working-tree state.
+  Never `git add -A`/`.`, `--no-verify`, `--amend`, or co-author trailers unless asked; stops on
+  secrets or conflict markers and asks before an ambiguous split rather than reporting a clean tree
+  that isn't. Use only when the user explicitly asks to commit.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -17,9 +22,10 @@ argument-hint: "[commit guidance]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks to create a git commit. Examples: "commit this",
-  "/commit", "make a commit", or "commit the current changes". Do not use proactively, do not
-  use for PR creation, and do not use when the user only wants status, review, or planning.
+  Use only when the user explicitly asks to create a git commit — "commit this", "/commit",
+  "make a commit", "commit the current changes". Do NOT use to open a pull request (create-pr) or
+  when the user only wants status, review, or planning; keep it explicit-user-only and confirm
+  first when the split or file inclusion is ambiguous.
 ---
 
 <EXTREMELY-IMPORTANT>

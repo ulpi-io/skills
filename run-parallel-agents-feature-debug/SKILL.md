@@ -2,9 +2,15 @@
 name: run-parallel-agents-feature-debug
 version: 2.0.0
 description: |
-  Orchestrate multiple debugging agents in parallel when there are 3 or more genuinely independent
-  failures, bugs, or broken subsystems. Use for isolated debug lanes with disjoint root causes,
-  disjoint write scope, and no sequencing requirements.
+  Diagnose and fix 3+ genuinely INDEPENDENT failures concurrently on Claude Code's real parallel
+  agent runtime — without splitting one root cause into conflicting investigations. Proves the
+  failures don't share a root cause (same dependency/config/migration/deploy across traces) before
+  launching, matches each lane to the best specialized agent, briefs it with real evidence (failing
+  output, stack traces, test names), launches all lanes in one message with background execution and
+  worktree isolation, then reruns each original failure and conflict-checks the fixes. Refuses to
+  parallelize fewer than 3 lanes or symptoms that may share a cause, consolidates lanes that
+  converge on one root cause instead of claiming independent wins, and reports partial success
+  honestly. Use when the user gives 3+ clearly independent failures to fix in parallel.
 allowed-tools:
   - Agent
   - Read
@@ -17,10 +23,11 @@ argument-hint: "[debug request or problem set]"
 arguments:
   - request
 when_to_use: |
-  Use when the user explicitly asks to debug or fix multiple unrelated issues in parallel, or when
-  there are 3 or more clearly independent failures that can be investigated separately. Do not use
-  when symptoms may share a root cause, when sequencing matters, or when the problem has not been
-  decomposed yet.
+  Use when the user explicitly asks to debug or fix multiple unrelated issues in parallel, or there
+  are 3 or more clearly independent failures that can be investigated separately. Do NOT use when
+  symptoms may share a root cause (diagnose that first), when sequencing matters, for undecomposed
+  problems, or to build features (run-parallel-agents-feature-build); confirm clustering first when
+  independence is uncertain.
 ---
 
 <EXTREMELY-IMPORTANT>

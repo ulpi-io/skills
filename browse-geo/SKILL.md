@@ -2,10 +2,12 @@
 name: browse-geo
 version: 1.0.0
 description: |
-  Generative Engine Optimization (GEO) monitoring — track brand and domain visibility
-  across AI-powered search engines: Google AI Overviews, Perplexity, and ChatGPT Search.
-  Run multi-query sweeps, detect citations, measure domain presence, and generate
-  cross-engine visibility reports. Uses the browse CLI with camoufox for stealth.
+  Track brand and domain VISIBILITY across AI search engines over a whole query set — Generative
+  Engine Optimization monitoring, not a one-page audit — sweeping each query through Google AI
+  Overviews, Perplexity, and authenticated ChatGPT Search via the `browse` CLI (camoufox for Google),
+  recording each citation into a cross-engine visibility matrix with rates, average position, and
+  competing domains. Reports point-in-time truth: ambiguous citations flagged uncertain, nothing
+  fabricated. Use to monitor a brand's AI-answer presence across engines and queries.
 allowed-tools:
   - Bash
   - Read
@@ -14,13 +16,11 @@ argument-hint: "[brand queries or domain to monitor]"
 arguments:
   - request
 when_to_use: |
-  Use when the user asks for GEO monitoring, generative engine optimization, AI visibility
-  tracking, brand monitoring in AI search, or says /browse-geo. Examples:
-  - "Check if my domain appears in Google AI Overviews for these queries"
-  - "Monitor brand visibility across Perplexity and ChatGPT Search"
-  - "Run a GEO audit for our product across AI search engines"
-  - "Track which domains get cited in AI-generated answers"
-  Do NOT use for traditional SEO (rankings, meta tags, crawlability) — use browse-seo instead.
+  Use when the user wants GEO monitoring, AI-visibility tracking, or brand monitoring across AI search
+  — "does my domain appear in AI Overviews for these queries", "monitor brand visibility across
+  Perplexity and ChatGPT". Do NOT use for traditional SEO — rankings, meta, crawlability (browse-seo)
+  — or a one-page answerability audit (browse-aeo); this is a repeatable multi-query, multi-engine
+  presence sweep, not a single-page check.
 effort: high
 ---
 

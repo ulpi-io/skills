@@ -2,10 +2,12 @@
 name: laravel
 version: 2.1.0
 description: |
-  Laravel API and backend reference skill: thin controllers, Form Requests, Action-driven business
-  logic, API Resources, strict Eloquent usage, queues, caching, auth, observability, and the
-  Laravel AI ecosystem. Use for Laravel application code, routes, models, jobs, tests, and related
-  backend workflow changes.
+  Write and change Laravel the way THIS project already does it, not by framework defaults — a
+  backend reference carrying the real controller/Action/Resource boundaries and conventions for
+  thin controllers, Form Request validation, strict Eloquent, API Resources, Horizon queues,
+  caching, auth, observability, and the Laravel AI/Boost/MCP stack, so a change lands idiomatic
+  and review-ready instead of merely working. Use when a task touches this project's Laravel code
+  and should follow its backend conventions rather than framework defaults.
 allowed-tools:
   - Bash
   - Read
@@ -19,8 +21,9 @@ when_to_use: |
   Use when the task touches Laravel application code, routes, controllers, models, actions,
   requests, resources, jobs, notifications, tests, or Laravel AI/MCP integrations. Examples:
   "add a Laravel API endpoint", "fix this model validation", "create a queued job", "wire up a
-  Laravel MCP server". Do not use for Filament-specific admin work when the Filament skill is the
-  better match.
+  Laravel MCP server". Do NOT use for Filament-specific admin panels (laravel-filament) or for
+  non-Laravel code — it supplies the conventions a change follows, not the bug hunt, plan, or
+  build itself.
 effort: high
 ---
 

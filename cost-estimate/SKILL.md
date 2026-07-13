@@ -2,10 +2,15 @@
 name: cost-estimate
 version: 2.0.0
 description: |
-  Estimate the development cost of a codebase, branch diff, or single commit by combining repo
-  metrics, category-based productivity rates, organizational overhead, and optional Claude ROI.
-  Runs as a forked analysis workflow so the estimate has separate reasoning budget and stays
-  isolated from the main task flow.
+  Estimate what a codebase, branch diff, or single commit would COST to build — evidence-driven, not a
+  guess: measure the real scope with the helper scripts (LOC counter + git session analyzer), classify
+  every source line into one productivity bucket, run the cost calculator for engineering hours,
+  organizational overhead, calendar and team-cost views plus Claude ROI, and sanity-check the effective
+  lines/hour — runs as a forked analysis workflow with its own reasoning budget, isolated from the main
+  flow. Keeps raw engineering hours separate from overhead and team multipliers, never presents a number
+  without scope, assumptions, and a confidence level, and never claims region-specific market rates
+  unless the user asked and that research was actually done. Use when the user asks to estimate
+  development cost, effort, engineering hours, or ROI.
 allowed-tools:
   - Bash
   - Read
@@ -20,9 +25,9 @@ arguments:
 when_to_use: |
   Use when the user asks to estimate development cost, effort, engineering hours, or ROI for the
   current repository, a branch diff, or a specific commit. Examples: "estimate cost", "how much
-  would this codebase cost to build", "/cost-estimate branch:feat/foo", or "estimate this
-  commit". Do not use for budgeting hosted infrastructure, pricing SaaS plans, or generating a
-  project execution DAG.
+  would this codebase cost to build", "/cost-estimate branch:feat/foo", or "estimate this commit".
+  Do NOT use to budget hosted infrastructure, price SaaS plans, or to generate a project execution DAG
+  (that's plan-to-task-list-with-dag) — this prices building the code, nothing else.
 ---
 
 <EXTREMELY-IMPORTANT>

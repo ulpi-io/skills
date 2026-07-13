@@ -2,9 +2,12 @@
 name: ast-grep
 version: 2.0.0
 description: |
-  Structural code search via AST patterns. Use when grep/ripgrep cannot express the pattern
-  reliably and you need to match code by syntax shape instead of text. Requires the `ast-grep`
-  CLI.
+  Search code by SYNTAX SHAPE, not by text — matching structures grep and regex can't reliably
+  express — with the `ast-grep` CLI: parse to an AST and match with patterns, node kinds, relational
+  rules (`inside`/`has`), and metavariables, inspecting the tree via `--debug-query` and proving the
+  rule on a minimal example before it runs repo-wide. Requires the `ast-grep` CLI; results are
+  spot-checked, not returned as unverified noise. Use when the target is a code structure rather than
+  a literal string.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -16,9 +19,11 @@ argument-hint: "[pattern description and language]"
 arguments:
   - request
 when_to_use: |
-  Use when the user asks to find code by structure rather than by exact text. Examples: "find all
-  async functions without try/catch", "find React hooks called conditionally", or "search for
-  this AST pattern". Do not use for plain literal/regex search when Grep is enough.
+  Use when the user wants to find code by structure — "async functions without try/catch", "React
+  hooks called conditionally", "match this AST pattern", "every call shaped like X". Do NOT use for
+  plain literal or regex search that Grep already handles, or for semantic/architecture discovery like
+  "where is auth handled" or dependency tracing (codemap); ast-grep is for exact syntactic shape, not
+  meaning or text.
 effort: high
 ---
 

@@ -2,9 +2,12 @@
 name: rust
 version: 2.1.0
 description: |
-  Rust systems-programming reference skill for storage engines, binary formats, Arrow/DataFusion,
-  search and vectors, async concurrency, testing, and unsafe discipline. Use when the task touches
-  Rust crates and should follow the workspace's systems-level engineering conventions.
+  Write and change Rust the way THIS workspace already does it, NOT by generic defaults — a
+  systems-programming reference carrying the real crate boundaries, error model, and conventions for
+  storage engines, binary formats, Arrow/DataFusion, search and vector indexing, async concurrency,
+  testing, and unsafe discipline, so a change lands idiomatic and review-ready instead of merely
+  compiling. Use when a task touches this workspace's Rust crates and should follow its systems-level
+  conventions rather than boilerplate.
 allowed-tools:
   - Bash
   - Read
@@ -18,7 +21,9 @@ when_to_use: |
   Use when the task touches Rust crates, Cargo manifests, async/concurrency code, storage layers,
   binary formats, Arrow/DataFusion, vector search, geo indexing, or systems-level testing. Examples:
   "fix this Rust crate", "add a storage-engine feature", "update this async path", "review this
-  binary format code".
+  binary format code". Do NOT use for non-Rust code, and do not treat it as the action itself — it
+  supplies the conventions a change follows; the actual bug hunt (find-bugs / review-crate), plan, or
+  build is still its own skill.
 effort: high
 ---
 

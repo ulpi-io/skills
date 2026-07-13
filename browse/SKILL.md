@@ -2,11 +2,12 @@
 name: browse
 version: 4.0.0
 description: |
-  Fast web browsing, web app testing, and native app automation for AI coding agents.
-  Persistent headless Chromium for web. Android, iOS, and macOS app automation via accessibility APIs.
-  Browse URLs, read content, click elements, fill forms, run JavaScript, take screenshots,
-  automate native apps — all through the same CLI and @ref workflow. ~100ms per command.
-  Auto-installs Android toolchain. Works with Claude Code, Cursor, Cline, Windsurf, and any agent that can run Bash.
+  Drive a REAL browser and native apps the way a user would — not fetch raw HTML — through the
+  persistent `browse` CLI: one long-lived headless Chromium (plus iOS, Android, and macOS apps via
+  accessibility APIs) where goto, snapshot, click, fill, JavaScript, and screenshot share session
+  state at ~100ms/command and interaction rides stable @eN refs, not brittle selectors. Use when
+  verifying, navigating, or automating live web or app behavior beyond what code-reading or a raw
+  fetch reveals.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -15,10 +16,11 @@ argument-hint: "[URL, page flow, or web verification task]"
 arguments:
   - request
 when_to_use: |
-  Use when the user wants browser-based verification, web navigation, UI interaction, or page
-  inspection that goes beyond static code reading. Examples: "test this local page", "open this
-  site and click through", "verify the login flow", or "inspect console/network issues". Do not
-  use for pure HTTP fetching or when no browser interaction is needed.
+  Use when the task needs live browser or app behavior — navigation, UI interaction, form flows, or
+  rendered-page/console/network inspection. Examples: "test this local page", "click through this
+  flow", "verify the login", "inspect console errors". Do NOT use for pure HTTP fetching, when a site
+  blocks you and needs anti-detection (browse-stealth), or for the specialized audits (browse-seo /
+  browse-aeo / browse-geo) and QA-flow capture (browse-qa); this is the general driver they build on.
 effort: high
 ---
 

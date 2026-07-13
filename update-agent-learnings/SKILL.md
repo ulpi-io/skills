@@ -2,9 +2,13 @@
 name: update-agent-learnings
 version: 2.0.0
 description: |
-  Extract a validated learning from the current session, store it in the central agent learnings
-  file, and sync the resulting Learnings section into the agent definitions used by the supported
-  CLIs. User-only maintenance workflow for durable agent guidance.
+  Propagate ONE validated learning from this session into durable AGENT guidance — extract the smallest
+  useful rule, classify its scope (Global / Claude Code Only / Agent-Specific), store it once in the central
+  agent-learnings file, and sync the regenerated `## Learnings` section into every live agent definition
+  across the CLI trees present. User-only maintenance workflow that mutates durable agent prompts: it grounds
+  the rule in what THIS session actually revealed, never invents, confirms scope and wording first, and keeps
+  "Claude Code Only" learnings out of subagent prompts. Use to record an agent-behavior rule so future agents
+  inherit it.
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -18,10 +22,11 @@ argument-hint: "[learning candidate or session focus]"
 arguments:
   - request
 when_to_use: |
-  Use only when the user explicitly asks to record an agent-behavior learning, a subagent coding
-  rule, or an agent-specific pattern from the current session. Examples: "/update-agent-learnings",
-  "record this agent learning", or "sync this rule into the agents". Do not use for skill-design
-  learnings, Claude project-memory rules, or direct agent rewrites.
+  Use when the user explicitly asks to record an agent-behavior learning, subagent coding rule, or
+  agent-specific pattern from this session — "/update-agent-learnings", "record this agent learning", "sync
+  this rule into the agents". Do NOT use for skill-design learnings (update-skill-learnings), main-agent
+  CLAUDE.md workflow rules (update-claude-learnings), or a direct agent rewrite now
+  (normalize-agent-for-claude); confirm before writing — it mutates durable agent prompts and is user-only.
 ---
 
 <EXTREMELY-IMPORTANT>

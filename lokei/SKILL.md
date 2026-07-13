@@ -2,9 +2,12 @@
 name: lokei
 version: 2.0.0
 description: |
-  Run local web and app development surfaces behind named HTTPS `.test` domains with `lokei`, and
-  optionally expose them through tunnels. Use for local HTTPS setup, framework-aware dev-server
-  startup, tunnel sharing, Docker Compose HTTPS, and lokei diagnostics.
+  Put local dev surfaces behind trusted HTTPS `.test` domains — real certs and DNS, not
+  localhost:port — with the `lokei` CLI: framework-aware `run`, public tunnels via `share`/`--expose`,
+  `docker up` and `.test.yaml` multi-service orchestration, and `doctor`/`routes`/`logs` diagnostics,
+  backed by a one-time setup that mints and trusts a local CA and wires `.test` DNS and port
+  forwarding. Never auto-runs setup, service-install, or uninstall — those wait for approval. Use for
+  local HTTPS, named domains, tunnel sharing, or lokei diagnosis.
 allowed-tools:
   - AskUserQuestion
   - Bash
@@ -13,9 +16,11 @@ argument-hint: "[run, share, docker, diagnose, or tunnel request]"
 arguments:
   - request
 when_to_use: |
-  Use when the user asks to run a project on a `.test` domain, set up local HTTPS, expose a local
-  server publicly, or debug `lokei` setup. Examples: "run my dev server with HTTPS", "give this
-  app a .test domain", "share localhost", "why is lokei broken?".
+  Use when the user wants to run a project on a `.test` domain, set up local HTTPS, expose localhost
+  publicly, or debug lokei. Examples: "run my dev server with HTTPS", "give this app a .test domain",
+  "share localhost", "why is lokei broken?". Do NOT presume a public tunnel when local-only HTTPS is
+  enough, and do NOT auto-run the one-time setup or uninstall flows — confirm the mode first, then run
+  the smallest command that matches.
 effort: high
 ---
 

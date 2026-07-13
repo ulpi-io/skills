@@ -2,10 +2,12 @@
 name: browse-aeo
 version: 1.0.0
 description: |
-  Answer Engine Optimization (AEO) audit and SERP analysis for AI-generated answers.
-  Analyzes pages for AEO readiness (structured data, FAQ patterns, heading hierarchy,
-  meta quality) and checks how queries appear in AI-powered search results (Google AI
-  Overviews, Perplexity, ChatGPT Search). Uses the browse CLI for all page interaction.
+  Score a page for how well AI answer engines can CITE it — Answer Engine Optimization, not classic
+  rankings — by pulling structured data, meta, headings, and answer-shaped content via the `browse`
+  CLI (schema/meta/headings/text) into a weighted 0-100 audit, plus a SERP mode that reads Google AI
+  Overviews, Perplexity, and ChatGPT Search snapshots to see who actually gets cited. Never fabricates
+  a score: an un-evaluable dimension is marked N/A, and "appears in AI Overviews" is asserted only
+  after a real SERP check. Use to make a page answer-ready or to check its AI-answer visibility.
 allowed-tools:
   - Bash
   - Read
@@ -13,9 +15,11 @@ argument-hint: "[URL to audit or search query to analyze]"
 arguments:
   - request
 when_to_use: |
-  Use when the user asks for AEO audit, answer engine optimization, AI search optimization,
-  AI Overview analysis, Perplexity citation check, or says /browse-aeo. Also use when the
-  user wants to understand how a page or domain appears in AI-generated answers.
+  Use when the user wants an AEO audit, AI-search readiness, AI Overview / Perplexity citation
+  analysis, or "how does this page show up in AI answers". Examples: "AEO audit this URL", "is my
+  domain cited in AI Overviews for this query". Do NOT use for traditional on-page SEO like meta
+  length, crawlability, and Core Web Vitals (browse-seo), or ongoing cross-engine brand-visibility
+  tracking (browse-geo); this audits one page's answerability, not rankings or a monitoring sweep.
 effort: high
 ---
 

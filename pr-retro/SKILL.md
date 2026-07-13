@@ -2,10 +2,15 @@
 name: pr-retro
 version: 2.0.0
 description: |
-  Analyze the current feature branch against its base, compute branch-health metrics, scan for
-  common pre-PR issues, and deliver a merge-readiness verdict with an optional JSON snapshot. Runs
-  as a forked analysis workflow so the retro has separate reasoning budget and stays isolated from
-  the main task flow. Use when the user asks for branch health, pre-PR analysis, or `/pr-retro`.
+  Read a feature branch's merge-readiness from its actual git data — measured metrics, not vibes:
+  collect raw git output for the branch vs base, compute branch-health metrics (size class, test ratio,
+  focus, drift, sessions, hotspots), scan the diff for pre-PR artifacts (secrets, `.only`, conflict
+  markers, debug lines, TODOs), then render a GREEN / YELLOW / RED verdict with per-signal
+  recommendations — runs as a forked analysis workflow with its own reasoning budget, isolated from the
+  main flow. Every metric is derived from concrete git data, never estimated; the verdict follows the
+  documented signal thresholds and never reports GREEN while a blocking finding stands; read-only apart
+  from the optional JSON snapshot, never touching code or git state. Use when the user asks for branch
+  health, pre-PR analysis, or `/pr-retro`.
 allowed-tools:
   - Bash
   - Read
@@ -19,10 +24,11 @@ argument-hint: "[--quick] [--base <branch>]"
 arguments:
   - request
 when_to_use: |
-  Use when the user explicitly asks for a branch retrospective, pre-PR check, branch health audit,
-  or merge-readiness review. Examples: "pr retro", "branch health check", "pre-PR analysis",
-  "/pr-retro --quick", or "/pr-retro --base dev". Do not use for code fixing, deep bug hunting,
-  or PR creation itself.
+  Use when the user asks for a branch retrospective, pre-PR check, branch health audit, or
+  merge-readiness review. Examples: "pr retro", "branch health check", "pre-PR analysis",
+  "/pr-retro --quick", or "/pr-retro --base dev". Do NOT use for code fixing (that's bugfix), deep bug
+  hunting (that's find-bugs), or for creating the PR itself — pr-retro measures and reports, it changes
+  nothing.
 ---
 
 <EXTREMELY-IMPORTANT>

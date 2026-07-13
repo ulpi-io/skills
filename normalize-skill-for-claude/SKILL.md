@@ -2,11 +2,14 @@
 name: normalize-skill-for-claude
 version: 1.0.0
 description: |
-  Convert a local skill into a Claude Code optimized shape. Audits one skill folder or SKILL.md
-  against Claude Code runtime behavior, creates a per-skill DAG rewrite plan with source-backed
-  guardrails, and optionally rewrites frontmatter, body, and references for better routing,
-  smaller prompt footprint, and safer execution. Use when the user says "convert this skill to Claude",
-  "normalize this SKILL.md", "make this skill Claude-native", or "rewrite this skill for Claude Code".
+  Convert a local skill into a Claude Code optimized shape — an AUDIT-then-rewrite that ties every change
+  to real Claude skill-runtime behavior, treating FRONTMATTER as the highest-leverage routing surface.
+  Inventories the skill, checks it against the runtime reference (Claude routes and budgets skills from
+  metadata first), writes a per-skill DAG rewrite plan with source-backed guardrails, and — only when
+  asked — rewrites frontmatter, body, and references for cheaper routing and safer execution. Defaults to
+  PLAN mode, never a blind rewrite, uses skill-native frontmatter only, and preserves structural content
+  (routing tables, guardrail rules) rather than stripping it as bulk. Use to migrate or restructure a
+  SKILL.md for Claude's skill runtime.
 allowed-tools:
   - Bash
   - Read
@@ -20,10 +23,11 @@ arguments:
   - target
   - mode
 when_to_use: |
-  Use when a repository contains custom skills that should be migrated or rewritten to take maximum
-  advantage of Claude Code's skill runtime. Examples: "convert this skill to Claude", "rewrite /start
-  for Claude Code", "make these skills Claude-native", "add proper when_to_use and paths metadata",
-  "split this huge skill into references", or "create a detailed Claude rewrite plan for this skill".
+  Use when a repository has custom skills to migrate or rewrite for Claude's skill runtime — "convert this
+  skill to Claude", "make these skills Claude-native", "add proper when_to_use and paths metadata", "split
+  this huge skill into references". Do NOT use on an AGENT.md or agent definition (use
+  normalize-agent-for-claude), and do NOT jump straight to rewrite without the plan unless the user
+  explicitly asks — audit first, rewrite only on request.
 ---
 
 <EXTREMELY-IMPORTANT>

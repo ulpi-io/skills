@@ -2,10 +2,14 @@
 name: start
 version: 2.0.0
 description: |
-  Internal conversation-entry router for Claude Code. Performs a lightweight intake pass at the
-  start of substantive work: decide whether a more specific skill should be invoked first, whether
-  specialized agent delegation is warranted, how much context is actually needed, and whether the
-  task needs planning or can proceed directly. Not a user-facing slash command.
+  Route the start of substantive work to the right execution path — a lightweight INTERNAL intake
+  pass, not a user-facing command and not a universal constitution. Answers four questions fast:
+  does a more specific skill own this, is specialized agent delegation warranted, what is the
+  minimum context needed to avoid a blind edit, and does the work need DAG planning or can it
+  proceed directly — then states the chosen path in one concise update. Invokes the matching skill
+  instead of merely naming it, gathers only the minimum context (no full capability inventory unless
+  asked), and hands real planning to `plan-to-task-list-with-dag` rather than becoming a planner
+  itself. Use internally at task start when no more specific skill has already matched.
 allowed-tools:
   - Read
   - Glob
@@ -15,9 +19,9 @@ allowed-tools:
 user-invocable: false
 when_to_use: |
   Use internally at the beginning of substantive tasks when no more specific skill has already been
-  invoked. Examples: "build X", "fix Y", "implement Z", "review this plan". Do not use for casual
-  chat, pure summarization, or when a more specific skill clearly matches and can be invoked
-  immediately.
+  invoked — "build X", "fix Y", "implement Z", "review this plan". Do NOT use for casual chat, pure
+  summarization, or when a more specific skill clearly matches and can be invoked immediately (invoke
+  that skill directly); it is an internal router, not a user-facing slash command.
 ---
 
 <EXTREMELY-IMPORTANT>

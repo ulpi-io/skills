@@ -2,9 +2,12 @@
 name: nextjs
 version: 2.1.0
 description: |
-  Next.js App Router reference skill covering pages, layouts, components, metadata, i18n,
-  API-backed data access, server actions, caching, accessibility, analytics, and testing. Use when
-  the task touches a Next.js code path and should follow the project's App Router conventions.
+  Build Next.js the way THIS project's App Router already works, not by generic framework
+  defaults — a reference carrying the real server/client boundaries and conventions for pages and
+  layouts, awaited async request APIs, the project API-client data layer, server actions, caching
+  and ISR, metadata and SEO, i18n, accessibility, analytics, and testing, so a change lands
+  idiomatic and review-ready instead of merely rendering. Use when a task touches this project's
+  Next.js App Router surface and should follow its conventions rather than generic defaults.
 allowed-tools:
   - Bash
   - Read
@@ -17,7 +20,9 @@ arguments:
 when_to_use: |
   Use when the task touches Next.js pages, layouts, components, routing, metadata, server actions,
   caching, i18n, logging, analytics, or tests. Examples: "build this App Router page", "fix this
-  server action", "update metadata", "wire translations", "change caching behavior".
+  server action", "update metadata", "wire translations", "change caching behavior". Do NOT use
+  for standalone Node or Nest backends with no Next.js surface (nodejs / nestjs), or for non-Next
+  React apps — it supplies App Router conventions, not the bug hunt, plan, or build itself.
 effort: high
 ---
 

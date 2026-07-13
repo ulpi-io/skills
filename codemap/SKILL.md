@@ -2,9 +2,11 @@
 name: codemap
 version: 2.0.0
 description: |
-  Search and analyze a codebase with the `codemap` CLI: semantic search, symbol lookup,
-  dependency tracing, file summaries, importance ranking, coupling metrics, and cycle detection.
-  Use when the user wants architecture-aware code discovery rather than plain text search.
+  Discover code by MEANING and DEPENDENCY structure, not by matching text — with the `codemap` CLI:
+  hybrid vector+BM25 semantic search, symbol lookup, incoming/outgoing dependency tracing, file
+  summaries, PageRank importance, afferent/efferent coupling, and cycle detection over an indexed
+  repo. Only authoritative when the index exists and is fresh — a stale or empty index is called out,
+  not trusted. Use for architecture-aware code discovery instead of plain text search.
 allowed-tools:
   - Bash
   - Read
@@ -12,10 +14,11 @@ argument-hint: "[search query, symbol, file path, or analysis goal]"
 arguments:
   - request
 when_to_use: |
-  Use when the user asks to search code semantically, find symbols, trace dependencies, inspect
-  file summaries, check coupling, rank important files, or detect cycles. Examples: "where is auth
-  handled", "find the UserService symbol", "what depends on this file", "show circular deps". Do
-  not use when exact `grep` or `glob` is enough.
+  Use when the user wants semantic search, symbol finding, dependency tracing, file summaries,
+  coupling/importance ranking, or cycle detection. Examples: "where is auth handled", "find the
+  UserService symbol", "what depends on this file", "show circular deps". Do NOT use when exact `grep`
+  or `glob` is enough, or when the target is a precise syntactic shape rather than meaning (ast-grep);
+  codemap answers architecture questions, not literal or structural pattern matches.
 effort: high
 ---
 
