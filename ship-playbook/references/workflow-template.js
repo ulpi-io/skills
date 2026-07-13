@@ -21,7 +21,7 @@
 //            taskReview,                               // 'skip' | 'native' | 'codex' | 'kiro'  (who REVIEWS each built task)
 //            implReview,                               // 'skip' | 'native' | 'codex' | 'kiro'  (impl review after all tasks)
 //            auditScriptPath, availableAgents, allowGeneralFallback,
-//            warmWorktree,                             // false → plain per-worktree install (default true: CoW-seed deps/artifacts + sccache, any stack)
+//            warmWorktree,                             // false → plain per-worktree install (default true: CoW-seed deps/artifacts, kache for Rust, any stack)
 //            planPath | plan,                          // RESUME: an already-reviewed DAG plan (path or parsed object)
 //            workflowId, statusFile, trackStatus }     // LIVE STATUS: id + absolute .ulpi/workflows/<id>.json path
 //   (auditScriptPath is optional — see the comment at its CFG read below. planPath/plan are optional —
@@ -80,8 +80,9 @@ const MAX_PARALLEL = 6                        // concurrent reviewers / verifier
 // Every build/fix engineer runs isolation:'worktree' = a FRESH checkout with EMPTY node_modules/
 // vendor/Pods/target, so each cold-installs or cold-compiles the WHOLE dependency set — the same work
 // per lane, per layer, and again on resume. Instead we SEED each worktree from the primary checkout at
-// ROOT via copy-on-write (instant, independent copy) using ONE tested script (below), and for Rust add
-// a shared sccache compiler cache. Zero extra agents/tokens — local disk/CPU only, no Claude round-trips.
+// ROOT via copy-on-write (instant, independent copy) using ONE tested script (below); for Rust the repo's
+// kache compiler cache (rustc-wrapper, wired in .cargo/config.toml) shares crate compilation across
+// worktrees via hardlinks. Zero extra agents/tokens — local disk/CPU only, no Claude round-trips.
 // Default on; CFG.warmWorktree=false restores today's plain per-worktree install exactly.
 const WARM_WORKTREE = CFG.warmWorktree !== false
 const ENV_AND_SERVICES = `If your tests need env, the repo .env (when present) is at ${ROOT}/.env — symlink or copy it into the worktree (NEVER print, log, or inline secret VALUES; reference by location only). DB/Temporal/object-store services are expected running on the host — if a service the validate needs is unreachable, say so in notes and treat its failures as environment (preexisting), not your slice.`
@@ -133,8 +134,8 @@ if [ -f Cargo.toml ]; then          # Rust / Cargo
   # via .cargo/config.toml (rustc-wrapper = "kache"). When present: do NOT clone target/ (redundant, multi-GB,
   # and can TEAR if ROOT is mid-build) and do NOT export RUSTC_WRAPPER (an env export OVERRIDES the config and
   # DEFEATS the cache) — just build; kache restores + populates automatically (it auto-strips incremental
-  # flags). Verified on hgDB: same crate at a DIFFERENT worktree path restored from ROOT's store (sccache gave
-  # 0% cross-worktree hits here; kache does not). Needs rustc >= 1.95.
+  # flags). Verified on hgDB: the same crate built at a DIFFERENT worktree path restores from ROOT's store —
+  # path-independence is exactly why it hits across worktrees (measured ~97% here). Needs rustc >= 1.95.
   if grep -qs 'rustc-wrapper[[:space:]]*=[[:space:]]*"kache"' .cargo/config.toml 2>/dev/null || command -v kache >/dev/null 2>&1; then
     say "Rust: kache wired (path-independent hardlink cache) — NO target/ clone; validate restores crates from the shared store"
   # FALLBACK (no kache): CoW-seed the warm target/ from ROOT. cp -c forks-on-write so ROOT stays pristine;
@@ -1076,8 +1077,8 @@ await cleanupWorktrees('preflight')
 // build), so its cost hides behind planning latency and is normally finished before the build fans
 // out. Best-effort: a failure just means engineers fall back to a normal install. Awaited at the
 // build gate below, where it is almost always already resolved (~0 added wall-clock). NOTE: this mainly
-// helps FRESH plan runs — on RESUME, planning is near-instant (little to overlap) and sccache is already
-// warm from earlier runs, so the warm is a cheap near-noop there; kept because it is harmless.
+// helps FRESH plan runs — on RESUME, planning is near-instant (little to overlap) and the kache store is
+// already warm from earlier runs, so the warm is a cheap near-noop there; kept because it is harmless.
 const warmPromise = WARM_WORKTREE
   ? rAgent(warmBrief, { label: 'worktree-warm', phase: 'Build', schema: STATUS_ACK, agentType: 'general-purpose' }).catch(() => null)
   : null
