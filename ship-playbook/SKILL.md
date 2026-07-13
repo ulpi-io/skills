@@ -1,25 +1,25 @@
 ---
 name: ship-playbook
-version: 1.14.0
+version: 1.16.0
 description: |
-  Take one feature request and run the entire delivery playbook automatically: plan it, review the
-  plan, build it task by task, review the build, and optionally audit it for launch — then return the
-  verified findings as feedback (one pass, no autonomous loop; the user decides on any fix round). It
-  chains the existing skills as one runnable Workflow:
-  plan-to-task-list-with-dag (plan + assign a specialist agent per task) → plan-founder-review →
-  a specialist engineer/reviewer build across the DAG → a full claude ∥ codex/kiro cross-review →
-  go-live-audit. It FOLLOWS the DAG — every task declares its dependencies, the plan's layers must be a
-  topological order, plan review blocks an incomplete/mis-ordered graph, and the build aborts a plan that
-  would run a task before its dependencies integrate (never building on a broken base). Per-task review is
-  SLICE-SCOPED — it judges only that task's own change against its acceptance criteria and attributes
-  whole-codebase end-state gaps to the task that owns them (impl review is the end-state gate), so the
-  build isn't drowned in false blocks. Each run writes a live status file at .ulpi/workflows/<id>.json
-  (overall + per-phase + per-task), with a bundled journal reader (helpers/wf-status.mjs) for at-a-glance
-  status / stop / resume. Up front it shows what skills/agents would help (with install commands), then
-  asks which gates to run and at what depth — code writing and each review independently pick native /
-  codex / kiro (reviews can skip; writer and reviewer can differ), so the user controls quality vs token
-  cost. Use when the user wants "prompt → planned, built, reviewed, audited" in one go
-  instead of running each phase by hand.
+  Take one feature request from prompt to reviewed, audited delivery in a SINGLE autonomous pass — one
+  runnable Workflow that plans, reviews the plan, builds task by task, cross-reviews the build, and
+  optionally runs a launch audit, then RETURNS the verified findings rather than looping (the user
+  decides any fix round; a Workflow can't ask mid-run, and an autonomous fix-loop is what caused
+  multi-hour grinds). It chains the existing skills — plan-to-task-list-with-dag (a specialist agent per
+  task) → plan-founder-review → a specialist engineer/reviewer build across the DAG → a full
+  claude ∥ codex/kiro cross-review → go-live-audit — and FOLLOWS the graph strictly: every task declares
+  its dependencies, layers must be a topological order, plan review blocks a mis-ordered graph, and a
+  task NEVER builds before its dependencies integrate (no building on a broken base). Per-task review is
+  SLICE-SCOPED (judges only that task's own change against its acceptance criteria, attributing
+  whole-codebase end-state gaps to the task that owns them) so the build isn't drowned in false blocks,
+  and impl review is the end-state gate. Gates FAIL CLOSED — a reviewer that didn't actually run is
+  never counted clean, and a died codex/kiro reviewer falls back to a native review, never a fabricated
+  block. Durable and resumable: each run writes a live status file (overall + per-phase + per-task) with
+  a journal reader for status/stop/resume, and resume rebuilds integration state from GIT ground truth so
+  an interrupted run never loses or re-loses already-landed tasks. Code writing and each review
+  independently pick native / codex / kiro (reviews can skip; writer and reviewer can differ), so the
+  user controls quality vs token cost.
 allowed-tools:
   - Skill
   - Agent
@@ -363,7 +363,7 @@ Workflow({ scriptPath: ".../references/workflow-template.js",
                                                               // (trackStatus:false disables); checkpointResume:false →
                                                               // force a full rebuild (default true: skip done tasks);
                                                               // warmWorktree:false → plain per-worktree install
-                                                              // (default true: CoW-seed node_modules/vendor/Pods + sccache)
+                                                              // (default true: CoW-seed node_modules/vendor/Pods; Rust uses kache or CoW-seeds target/)
 ```
 
 **After launch, stamp the run id AND the full launch args.** The Workflow tool returns a `runId` (`wf_…`)
@@ -408,7 +408,9 @@ The Workflow then executes the playbook in one pass, running each gate at the le
   goes) → reviewer (unless `taskReview skip`) → bounded fix loop until it passes; barrier between layers.
   Each fresh worktree is **provisioned fast** (`warmWorktree`, default on): a one-time warm step (overlapping
   planning) primes caches, then engineers CoW-clone `node_modules`/`vendor`/`Pods` from the primary checkout
-  when the lockfile is unchanged (Rust shares crate compilation via `sccache` instead of cloning `target/`),
+  when the lockfile is unchanged (Rust shares crate compilation via `kache` — a path-independent, hardlink-based
+  rustc-wrapper cache wired in `.cargo/config.toml`, so worktrees restore compiled crates instead of cloning
+  `target/`; when kache is absent it CoW-seeds the warm `target/` instead),
   falling back to a normal frozen install; `warmWorktree:false` restores a plain per-worktree install.
   Engineer routes per `buildHarness`; reviewer per `taskReview` — and the two are INDEPENDENT (write
   codex, review kiro is fine). The build and verify fan-outs run behind concurrency gates so a wide DAG
@@ -433,15 +435,16 @@ Watch progress three ways: the `/workflows` panel (live agent tree), the **statu
 `node <skill-dir>/helpers/wf-status.mjs` (reconstructs per-task status straight from the run's journal —
 works even mid-flight and even if status tracking is off). See `references/status-tracking.md`. To iterate
 on the script, edit the saved `scriptPath` the tool returns and re-invoke with `{scriptPath}` (and
-`resumeFromRunId` to reuse cached agent results). **On any resume, re-pass the SAME `args` object** —
-`resumeFromRunId` reuses cached *agent* results but the script re-executes from the top, so omitting `args`
-empties `CFG` and the script hard-throws on the `FILL:` guard. Always include the full `args` object you
-launched with (including `workflowId`/`statusFile`).
+`resumeFromRunId` to reuse cached agent results). **Whenever you pass `resumeFromRunId`, re-pass the SAME
+`args` object** — it reuses cached *agent* results but the script re-executes from the top, so omitting
+`args` empties `CFG` and the script hard-throws on the `FILL:` guard. Always include the full `args` object
+you launched with (including `workflowId`/`statusFile`). To RESUME a prior run (not iterate on the script),
+use `wf-status.mjs --resume` instead — see the **resume** verb below; it carries the full `args` for you.
 
 **Success criteria**: The Workflow runs to completion and returns
 `{ converged, ranReal, plan, planSupplied, build, openRegister, missingAgents, reviewConfig, noReviewGate,
-planReviewRan, implReviewRan, auditRan, workspaceValidatePassed, endStateUngated, blockedTaskCount,
-workflowId, statusFile }`.
+planReviewRan, implReviewRan, taskReviewDowngraded, auditRan, workspaceValidatePassed, endStateUngated,
+blockedTaskCount, workflowId, statusFile }`.
 
 ## Phase 3 — Report and escalate
 
@@ -459,7 +462,9 @@ Read the Workflow result:
 - **Gate honesty — a configured gate that did NOT actually run is never "clean".** The Workflow already
   keeps `openRegister` non-empty (so `converged` is false) when a gate died, but report the cause so the
   user knows WHY: `planReviewRan === false` / `implReviewRan === false` → the configured plan/impl reviewer
-  couldn't run (e.g. kiro CLI absent); `auditRan === false` → the go-live audit died (launch NOT confirmed);
+  couldn't run (e.g. kiro CLI absent); `taskReviewDowngraded` non-null → the requested per-task reviewer
+  (e.g. codex) couldn't run here and was downgraded to native (it shows `{requested, ranAs}`) — the tasks
+  WERE reviewed (natively), but tell the user their requested reviewer didn't run; `auditRan === false` → the go-live audit died (launch NOT confirmed);
   `workspaceValidatePassed === false` → the final `validate` on the integrated tree is RED (it does not
   typecheck/lint/test — the most load-bearing blocker). `endStateUngated === true` (impl review skipped) →
   CAVEAT that the whole-codebase semantic end-state was never gated even if the tree compiles.
@@ -495,9 +500,14 @@ refresh the file from the journal with `node <skill-dir>/helpers/wf-status.mjs -
   integrated → passed/blocked).
 - **stop** → `TaskStop` the run, or the `/workflows` panel. Nothing is lost — the journal caches every
   finished agent.
-- **resume** → re-invoke `Workflow({ scriptPath, resumeFromRunId: "<runId>", args: {…same args…} })`
-  (the `resume` command is stored in the status file). Cached agents return instantly; only
-  unfinished/conflicted tasks re-run. Re-pass `workflowId`/`statusFile` so it keeps the same file.
+- **resume** → from the repo root run `node <skill-dir>/helpers/wf-status.mjs --resume [<runId>]` and launch
+  the `Workflow({ scriptPath, args })` it prints **verbatim**. It re-fires the run's stored `launchArgs` with
+  `planPath` (skip re-planning), `checkpointResume:true` (skip work already done), and the same `statusFile` —
+  a FRESH, session-independent run that carries the **full `args`**. This is the canonical resume path.
+  **Do NOT resume with `resumeFromRunId` alone**: it reuses cached *agent* results but the script re-executes
+  from the top, and on a new session `args` is dropped → `CFG` empties → the script hard-throws on the `FILL:`
+  guard (in older versions it ran a fake-clean pass that did nothing). Only use `resumeFromRunId` while
+  iterating on the *script* to reuse cache, and then you MUST still pass the SAME full `args` object.
 
 **A run launched before v1.5.0 (no status file)?** Backfill one from its journal:
 `node <skill-dir>/helpers/wf-status.mjs --write [<runId>]` — recovers the plan, branch, task list + status,

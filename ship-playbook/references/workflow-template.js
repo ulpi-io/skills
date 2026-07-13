@@ -126,23 +126,37 @@ if [ -f composer.json ]; then       # Laravel / PHP
   if cmp -s composer.lock "$ROOT/composer.lock" 2>/dev/null && cow_clone "$ROOT/vendor" ./vendor
   then say "vendor cloned (lockfile unchanged)"; else composer install --prefer-dist --no-interaction; fi
 fi
-# Rust / Cargo: NOTHING to seed — each worktree cold-builds with plain cargo. sccache was tried
-# (v1.10–1.13) and REMOVED (v1.14.0): measured 0.00% Rust hit rate over thousands of compiles. Each
-# worktree's distinct target-dir path destabilises cargo's rustc cache keys (per-worktree --extern/-L
-# paths + path-dependent rlib contents), so every crate is written under one key and read under another
-# → never a hit, just hash+write overhead. Do NOT re-add rustc-wrapper=sccache here without first PROVING
-# a non-zero hit rate on this repo (would need stable paths, e.g. --remap-path-prefix — unverified). A
-# target/ clone is also unsafe: cargo fingerprints embed absolute paths, so a moved target rebuilds anyway.
+if [ -f Cargo.toml ]; then          # Rust / Cargo
+  # PREFER kache: a content-addressed (blake3), PATH-INDEPENDENT rustc-wrapper cache that HARDLINKS compiled
+  # artifacts ACROSS worktrees — so this fresh worktree RESTORES crates already compiled in ROOT / another
+  # worktree instead of cold-rebuilding the dep graph, with ZERO target/ clone. It is wired at the REPO level
+  # via .cargo/config.toml (rustc-wrapper = "kache"). When present: do NOT clone target/ (redundant, multi-GB,
+  # and can TEAR if ROOT is mid-build) and do NOT export RUSTC_WRAPPER (an env export OVERRIDES the config and
+  # DEFEATS the cache) — just build; kache restores + populates automatically (it auto-strips incremental
+  # flags). Verified on hgDB: same crate at a DIFFERENT worktree path restored from ROOT's store (sccache gave
+  # 0% cross-worktree hits here; kache does not). Needs rustc >= 1.95.
+  if grep -qs 'rustc-wrapper[[:space:]]*=[[:space:]]*"kache"' .cargo/config.toml 2>/dev/null || command -v kache >/dev/null 2>&1; then
+    say "Rust: kache wired (path-independent hardlink cache) — NO target/ clone; validate restores crates from the shared store"
+  # FALLBACK (no kache): CoW-seed the warm target/ from ROOT. cp -c forks-on-write so ROOT stays pristine;
+  # touch AFTER the clone so cargo's mtime freshness reuses unchanged crates (only edited crates rebuild).
+  # Needs ROOT/target already built (the warm step does that) and on the same volume.
+  elif cow_clone "$ROOT/target" ./target; then
+    find ./target -exec touch {} + 2>/dev/null
+    say "target/ CoW-seeded from ROOT + touched — cargo reuses unchanged crates (kache absent; only edited crates rebuild)"
+  else
+    say "target/ not clonable (ROOT/target absent or cross-volume) and no kache — Rust worktree cold-builds"
+  fi
+fi
 # Go: GOCACHE/GOMODCACHE already global — nothing to seed.
 exit 0`
 
 // Short instruction injected into the two build briefs — invoke the tested script, with a plain-install
-// fallback (Rust worktrees just cold-build — sccache removed, see the seed script). The disabled branch
-// is ~today's setup text (no behavior change).
+// fallback. For Rust the seed script prefers kache (path-independent hardlink cache → NO target/ clone) and
+// falls back to CoW-seeding the warm target/ — see the seed script. The disabled branch is ~today's setup text.
 const WORKTREE_SEED = WARM_WORKTREE
   ? `FAST WORKTREE SETUP — this fresh checkout has empty deps/artifacts. Provision fast FIRST:
   bash ${ROOT}/.ulpi/seed-worktree.sh ${ROOT}
-It CoW-clones node_modules / vendor / Pods from ${ROOT} (instant on the same volume; auto-falls back to a frozen install cross-volume). If that script is ABSENT or errors, do a normal frozen install yourself (pnpm i --frozen-lockfile / npm ci / yarn --immutable / composer install --prefer-dist). For a Rust/Cargo task there is nothing to clone or prime — the worktree cold-builds with plain cargo. (sccache was removed in v1.14.0: it produced a 0% cache hit rate here because each worktree's target-dir path destabilises cargo's rustc cache keys. Do not add RUSTC_WRAPPER=sccache or any cargo cache config.) ${ENV_AND_SERVICES}`
+It CoW-clones node_modules / vendor / Pods from ${ROOT} (instant on the same volume; auto-falls back to a frozen install cross-volume). If that script is ABSENT or errors, do a normal frozen install yourself (pnpm i --frozen-lockfile / npm ci / yarn --immutable / composer install --prefer-dist). For a Rust/Cargo task: if this repo wires \`kache\` (a path-independent, hardlink-based rustc-wrapper cache set in \`.cargo/config.toml\`), the seed script clones NOTHING for Rust — just run your normal validate/build and kache RESTORES already-compiled crates from the shared store across worktrees (you recompile only what this task edits). Do NOT set RUSTC_WRAPPER or CARGO_INCREMENTAL — an env export overrides the config and DEFEATS kache. If the repo does NOT wire kache, the seed script instead CoW-clones the warm ${ROOT}/target (0 disk, \`cp -c\` so ROOT stays pristine) and \`touch\`es it, so cargo reuses every unchanged crate. ${ENV_AND_SERVICES}`
   : `WORKTREE SETUP (this is a fresh checkout — it may lack deps/env): if your validate needs them and node_modules is absent, run \`pnpm install --frozen-lockfile\` (or the repo's documented install); ${ENV_AND_SERVICES}`
 
 // Warm brief: write the seed script + make ROOT seed-ready. Started EARLY (after preflight) so it
@@ -156,7 +170,7 @@ ${SEED_SCRIPT}
    • package.json present & node_modules absent → frozen install (pnpm i --frozen-lockfile / npm ci / yarn --immutable).
    • composer.json present & vendor absent → composer install --prefer-dist.
    • ios/Podfile present & ios/Pods absent → (cd ${ROOT}/ios && pod install).
-   • Cargo.toml present → nothing to prime. sccache was removed in v1.14.0 (measured 0.00% Rust hit rate — per-worktree target-dir paths destabilise cargo's cache keys; see the seed-worktree.sh comment). Rust worktrees cold-build with plain cargo; do NOT start sccache or write any cargo/sccache config.
+   • Cargo.toml present → if the repo wires \`kache\` (\`.cargo/config.toml\` sets \`rustc-wrapper = "kache"\`, or \`kache\` is on PATH): PRIME the shared kache store so the build fan-out RESTORES instead of each worktree cold-compiling the dep graph — build the workspace ONCE into a THROWAWAY target dir so ROOT's local incremental cache is left untouched (kache's store is target-dir-independent): \`W=$(mktemp -d); CARGO_TARGET_DIR="$W" cargo build --manifest-path ${ROOT}/Cargo.toml --workspace --all-targets\` (tail the output), then \`rm -rf "$W"\`. Report the \`kache stats\` store-size/hit-rate line. kache needs NO daemon, NO config file, NO size env, and auto-strips incremental flags (needs rustc ≥ 1.95). OTHERWISE (no kache): build the warm target/ base ONCE so every worktree can CoW-seed it — \`cargo build --workspace\` in ${ROOT} (add \`--tests\` if the validate runs tests). Use ROOT's normal profile — do NOT set CARGO_INCREMENTAL=0 (that would clobber the dev's local incremental fast-loop); the seed script then \`cp -c\` CoW-clones ${ROOT}/target into each worktree (0 disk) and \`touch\`es it so cargo reuses unchanged crates.
    • Go / other → nothing (caches already global).
 Report ok:true when done (even with build errors — whatever compiled/installed is now seedable).`
 
@@ -225,7 +239,8 @@ const rAgent = (prompt, opts) => withRetry(() => agent(prompt, opts), opts && op
 const PLAN_HARNESS = ['native', 'codex', 'kiro'].includes(CFG.planHarness) ? CFG.planHarness : 'native'    // who WRITES the plan
 const PLAN_REVIEW = ['skip', 'native', 'codex', 'kiro'].includes(CFG.planReview) ? CFG.planReview : 'native'  // founder review of the plan
 const BUILD_HARNESS = ['native', 'codex', 'kiro'].includes(CFG.buildHarness) ? CFG.buildHarness : 'native'   // who WRITES each task (+ fixes)
-const TASK_REVIEW = ['skip', 'native', 'codex', 'kiro'].includes(CFG.taskReview) ? CFG.taskReview : 'native'  // review of each built task
+let TASK_REVIEW = ['skip', 'native', 'codex', 'kiro'].includes(CFG.taskReview) ? CFG.taskReview : 'native'  // review of each built task (a broken codex/kiro harness is downgraded to native by the health-probe below)
+const TASK_REVIEW_CONFIGURED = TASK_REVIEW   // the REQUESTED reviewer, captured before the health-probe may downgrade it → the return reports the downgrade honestly
 const IMPL_REVIEW = ['skip', 'native', 'codex', 'kiro'].includes(CFG.implReview) ? CFG.implReview : 'native'  // final plan-vs-implementation review
 
 // step 13: path to a FILLED go-live-audit workflow script (the skill authors it via the go-live-audit
@@ -384,7 +399,10 @@ const TASK_RESULT = {
 const INTEGRATE_RESULT = {
   type: 'object', additionalProperties: false,
   required: ['merged', 'conflicted', 'validatePassed'],
-  properties: { merged: { type: 'array', items: { type: 'string' } }, conflicted: { type: 'array', items: { type: 'string' } }, validatePassed: { type: 'boolean' } },
+  // alreadyMerged: the branch's tip was ALREADY on WORKING_BRANCH (ancestor / "Already up to date"), so the
+  // merge was a no-op — this is INTEGRATED, not a failed merge. Belt-and-suspenders so a re-integrate that
+  // reports the no-op but forgets to echo the branch in merged[] is still counted on-branch (never dev_done).
+  properties: { merged: { type: 'array', items: { type: 'string' } }, conflicted: { type: 'array', items: { type: 'string' } }, validatePassed: { type: 'boolean' }, alreadyMerged: { type: 'boolean' } },
 }
 const VERDICT = { type: 'object', additionalProperties: false, required: ['real'], properties: { real: { type: 'boolean' }, reason: { type: 'string' } } }
 const STATUS_ACK = { type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'boolean' }, detail: { type: 'string' } } }
@@ -428,6 +446,38 @@ async function readCheckpoints() {
   if (!CHECKPOINT_RESUME) return {}
   const r = await rAgent(`READ-ONLY checkpoint read for a ship-playbook RESUME — do NOT modify anything. If the status file ${STATUS_FILE} exists, read it and return \`tasks\` = an object mapping each task id to its current .tasks[<id>].status string (e.g. {"TASK-001":"passed","TASK-002":"blocked","TASK-003":"integrated"}). If the file is missing or has no .tasks, return tasks:{}. This lets the build SKIP rebuilding work already marked done.`, { label: 'checkpoints', phase: 'Build', schema: CHECKPOINT_SCHEMA, model: 'haiku', effort: 'low', agentType: 'general-purpose' })
   return (r && r.tasks) || {}
+}
+
+// ── resume GROUND-TRUTH: which tasks' work is ALREADY on WORKING_BRANCH per git (not the status map) ──
+// The status file records a task 'integrated' only AFTER its layer barrier, so a mid-layer interruption
+// loses that record: on resume the integrated task looks fresh, re-merges as a no-op ("already applied"),
+// gets recorded not-on-branch, and every dependent then cascade-blocks and never dispatches (the
+// wf_faec74a9-170 27-task loss). Seed the dependency gate from GIT instead: a task whose slice commit is in
+// WORKING_BRANCH's history IS integrated, whatever the status map says. Grep-by-id-prefix is CORRECT here
+// (question: did ANY of the task's work — original OR fix — land?), unlike mergeBrief's per-branch
+// idempotency check, which must stay branch-specific. Only meaningful on a RESUME (fresh runs have no task
+// commits yet); the caller gates the call so a fresh run pays nothing.
+const GIT_INTEGRATED_SCHEMA = { type: 'object', additionalProperties: false, required: ['integratedIds'], properties: { integratedIds: { type: 'array', items: { type: 'string' } }, detail: { type: 'string' } } }
+async function gitIntegratedTasks(plan) {
+  const ids = (plan.tasks || []).map(t => t.id)
+  if (!ids.length) return new Set()
+  const r = await rAgent(`READ-ONLY git ground-truth for a ship-playbook RESUME — do NOT modify anything (no checkout / merge / commit / reset / branch changes). Goal: decide which of the given task ids ALREADY have their slice on ${WORKING_BRANCH}. Run ONE deterministic command to list every commit subject on the branch: \`git -C ${ROOT} log ${WORKING_BRANCH} --format=%s\` (engineers commit each slice with a "<id>: "-prefixed subject). A task id is INTEGRATED iff at least one subject STARTS WITH that exact id followed by ":" — e.g. subject "TASK-012: add foo" ⇒ TASK-012 integrated; "22D019: fix" ⇒ 22D019 integrated (ids are NOT always the TASK-NNN shape — match each given id literally as a prefix before ":"). Match every given id against that single subject list; do NOT run a separate git command per id. Task ids: ${JSON.stringify(ids)}. Return integratedIds = exactly the given ids that matched. If ${WORKING_BRANCH} does not exist or nothing matches, return integratedIds:[].`, { label: 'git-integrated', phase: 'Build', schema: GIT_INTEGRATED_SCHEMA, model: 'haiku', effort: 'low', agentType: 'general-purpose' })
+  return new Set(((r && r.integratedIds) || []).filter(id => ids.includes(id)))
+}
+
+// ── resume RE-TARGET (advisory): a resumed plan was authored against an EARLIER tree; WORKING_BRANCH may have
+// DRIFTED since (hand-fixes + earlier tasks on the same files), so a split-first task can conflict at integrate.
+// Fix 1's git gate skips work that already landed; the merge resolver treats duplicate/drift hunks as no-ops
+// (see mergeBrief). This pass just SURFACES the reintegration risk up front (logged, never blocking) so an
+// operator sees which resumed tasks may need attention. RESUME-only; cheap (haiku).
+const RESUME_DRIFT_SCHEMA = { type: 'object', additionalProperties: false, required: ['tasks'], properties: { tasks: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id'], properties: { id: { type: 'string' }, alreadyPresent: { type: 'boolean' }, drifted: { type: 'boolean' }, note: { type: 'string' } } } }, detail: { type: 'string' } } }
+async function retargetResumedPlan(plan) {
+  const tasks = (plan.tasks || []).map(t => ({ id: t.id, writeScope: t.writeScope || [] }))
+  if (!tasks.length) return
+  const r = await rAgent(`READ-ONLY resume drift-scan — do NOT modify anything (no checkout/merge/commit). This ship-playbook run RESUMES a plan authored against an EARLIER state of ${ROOT}; ${WORKING_BRANCH} may have DRIFTED since (hand-fixes, or earlier tasks that already landed on the same files). For EACH task below inspect ${WORKING_BRANCH} and report: alreadyPresent=true if the task's work already appears on the branch (a commit with a "<id>: " subject, or its writeScope already contains the intended change); drifted=true if the task's writeScope files exist but were MATERIALLY changed by unrelated edits (so this task will likely build on / conflict with changes the plan did not anticipate); plus a one-line note. Tasks (id + writeScope): ${JSON.stringify(tasks)}. This is ADVISORY — do NOT judge code quality, only flag reintegration risk.`, { label: 'resume-retarget', phase: 'Plan', schema: RESUME_DRIFT_SCHEMA, model: 'haiku', effort: 'low', agentType: 'general-purpose' })
+  const flagged = ((r && r.tasks) || []).filter(x => x && (x.alreadyPresent || x.drifted))
+  for (const x of flagged) log(`resume drift ${x.id}: ${[x.alreadyPresent ? 'work already on branch' : '', x.drifted ? 'writeScope drifted since plan baseline' : ''].filter(Boolean).join('; ')}${x.note ? ` — ${x.note}` : ''}`)
+  if (flagged.length) log(`resume: ${flagged.length}/${tasks.length} task(s) flagged for reintegration risk — already-present is skipped by the git gate; drift/duplicate hunks are resolved as no-ops at integrate`)
 }
 
 // ── slice-scoping: a per-task review must judge only the task's OWN slice ─────────
@@ -507,6 +557,10 @@ DAG ORDERING (the build integrates layer-by-layer, so mis-ordering = build-time 
 - \`layers[][]\` not being a valid topological order of \`dependsOn\` (a task at/before something it depends on);
 - a \`validate\` that is a whole-suite/e2e which cannot pass until every task lands — validate must be
   slice-scoped (greenable once this slice + its declared deps are integrated);
+- a \`validate\` whose test FILTER matches NO real test in the repo — a cargo-nextest \`-E\`/module filter or a
+  test path resolving to zero tests, or a \`--lib\` filter on a crate whose tests are integration-only (excluded
+  by \`--lib\`). It exits "no tests to run" (nextest exit 4) and gates NOTHING; require each task's validate
+  filter to match ≥1 real test path, or be corrected / merged into the task that owns those tests;
 - two tasks split such that NEITHER can validate without the other (mutually blocking) — they must be merged.
 Classify findings BLOCK/CONCERN/OBSERVATION with file:line evidence; verdict approve/revise/reject.`
 }
@@ -532,6 +586,7 @@ Set committed:true and report commitSha. (The build can integrate a correct slic
 Now run your validate and CLASSIFY the result (this is how the build avoids discarding correct work):
   Run: ${t.validate}
   • GREEN → status:'passed', validatePassed:true, blockedReason:'none'.
+  • NO TESTS MATCHED — a test runner exits non-zero ONLY because its FILTER matched zero tests (cargo-nextest exit code 4 / "no tests to run", or vitest/jest "No test files found" / "0 matched", or \`--lib\` selecting a crate whose tests are integration-only) → this is a PLAN/filter DEFECT, NOT a slice failure: your code is fine, the validate just names a filter that matches nothing here. Treat it as GREEN — status:'passed', validatePassed:true, blockedReason:'none' — and record in notes: "validate filter matched 0 tests (plan defect): <the exact filter>". Do NOT put it in newFailuresVsBaseline and do NOT block on it. (If OTHER \`&&\`-joined steps genuinely fail, classify those normally below.)
   • RED → for EACH failure, decide whether YOUR change caused it: re-run the failing test(s) against the UNTOUCHED base (e.g. \`git stash\` your changes — or compare against ${WORKING_BRANCH} — re-run the same command, then restore your changes with \`git stash pop\`). Partition the failures:
       - newFailuresVsBaseline = failures present WITH your change but NOT on the base, OR inside your writeScope → these are YOURS.
       - preexistingFailures = failures already red on the untouched base, or originating in files OUTSIDE your writeScope (another task/area owns them) → NOT yours.
@@ -555,13 +610,13 @@ function mergeBrief(t, branch) {
      a. \`git -C ${ROOT} merge --abort 2>/dev/null || true\` to clear any leftover in-progress merge
         (MERGE_HEAD) — safe, as the slice is validated in its worktree and any resolution is re-derivable.
      b. ALREADY-MERGED short-circuit for ${branch} SPECIFICALLY — treat as already merged (report
-        merged[]=[${branch}], skip the merge, run step 3 cleanup as a tolerant no-op) ONLY with POSITIVE
-        proof that THIS branch's tip is already on ${WORKING_BRANCH}: \`git -C ${ROOT} rev-parse --verify
+        merged[]=[${branch}] AND alreadyMerged:true, skip the merge, run step 3 cleanup as a tolerant
+        no-op) ONLY with POSITIVE proof that THIS branch's tip is already on ${WORKING_BRANCH}: \`git -C ${ROOT} rev-parse --verify
         ${branch}\` SUCCEEDS and \`git -C ${ROOT} merge-base --is-ancestor ${branch} ${WORKING_BRANCH}\`
         SUCCEEDS. Do NOT use \`git log --grep="^${t.id}:"\` (matches sibling commits). If the branch ref is
         GONE, do NOT assume it merged — fall through; step 1 will fail-CLOSED below.
   1. \`git -C ${ROOT} checkout ${WORKING_BRANCH}\`, then \`git -C ${ROOT} merge --no-edit ${branch}\`.
-     - If it reports "Already up to date" → already merged (report merged[]=[${branch}], go to cleanup).
+     - If it reports "Already up to date" → already merged (report merged[]=[${branch}] AND alreadyMerged:true, go to cleanup).
      - If \`${branch}\` does NOT exist (\`fatal: ... not something we can merge\` / "merge: ${branch} - not
        something we can merge") → do NOT report merged. Report merged[]=[] and conflicted[]=[${branch}]
        (the branch isn't present and is not provably on ${WORKING_BRANCH}) — FAIL CLOSED so the task is
@@ -582,6 +637,12 @@ function mergeBrief(t, branch) {
        (e.g. \`eslint .\` / \`tsc\` without excludes), restrict it (add \`--ignore-pattern '.claude/**'\`, scope the
        tsconfig invocation, or scope to ${t.id}'s writeScope) — a failure originating UNDER those transient
        worktrees is NOT a resolution failure and must NOT trigger an abort.
+     - DRIFT / DUPLICATE (common on a RESUME): if a conflicted hunk's incoming change is ALREADY present on
+       ${WORKING_BRANCH} — the same edit landed on a prior run, or a hand-fix duplicated it — that hunk is a
+       NO-OP, not a real conflict: keep ${WORKING_BRANCH}'s version (the semantics already match). If, once all
+       hunks resolve this way, the branch contributes NOTHING new, complete the merge and report
+       alreadyMerged:true (this is integrated, never conflicted) — a stale-based resumed task must NOT be
+       recorded not-on-branch just because its work already landed.
      - If \`${t.validate}\` passes → \`git -C ${ROOT} commit --no-edit\` to finalize, and report under merged[].
      - ONLY if you cannot combine both sides without dropping work, OR \`${t.validate}\` genuinely fails (real
        project errors, not worktree pollution) → \`git -C ${ROOT} merge --abort\` (valid — nothing was
@@ -592,7 +653,8 @@ function mergeBrief(t, branch) {
      --porcelain\`, \`git -C ${ROOT} worktree remove --force <path> 2>/dev/null || true\`, then
      \`git -C ${ROOT} branch -D ${branch} 2>/dev/null || true\`, then \`git -C ${ROOT} worktree prune\`.
 Report merged[] = [${branch}] (verbatim) if it merged cleanly OR you resolved+validated it; conflicted[] =
-[${branch}] if you aborted; and validatePassed (the \`${t.validate}\` result if you ran it after resolving, else true).`
+[${branch}] if you aborted; alreadyMerged:true if the branch was already on ${WORKING_BRANCH} (a no-op
+merge — still counts as merged); and validatePassed (the \`${t.validate}\` result if you ran it after resolving, else true).`
 }
 function reviewerBrief(t, plan) {
   return `READ-ONLY review of ${t.id} (${t.title || ''}) as it now stands on ${WORKING_BRANCH} in ${ROOT}.
@@ -738,9 +800,10 @@ const CLEANUP_SCHEMA = { type: 'object', additionalProperties: false, required: 
 async function cleanupWorktrees(when) {
   return rAgent(`Worktree hygiene in ${ROOT} — remove this workflow's transient build worktrees so they can't pollute later validates. READ git state, then:
 1. \`git -C ${ROOT} worktree list --porcelain\` — identify worktrees whose path is under \`.claude/worktrees/\` OR whose branch matches \`wf/build/*\` (these are ship-playbook build worktrees, including prior runs' leftovers). Do NOT touch the main working tree (${ROOT}) or any unrelated worktree.
-2. For each: \`git -C ${ROOT} worktree remove --force <path>\` to remove the transient checkout. Then delete its branch with \`git -C ${ROOT} branch -d <branch>\` — lowercase \`-d\`, the SAFE "delete only if already merged" form. CRITICAL: do NOT \`-D\` (force-delete) an unmerged \`wf/build/*\` branch — an un-integrated engineer commit is RECOVERABLE work (a slice that failed its gate can be cherry-picked later), so a leftover unmerged branch is intentional recovery state, never garbage. \`-d\` keeps merged branches pruned while preserving unmerged ones.
-3. \`git -C ${ROOT} worktree prune\` to clear stale admin entries.
-4. Clear any LEFTOVER in-progress merge on the main checkout (a build/merge agent may have died mid-merge, leaving MERGE_HEAD that would break the next merge / the final-validate checkout): \`git -C ${ROOT} merge --abort 2>/dev/null || true\`. Do NOT discard committed work — this only aborts an UNcommitted in-progress merge.
+2. PARK RECOVERY COMMITS FIRST — BEFORE removing anything, for EACH \`wf/build/*\` branch whose tip is NOT already on ${WORKING_BRANCH} (i.e. \`git -C ${ROOT} merge-base --is-ancestor <branch> ${WORKING_BRANCH}\` exits NON-zero), anchor its tip against \`git gc\`: \`git -C ${ROOT} update-ref refs/ship/parked/<branch-with-each-'/'-replaced-by-'-'> <branch>\` (e.g. branch \`wf/build/TASK-012\` → \`git -C ${ROOT} update-ref refs/ship/parked/wf-build-TASK-012 wf/build/TASK-012\`). This keeps un-integrated engineer commits (a slice that failed its gate, or a dev_done branch about to be pruned) RECOVERABLE by SHA even if the branch is later deleted or garbage-collected — the wf_faec74a9-170 loss left built work as dangling commits one \`git gc\` from gone. A branch already on ${WORKING_BRANCH} needs no ref.
+3. For each: \`git -C ${ROOT} worktree remove --force <path>\` to remove the transient checkout. Then delete its branch with \`git -C ${ROOT} branch -d <branch>\` — lowercase \`-d\`, the SAFE "delete only if already merged" form. CRITICAL: do NOT \`-D\` (force-delete) an unmerged \`wf/build/*\` branch — an un-integrated engineer commit is RECOVERABLE work (and is now also parked under refs/ship/parked/ by step 2), so a leftover unmerged branch is intentional recovery state, never garbage. \`-d\` keeps merged branches pruned while preserving unmerged ones.
+4. \`git -C ${ROOT} worktree prune\` to clear stale admin entries.
+5. Clear any LEFTOVER in-progress merge on the main checkout (a build/merge agent may have died mid-merge, leaving MERGE_HEAD that would break the next merge / the final-validate checkout): \`git -C ${ROOT} merge --abort 2>/dev/null || true\`. Do NOT discard committed work — this only aborts an UNcommitted in-progress merge.
 Never delete non-worktree files and never remove the main checkout. Report removed (count), remaining (worktrees still present), and a short detail.`, { label: `cleanup-worktrees:${when}`, phase: 'Plan', schema: CLEANUP_SCHEMA })
 }
 
@@ -760,14 +823,29 @@ function buildSpawn(t, brief, label) {
   })
 }
 // only called when TASK_REVIEW !== 'skip' (the skip case is handled in buildPlan, no reviewer spawned).
-function taskReviewSpawn(t, brief, label) {
+// `harness` overrides the configured TASK_REVIEW for THIS spawn — reviewTask passes 'native' to force the
+// native fallback when the configured codex/kiro reviewer died (a real review, never a silent clean pass).
+function taskReviewSpawn(t, brief, label, harness) {
+  const h = harness || TASK_REVIEW
   return agentGate(() => {
-  if (TASK_REVIEW === 'codex')
+  if (h === 'codex')
     return spawnSpecialist(`READ-ONLY review — do NOT edit. If you cannot drive the codex CLI here, return \`gateNotRun: true\` (verdict 'blocked', empty findings) — do NOT return a clean result.\n${brief}`, { label, phase: 'Build', schema: FINDINGS, agentType: 'codex:codex-rescue' })
-  if (TASK_REVIEW === 'kiro')
+  if (h === 'kiro')
     return spawnSpecialist(`Use the kiro-review skill (\`/kiro-review\`) to review this task via the Kiro CLI, READ-ONLY, with \`--model ${KIRO_MODEL}\` (latest Opus); if the Kiro CLI is unavailable, return \`gateNotRun: true\` (verdict 'blocked', empty findings) — do NOT substitute a native review and do NOT return a clean result.\n${brief}`, { label, phase: 'Build', schema: FINDINGS, agentType: 'general-purpose' })
   return spawnSpecialist(brief, { label, phase: 'Build', schema: FINDINGS, agentType: resolveAgent(t.reviewer) })   // native
   })
+}
+// Reviewer HEALTH-PROBE — a configured non-native reviewer (codex/kiro) whose harness is broken in THIS
+// environment would emit an empty 'blocked' gate on EVERY task (the wf_faec74a9-170 ~20 false-blocks). Probe
+// it ONCE up front; if it can't run, downgrade the role to 'native' for the whole run so correct work gets a
+// real review instead of a fabricated block. 'skip'/'native' need no probe. Returns the effective role.
+async function probeReviewer(role, label) {
+  if (role === 'skip' || role === 'native') return role
+  const brief = `Reviewer HEALTH PROBE — NOT a real review, review no code. Confirm you can drive the ${role} review harness ${role === 'kiro' ? '(the kiro-review skill / Kiro CLI)' : '(the codex CLI via codex:codex-rescue)'} READ-ONLY in this environment. If you CAN, return verdict:'clean' with findings:[]. If you CANNOT run it here, return gateNotRun:true (do NOT improvise a native answer).`
+  const agentType = role === 'kiro' ? 'general-purpose' : 'codex:codex-rescue'
+  const r = await spawnSpecialist(brief, { label, phase: 'Build', schema: FINDINGS, agentType }).catch(() => null)
+  if (!r || r.gateNotRun) { log(`reviewer health-probe: ${role} cannot run here — downgrading ${label} to native for this run`); return 'native' }
+  return role
 }
 
 // ── steps 10–11: build across DAG layers, engineer → integrate → reviewer → fix ──
@@ -791,20 +869,44 @@ async function buildPlan(plan, prior) {
   // ON_BRANCH = statuses that PROVE the task's code reached WORKING_BRANCH. NOT 'dev_done' (engineer
   // passed but merge failed → code on its task branch only) and NOT 'dep_blocked' (never built).
   const ON_BRANCH = new Set(['integrated', 'reviewing', 'fixing', 'blocked'])
+  // RESUME GROUND-TRUTH: seed the gate from GIT, not only the status map. A mid-layer interruption drops a
+  // task's 'integrated' record (see gitIntegratedTasks), so on resume also treat any task whose slice commit
+  // is on WORKING_BRANCH as on-branch (re-review, NEVER re-merged) — this is what stops the "already-applied
+  // → dev_done → dependent cascade-block" loss. On a fresh run `prior` is empty/all-'pending' ⇒ isResume is
+  // false ⇒ the git pass is skipped and behavior is byte-for-byte unchanged.
+  const isResume = !!(prior && Object.values(prior).some(s => s && s !== 'pending'))
+  const gitIntegrated = isResume ? await gitIntegratedTasks(plan) : new Set()
+  if (gitIntegrated.size) log(`resume: git finds ${gitIntegrated.size} task(s) already on ${WORKING_BRANCH} — seeding the dependency gate from git ground truth, not the status map`)
+  const isOnBranch = (t) => ON_BRANCH.has(priorOf(t.id)) || gitIntegrated.has(t.id)
   // DAG DEPENDENCY GATE — `integrated` = tasks whose code is actually ON the working branch a task cuts
-  // from. Seeded from checkpoint tasks proven on-branch; this run's integrations are added as they land.
-  // A task builds ONLY once every dependsOn is in this set — never on a branch missing the code it needs.
-  const integrated = new Set(plan.tasks.filter(t => priorOf(t.id) === 'passed' || ON_BRANCH.has(priorOf(t.id))).map(t => t.id))
+  // from. Seeded from checkpoint tasks proven on-branch UNION git-integrated tasks; this run's integrations
+  // are added as they land. A task builds ONLY once every dependsOn is in this set — never on a branch missing the code it needs.
+  const integrated = new Set(plan.tasks.filter(t => priorOf(t.id) === 'passed' || isOnBranch(t)).map(t => t.id))
   const missingDeps = (t) => (t.dependsOn || []).filter(d => !integrated.has(d))
   let nDone = 0, nReReview = 0, nDepBlocked = 0
 
   // match a task's branch against an integrate agent's reported merged[] — id-agnostic, formatting-tolerant.
-  const mergedHas = (integ, t) => ((integ && integ.merged) || []).map(s => String(s).trim()).some(m => m === branchFor(t) || m === t.id || m.endsWith('/' + t.id))
-  // one scoped review of a task → normalized {verdict, findings, _errored?}. NULL (agent died) and
-  // gateNotRun (kiro/codex CLI absent) and THROW all map to a blocked _errored verdict — never a silent pass.
-  const reviewTask = (t, n) => taskReviewSpawn(t, reviewerBrief(t, plan), n ? `review:${t.id}#${n}` : `review:${t.id}`)
-    .then(r => (r && !r.gateNotRun) ? r : { verdict: 'blocked', findings: [], _errored: true },
-          () => ({ verdict: 'blocked', findings: [], _errored: true }))
+  // alreadyMerged (branch tip already on WORKING_BRANCH) also counts as integrated: a no-op re-merge is NOT
+  // a not-on-branch failure — treating it as one is what recorded already-integrated tasks 'dev_done' on resume.
+  const mergedHas = (integ, t) => !!(integ && (integ.alreadyMerged || ((integ.merged || []).map(s => String(s).trim()).some(m => m === branchFor(t) || m === t.id || m.endsWith('/' + t.id)))))
+  // one scoped review of a task → normalized {verdict, findings, _inconclusive?}. A configured reviewer
+  // (codex/kiro) that DIES / can't run / THROWS is NOT a block: fall back to a NATIVE review (a real review,
+  // so it never counts as a silent clean pass), and only if native ALSO produces no verdict mark the review
+  // _inconclusive (verdict 'clean', no findings) — NOT blocked. A died reviewer blocking correct work is what
+  // false-blocked ~20 tasks in wf_faec74a9-170; the final workspace-validate gate is the objective backstop.
+  const normReview = (r) => (r && !r.gateNotRun) ? r : null
+  const reviewTask = async (t, n) => {
+    const label = n ? `review:${t.id}#${n}` : `review:${t.id}`
+    let r = normReview(await taskReviewSpawn(t, reviewerBrief(t, plan), label).catch(() => null))
+    if (r) return r
+    if (TASK_REVIEW !== 'native') {   // configured reviewer did not run → one native retry (a real review)
+      log(`${t.id}: configured reviewer (${TASK_REVIEW}) did not run — falling back to a native review`)
+      r = normReview(await taskReviewSpawn(t, reviewerBrief(t, plan), `${label}~native`, 'native').catch(() => null))
+      if (r) return r
+    }
+    log(`${t.id}: review inconclusive (no reviewer produced a verdict) — not blocking; final workspace-validate still gates the tree`)
+    return { verdict: 'clean', findings: [], _inconclusive: true }
+  }
 
   // PER-TASK PIPELINE UNIT — build → integrate (under mergeLock) → review → bounded fix-loop. Reviews fire
   // the moment THIS task integrates (not batched per layer). alreadyOnBranch tasks (checkpoint re-review)
@@ -869,9 +971,13 @@ async function buildPlan(plan, prior) {
       // is ambiguous — block (don't silently pass). Guarded by !deferred so a verdict driven by correctly-
       // deferred end-state gaps does NOT over-block the slice.
       const verdictBlocks = BLOCKING_VERDICTS.has(review.verdict) && !blockers.length && !deferred
-      const status = (blockers.length || review._errored || verdictBlocks) ? 'blocked' : 'passed'
-      out.push({ task: t.id, status, fixes, findings: (review.findings || []).filter(f => fileInScope(f.file, t.writeScope)), crossTaskDeferred: deferred, ...(preexistingNote ? { preexistingNote } : {}), ...(verdictBlocks ? { reason: `reviewer returned a blocking verdict (${review.verdict}) with no itemized in-scope finding` } : {}) })
-      layerPatch[t.id] = { status, fixes, ...(deferred ? { crossTaskDeferred: deferred } : {}) }
+      // _inconclusive (no reviewer produced a verdict) is NOT a block — record passed-with-caveat; the final
+      // workspace-validate gate remains the objective backstop. Only real in-scope blockers / an itemized
+      // blocking verdict actually block.
+      const status = (blockers.length || verdictBlocks) ? 'blocked' : 'passed'
+      const inconclusiveNote = review._inconclusive ? `review inconclusive — no reviewer (configured or native) produced a verdict for ${t.id}; not blocked, relies on the final workspace-validate gate` : null
+      out.push({ task: t.id, status, fixes, findings: (review.findings || []).filter(f => fileInScope(f.file, t.writeScope)), crossTaskDeferred: deferred, ...(preexistingNote ? { preexistingNote } : {}), ...(inconclusiveNote ? { inconclusiveNote } : {}), ...(verdictBlocks ? { reason: `reviewer returned a blocking verdict (${review.verdict}) with no itemized in-scope finding` } : {}) })
+      layerPatch[t.id] = { status, fixes, ...(deferred ? { crossTaskDeferred: deferred } : {}), ...(review._inconclusive ? { reviewInconclusive: true } : {}) }
     } catch (e) {
       // any uncaught throw in the unit → record blocked, never lose the task or crash the build. Use the
       // GROUND TRUTH (integrated.has) for the persisted status: an on-branch task → 'blocked' (re-review on
@@ -888,8 +994,8 @@ async function buildPlan(plan, prior) {
     const layerPatch = {}   // mutated by concurrent runTask closures — safe (JS single-threaded; each record is synchronous)
     // CHECKPOINT partition (status file is the source of truth for "already done")
     const doneSkip = layer.filter(t => priorOf(t.id) === 'passed')                         // skip entirely
-    const onBranch = layer.filter(t => ON_BRANCH.has(priorOf(t.id)))                        // skip engineer, re-review
-    const fresh = layer.filter(t => priorOf(t.id) !== 'passed' && !ON_BRANCH.has(priorOf(t.id)))
+    const onBranch = layer.filter(t => priorOf(t.id) !== 'passed' && isOnBranch(t))         // on branch (status OR git) → skip engineer, re-review
+    const fresh = layer.filter(t => priorOf(t.id) !== 'passed' && !isOnBranch(t))
     // DAG GATE: a fresh task may build ONLY if every dependency is already integrated on WORKING_BRANCH.
     // A task with an un-integrated dep is recorded 'dep_blocked' (pointing at the ROOT) and NOT built; its
     // dependents cascade-block. 'dep_blocked' is not on-branch, so on resume it re-evaluates and is NEVER
@@ -1124,6 +1230,11 @@ if (!RESUME_PLAN && PLAN_REVIEW !== 'skip') {
 
 phase('Build')                                             // steps 10–11
 if (warmPromise) await warmPromise                         // started right after preflight; normally already done
+// Reviewer health-probe: downgrade a broken codex/kiro TASK_REVIEW to native ONCE, up front — so a harness
+// that can't run here reviews correct work natively instead of emitting an empty 'blocked' gate on every task.
+if (TASK_REVIEW !== 'skip' && TASK_REVIEW !== 'native') TASK_REVIEW = await probeReviewer(TASK_REVIEW, 'probe:task-review')
+// RESUME re-target (advisory): surface tasks whose base drifted / already landed so reintegration risk is visible.
+if (RESUME_PLAN) await retargetResumedPlan(plan)
 const buildLog = await buildPlan(plan, priorStatus)        // priorStatus (read above) → skip work already done
 await statusStep({ phases: { build: { status: 'done' } } }, 'build-done')
 
@@ -1137,7 +1248,7 @@ await cleanupWorktrees('pre-final-validate')   // clear stale build worktrees so
 const FINAL_VALIDATE_SCHEMA = { type: 'object', additionalProperties: false, required: ['passed'], properties: { passed: { type: 'boolean' }, detail: { type: 'string' }, segments: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'passed'], properties: { name: { type: 'string' }, passed: { type: 'boolean' } } } }, preexistingFailures: { type: 'array', items: { type: 'string' } }, introducedFailures: { type: 'array', items: { type: 'string' } } } }
 const fv = await rAgent(`Workspace-validate the integrated tree, with PER-STEP granularity and (on red) PRE-EXISTING-vs-INTRODUCED attribution. Do NOT EDIT source files — but changing git state to check out branches/commits IS allowed and required; restore ${WORKING_BRANCH} when done.
 1. \`git -C ${ROOT} checkout ${WORKING_BRANCH}\`, then confirm \`git -C ${ROOT} rev-parse --abbrev-ref HEAD\` == ${WORKING_BRANCH} — the tree under test MUST be ${WORKING_BRANCH}, never the repo's incidental HEAD.
-2. The validate is a sequence of \`&&\`-joined steps: ${VALIDATE_ALL}. Run EACH step and record segments[] = [{name, passed}] for every step (e.g. typecheck/lint/test/build) — RUN ALL STEPS even after one fails (do NOT let an early \`&&\` failure hide later steps' status), so the report shows exactly which gates pass. Each step must cover ONLY the project at ${ROOT} — never scan \`.claude/worktrees/**\` or sibling agent dirs (\`.factory\`,\`.gemini\`,\`.opencode\`,\`.trae\`,\`.kiro\`,\`.vibe\`); if a command would walk them (e.g. \`eslint .\`/\`tsc\` without excludes) restrict it (\`--ignore-pattern '.claude/**'\`, scope the tsconfig, or scope to changed paths). NEVER relax a lint/type rule to make it pass. passed=true ONLY if EVERY step exits 0 on ${WORKING_BRANCH}; else passed=false with the first concrete errors in detail.
+2. The validate is a sequence of \`&&\`-joined steps: ${VALIDATE_ALL}. Run EACH step and record segments[] = [{name, passed}] for every step (e.g. typecheck/lint/test/build) — RUN ALL STEPS even after one fails (do NOT let an early \`&&\` failure hide later steps' status), so the report shows exactly which gates pass. Each step must cover ONLY the project at ${ROOT} — never scan \`.claude/worktrees/**\` or sibling agent dirs (\`.factory\`,\`.gemini\`,\`.opencode\`,\`.trae\`,\`.kiro\`,\`.vibe\`); if a command would walk them (e.g. \`eslint .\`/\`tsc\` without excludes) restrict it (\`--ignore-pattern '.claude/**'\`, scope the tsconfig, or scope to changed paths). NEVER relax a lint/type rule to make it pass. A step that exits non-zero ONLY because its test FILTER matched zero tests (cargo-nextest exit code 4 / "no tests to run", vitest/jest "No test files found") is a filter/plan defect, NOT a real failure — record that segment as passed:true and note it in detail; do NOT let it fail the gate. passed=true if EVERY step either exits 0 on ${WORKING_BRANCH} or is such a zero-match "no tests to run"; else passed=false with the first concrete errors in detail.
 3. ATTRIBUTION — only if passed=false. ${BASE_SHA ? `The pre-run baseline commit is ${BASE_SHA}. For the failing tests/checks, tell which are PRE-EXISTING vs INTRODUCED by this run: \`git -C ${ROOT} checkout ${BASE_SHA}\`, re-run the SAME failing test(s)/check(s) there, then \`git -C ${ROOT} checkout ${WORKING_BRANCH}\` to restore. preexistingFailures[] = failures that ALSO fail at ${BASE_SHA} (this run did NOT cause them — they need a separate owning task); introducedFailures[] = failures that PASS at ${BASE_SHA} but fail on ${WORKING_BRANCH} (this run regressed them — the real blockers). Do NOT edit during the comparison.` : `No pre-run baseline SHA is available — report failing items in detail without pre-existing/introduced attribution (leave those arrays empty).`}
 Report passed, segments[], detail, preexistingFailures[], introducedFailures[].`, { label: 'final-validate', phase: 'Build', schema: FINAL_VALIDATE_SCHEMA })
 const workspaceValidatePassed = !!(fv && fv.passed === true)   // null (agent died) OR false ⇒ NOT confirmed green
@@ -1277,6 +1388,7 @@ return {
   noReviewGate: TASK_REVIEW === 'skip' && IMPL_REVIEW === 'skip',
   planReviewRan,                                            // null = skipped/resume; false ⇒ a configured plan reviewer could not run — skill must caveat
   implReviewRan: IMPL_REVIEW === 'skip' ? null : implRan,   // false ⇒ a configured impl reviewer DIED (gate not run) — skill must caveat
+  taskReviewDowngraded: TASK_REVIEW_CONFIGURED !== TASK_REVIEW ? { requested: TASK_REVIEW_CONFIGURED, ranAs: TASK_REVIEW } : null,   // non-null ⇒ the requested per-task reviewer could NOT run here and was downgraded to native — skill must caveat "you asked for X; it ran native"
   auditRan,                                                 // null = not attempted; false = audit died/aborted (NOT launch-confirmed)
   blockedTaskCount: blockedTasks.length,                    // tasks that did not pass (incl. dep-blocked) — block convergence
   workspaceValidatePassed,                                  // the final VALIDATE_ALL on the integrated tree (false ⇒ tree not green; blocks convergence)
