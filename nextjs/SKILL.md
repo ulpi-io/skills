@@ -1,13 +1,13 @@
 ---
 name: nextjs
-version: 2.1.0
+version: 2.2.0
 description: |
-  Build Next.js the way THIS project's App Router already works, not by generic framework
-  defaults — a reference carrying the real server/client boundaries and conventions for pages and
-  layouts, awaited async request APIs, the project API-client data layer, server actions, caching
-  and ISR, metadata and SEO, i18n, accessibility, analytics, and testing, so a change lands
-  idiomatic and review-ready instead of merely rendering. Use when a task touches this project's
-  Next.js App Router surface and should follow its conventions rather than generic defaults.
+  Build Next.js the way THIS project's App Router already works, with the current stable Next.js
+  16.2 line recommended for new applications and explicit compatibility handling for existing
+  versions. Carries the real server/client boundaries and conventions for pages, layouts, async
+  request APIs, the project API-client data layer, Server Actions, Cache Components, metadata,
+  i18n, accessibility, analytics, and testing. Use when a task touches this project's Next.js App
+  Router surface and should follow its conventions rather than generic or prerelease defaults.
 allowed-tools:
   - Bash
   - Read
@@ -31,10 +31,13 @@ This skill is a routing shell over the Next.js reference set, not the full frame
 
 Non-negotiable rules:
 1. Read `references/stack.md` first.
-2. Then load only the references needed for the actual task.
-3. Keep user-visible text translated.
-4. Keep data access in the project’s API-client pattern.
-5. Keep the heavy Next.js guidance in `references/`, not inline here.
+2. Inspect `package.json` and the active lockfile before applying version-specific APIs. Recommend
+   the stable Next.js 16.2 line for new applications; never silently upgrade an existing project or
+   select a canary release during unrelated work.
+3. Then load only the references needed for the actual task.
+4. Keep user-visible text translated.
+5. Keep data access in the project’s API-client pattern.
+6. Keep the heavy Next.js guidance in `references/`, not inline here.
 </EXTREMELY-IMPORTANT>
 
 # nextjs
@@ -55,6 +58,10 @@ Always start with:
 
 That establishes the locked decisions for runtime, config, and project-wide Next.js patterns.
 
+For a new application, version recommendation, or framework upgrade, also read:
+
+- `references/upgrading.md`
+
 **Success criteria**: The project’s Next.js architecture assumptions are explicit before editing.
 
 ## Step 1: Load only the relevant references
@@ -63,6 +70,7 @@ Use the routing table to pick reference files that match the task. Do not bulk-l
 
 | Task | Read |
 |------|------|
+| New application, version choice, Next.js 15 to 16 upgrade | `references/upgrading.md` |
 | Folder layout, file conventions, project structure | `references/folder-structure.md` |
 | Route groups, dynamic routes, parallel/intercepting routes | `references/routing.md` |
 | Creating or editing a page or layout | `references/page-checklist.md` |
@@ -105,6 +113,7 @@ Use the narrowest relevant verification:
 - unit tests
 - e2e tests
 - linting or type checks
+- `next typegen` when route helpers or route structure changed
 - page or route smoke validation
 
 **Success criteria**: The changed Next.js surface still behaves correctly.
@@ -115,6 +124,9 @@ Use the narrowest relevant verification:
 - Do not skip `references/stack.md`.
 - Do not hardcode user-facing strings when i18n is required.
 - Do not bypass the project’s API-client and caching conventions.
+- Do not apply Next.js 16-only APIs to an older project unless the task includes the upgrade.
+- Do not recommend `next@canary` or any prerelease unless the user explicitly opts into prerelease
+  testing.
 - Do not add `disable-model-invocation`; this is a normal domain skill.
 
 ## When To Load References
@@ -122,13 +134,17 @@ Use the narrowest relevant verification:
 - `references/stack.md`
   Always.
 
+- `references/upgrading.md`
+  New applications, version choices, and framework upgrades.
+
 - then only the task-relevant files under `references/`
 
 ## Output Contract
 
 Report:
 
-1. which Next.js references were loaded
-2. the architecture pattern chosen
-3. the change made
-4. the verification run
+1. the detected Next.js version and whether the stable 16.2 line was recommended or already in use
+2. which Next.js references were loaded
+3. the architecture pattern chosen
+4. the change made
+5. the verification run

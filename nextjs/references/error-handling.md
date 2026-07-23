@@ -2,7 +2,7 @@
 
 ## What
 
-Next.js uses React error boundaries to catch rendering errors at any route segment. Every route can have an `error.tsx` (catches errors in its subtree), a `not-found.tsx` (handles missing resources), and `global-error.tsx` at the root for layout-level failures. For async operations, `catchError()` provides fine-grained error handling without full boundaries.
+Next.js 16.2 uses React error boundaries to catch rendering errors at any route segment. Every route can have an `error.tsx` (catches errors in its subtree), a `not-found.tsx` (handles missing resources), and `global-error.tsx` at the root for layout-level failures. For fine-grained async recovery, use native `try/catch` and either rethrow, return fallback content, or redirect outside the protected operation.
 
 All error boundaries are Client Components (`'use client'` required). All user-facing messages use `t()`. All errors are logged server-side via pino before reaching the boundary — see `references/logging.md`.
 
@@ -69,10 +69,9 @@ export default function GlobalError({
 
 Must render its own `<html>` and `<body>` — replaces the entire page. Only active in production.
 
-### catchError() — fine-grained async error handling
+### Fine-grained async error handling
 
 ```typescript
-import { catchError } from 'next/error';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getProduct } from '@/lib/api/endpoints/products';
@@ -83,9 +82,11 @@ type Props = PageProps<'/[locale]/products/[slug]'>;
 export default async function ProductPage({ params }: Props) {
   const { locale, slug } = await params;
   const t = await getTranslations({ locale, namespace: 'products' });
-  const [error, product] = await catchError(getProduct(slug, locale));
 
-  if (error) {
+  let product: Awaited<ReturnType<typeof getProduct>>;
+  try {
+    product = await getProduct(slug, locale);
+  } catch (error) {
     logger.error({ err: error, slug, locale }, 'Failed to fetch product');
     throw error; // Let error.tsx handle rendering
   }
@@ -95,7 +96,14 @@ export default async function ProductPage({ params }: Props) {
 }
 ```
 
-Returns `[error, result]` tuple instead of throwing. Log structured context (entity ID, locale) before deciding to re-throw, call `notFound()`, or render fallback content.
+Log structured context (entity ID, locale) before deciding to rethrow, call `notFound()`, or render
+fallback content. Keep `notFound()` and `redirect()` outside the `try` body because they throw
+framework-controlled errors.
+
+Next.js 16.2 also introduces experimental `unstable_catchError()` and `unstable_retry()` for
+component-level error boundaries. They are not a promise-tuple utility and are not the default for
+this skill. Use them only when the task explicitly accepts an unstable API and the installed version
+has been verified.
 
 ### not-found.tsx — depth and placement
 
@@ -164,12 +172,13 @@ Each `error.tsx` catches its subtree only. **Important**: `error.tsx` does NOT c
 ```tsx
 async function RecentActivity({ userId }: { userId: string }) {
   const t = await getTranslations('dashboard');
-  const [error, activity] = await catchError(getRecentActivity(userId));
-  if (error) {
+  try {
+    const activity = await getRecentActivity(userId);
+    return <section><h2>{t('activity.heading')}</h2>{/* items */}</section>;
+  } catch (error) {
     logger.warn({ err: error, userId }, 'Recent activity unavailable');
     return <p className="text-muted-foreground">{t('activity.unavailable')}</p>;
   }
-  return <section><h2>{t('activity.heading')}</h2>{/* items */}</section>;
 }
 ```
 
@@ -177,11 +186,12 @@ Log as `warn` (degraded), not `error`. Use when a widget can fail without breaki
 
 **Redirect** — recovery impossible:
 ```typescript
-const [error] = await catchError(criticalOperation());
-if (error) {
+try {
+  return await criticalOperation();
+} catch (error) {
   logger.error({ err: error }, 'Critical failure, redirecting');
-  redirect('/');
 }
+redirect('/');
 ```
 
 ## When
@@ -191,10 +201,10 @@ if (error) {
 ```
 Error occurred →
 ├─ During render?          → Let error.tsx handle it automatically
-├─ Async op needing log?   → catchError() → log → re-throw or fallback
+├─ Async op needing log?   → try/catch → log → rethrow or fallback
 ├─ Resource not found?     → notFound() → not-found.tsx
-├─ Non-critical section?   → catchError() → log warn → fallback content
-├─ Unrecoverable?          → catchError() → log error → redirect
+├─ Non-critical section?   → try/catch → log warn → fallback content
+├─ Unrecoverable?          → try/catch → log error → redirect outside try
 └─ Root layout crashed?    → global-error.tsx (last resort)
 ```
 
@@ -207,11 +217,12 @@ Error occurred →
 | Detail page entity lookup | `src/app/[locale]/products/[slug]/not-found.tsx` |
 | Root layout might crash | `src/app/global-error.tsx` — always present |
 
-### catchError vs try/catch
+### Boundary vs try/catch
 
 | Context | Use |
 |---------|-----|
-| Server Component needing structured logging | `catchError()` — tuple return, clean flow |
+| Render failure with route-level recovery | Throw and let the nearest `error.tsx` handle it |
+| Server Component needing structured logging or local fallback | Native `try/catch` |
 | Server Action with sequential operations | `try/catch` — maps to `ActionResult` error shape |
 | Single await, only need to re-throw | Neither — let boundary handle it |
 
@@ -223,5 +234,8 @@ Error occurred →
 - **No `global-error.tsx` with translation providers.** The layout providing `NextIntlClientProvider` has crashed. Use hardcoded fallback strings.
 - **No `notFound()` inside try/catch.** Like `redirect()`, it throws internally. Catching it prevents the not-found page from rendering.
 - **No skipping `error.tsx` at the locale root.** Without it, unhandled errors show the default Next.js error page — no translations, no retry.
-- **No `catchError()` to silently swallow errors.** Always log before rendering fallback content. Silent failures hide bugs.
+- **No invented stable `catchError()` promise helper.** In 16.2, `unstable_catchError()` is an
+  experimental Client Component boundary API, not a tuple-returning async helper.
+- **No silently swallowed `try/catch`.** Always log before rendering fallback content. Silent
+  failures hide bugs.
 - **No error handling in Client Components for server data.** Data fetching is in Server Components. Boundaries catch render failures. Clients receive resolved props.

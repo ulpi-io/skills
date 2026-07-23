@@ -2,7 +2,7 @@
 
 ## What
 
-Next.js 16 App Router uses filesystem-based routing. Directories under `src/app/` become URL segments. Navigation uses `<Link>` (server and client) or `useRouter` (client only). Server-side redirects use `redirect()` / `permanentRedirect()`. Route protection, locale detection, and rewrites live in `proxy.ts` (replaces `middleware.ts`), which runs on the Node.js runtime — not Edge.
+Next.js 16.2 App Router uses filesystem-based routing. Directories under `src/app/` become URL segments. Navigation uses `<Link>` (server and client) or `useRouter` (client only). Server-side redirects use `redirect()` / `permanentRedirect()`. Route protection, locale detection, and rewrites normally live in `proxy.ts`, which always runs on Node.js. Keep deprecated `middleware.ts` only when the application has a proven Edge-runtime requirement.
 
 ### Route segment conventions
 
@@ -22,7 +22,8 @@ Next.js 16 App Router uses filesystem-based routing. Directories under `src/app/
 - **`redirect(url)`** — server-side, throws internally (307 temporary). Use in Server Components, actions, route handlers.
 - **`permanentRedirect(url)`** — 308 permanent. Use when a URL has moved forever.
 - **`generateStaticParams()`** — pre-render specific dynamic route paths at build time.
-- **View Transitions (React 19.2)** — opt-in animated transitions via `<ViewTransition>` wrapper.
+- **View Transitions (experimental integration)** — Next.js 16.2 adds `transitionTypes` for links and
+  router navigation, but the framework integration still requires `experimental.viewTransition`.
 
 ## How
 
@@ -77,14 +78,30 @@ Prefer `<Link>` for all click-based navigation. Use `useRouter` only for program
 ### View Transitions (React 19.2)
 
 ```tsx
-import { unstable_ViewTransition as ViewTransition } from 'react';
+// next.config.ts
+import type { NextConfig } from 'next';
 
-export function PageWrapper({ children }: { children: React.ReactNode }) {
-  return <ViewTransition>{children}</ViewTransition>;
+const nextConfig: NextConfig = {
+  experimental: { viewTransition: true },
+};
+```
+
+```tsx
+import { ViewTransition } from 'react';
+import Link from 'next/link';
+
+export function ProductLink({ id, children }: { id: string; children: React.ReactNode }) {
+  return (
+    <Link href={`/products/${id}`} transitionTypes={['product-detail']}>
+      <ViewTransition name={`product-${id}`}>{children}</ViewTransition>
+    </Link>
+  );
 }
 ```
 
-Programmatic: `router.push('/en/products/widget', { viewTransition: true })`.
+Programmatic navigation uses
+`router.push('/en/products/widget', { transitionTypes: ['product-detail'] })`. Do not enable this
+experimental integration during an unrelated routing change.
 
 CSS (`globals.css`) — always respect reduced motion:
 
@@ -100,7 +117,6 @@ CSS (`globals.css`) — always respect reduced motion:
 
 ```tsx
 // src/app/[locale]/products/[slug]/page.tsx
-import type { PageProps } from 'next';
 import { getProduct } from '@/lib/api/endpoints/products';
 import { getTranslations } from 'next-intl/server';
 
@@ -155,7 +171,7 @@ src/app/[locale]/
 
 Directory name in `()` shares a layout without adding a URL segment. Use for layout boundaries: `(marketing)/` with nav+footer, `(app)/` with sidebar, `(auth)/` with centered card. Each group can have its own `layout.tsx`, `loading.tsx`, `error.tsx`.
 
-### proxy.ts — full pattern
+### proxy.ts — full Node.js pattern
 
 ```typescript
 // src/proxy.ts
@@ -215,6 +231,10 @@ export const config = {
 - **Markdown mirrors** — `.md` suffix and `Accept: text/markdown` content negotiation. See `machine-readable.md`.
 - **CSP nonce and secure headers** — See `security.md`.
 
+`proxy.ts` cannot declare or run on the Edge runtime. If an installed dependency genuinely requires
+Edge middleware, retain `middleware.ts` and document the exception instead of performing a blind
+rename. The matcher export remains `export const config`, not `proxyConfig`.
+
 ## When
 
 | Scenario | Use |
@@ -235,7 +255,8 @@ export const config = {
 
 ## Never
 
-- **No `middleware.ts`** — replaced by `proxy.ts` in Next.js 16. Runs on Node.js, not Edge.
+- **No new `middleware.ts` for Node.js interception** — use `proxy.ts`. Preserve middleware only for
+  a verified Edge-runtime requirement because proxy cannot run on Edge.
 - **No sync params** — `params` and `searchParams` are async in v16. Always `await params`. Sync access is removed.
 - **No `useRouter` from `next/router`** — use `next/navigation`. The Pages Router import does not exist in App Router.
 - **No `useRouter` in Server Components** — client-only hook. Use `redirect()` for server-side navigation.

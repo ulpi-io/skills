@@ -2,7 +2,7 @@
 
 ## What
 
-Complete security hardening for a Next.js 16 API-backed frontend. Content Security Policy with per-request nonces, secure response headers, React data tainting, CSRF protection, XSS prevention, server-only enforcement, environment variable rules, Server Action hardening, and secure cookie defaults.
+Security hardening for a Next.js 16.2 API-backed frontend. It covers Content Security Policy with per-request nonces, secure response headers, React data tainting, CSRF protection, XSS prevention, server-only enforcement, environment variable rules, Server Action hardening, and secure cookie defaults. The proxy examples require the Node.js runtime; keep Edge middleware only when an installed integration genuinely requires Edge.
 
 ### Ownership boundaries
 
@@ -60,7 +60,14 @@ export function proxy(request: NextRequest): NextResponse {
 
 **Dev vs prod:** Development adds `'unsafe-eval'` to `script-src` for Turbopack HMR. Production is strict nonce-only.
 
-**Root layout reads the nonce** via `(await headers()).get('x-nonce')` and passes it to `<Script nonce={nonce}>` components.
+Next.js extracts the nonce from the CSP request header and applies it to framework scripts during
+dynamic rendering. Read `(await headers()).get('x-nonce')` only when a custom script needs the
+explicit nonce.
+
+**Rendering tradeoff:** a fresh per-request nonce requires dynamic rendering. It disables static
+optimization and ISR for affected pages, and nonce-based pages cannot use Partial Prerendering.
+Review that interaction when `cacheComponents` is enabled. Decide between nonce-based CSP and static
+caching deliberately; do not copy this pattern into every application as a cost-free header change.
 
 **CSP violation reporting:** Add `report-uri /api/csp-report` to the CSP string. Route handler at `app/api/csp-report/route.ts` logs violations via pino at `warn` level. See `references/logging.md`.
 
@@ -189,7 +196,9 @@ export const commentSchema = z.object({
 
 **Silent failure footgun:** `process.env.SECRET_KEY` in a Client Component returns `undefined` -- no error, no warning. `import 'server-only'` turns this into a build error.
 
-**Runtime env reads:** `process.env` is inlined at build time. For runtime reads, call `connection()` from `next/server` first. See `references/stack.md`.
+**Runtime env reads:** only `NEXT_PUBLIC_` values are inlined into browser bundles. Server values
+remain server-only, but a prerendered route can capture one during the build. Call `connection()`
+when that route must read a deployment-specific server value per request. See `references/stack.md`.
 
 **`.env` file rules:** `.env.local` never committed (gitignored, local secrets). `.env` committed with non-secret defaults only. `.env.production` committed, production non-secret config. All `.env*.local` in `.gitignore`.
 
@@ -249,7 +258,7 @@ Use `sameSite: 'strict'` for critical apps (banking, healthcare). Tradeoff: brea
 
 | Situation | Apply |
 |-----------|-------|
-| Any `<Script>` or inline script injection | Read nonce from headers, pass `nonce` attribute |
+| Custom `<Script>` or inline script with nonce CSP | Read nonce from headers, pass `nonce` attribute |
 | CMS/rich text HTML rendering | `DOMPurify.sanitize()` before `dangerouslySetInnerHTML` |
 | User-provided URLs in `href` | Validate protocol is `http://`, `https://`, or `/` |
 | Text inputs from forms | Zod `.transform()` to strip HTML tags |
@@ -263,6 +272,8 @@ Use `sameSite: 'strict'` for critical apps (banking, healthcare). Tradeoff: brea
 ## Never
 
 - **No CSP in `next.config.ts` `headers()`** -- proxy.ts is the only place. `headers()` has no access to per-request nonces.
+- **No nonce CSP without accepting dynamic rendering** -- per-request nonces disable static
+  optimization and ISR for affected pages and cannot be used with PPR on those pages.
 - **No `unsafe-inline` or `unsafe-eval` in production CSP** -- `unsafe-eval` is dev-only for Turbopack HMR.
 - **No unsanitized `dangerouslySetInnerHTML`** -- always DOMPurify. No exceptions.
 - **No `NEXT_PUBLIC_` prefix on server secrets** -- the value is bundled into client JS, visible to everyone.

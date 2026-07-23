@@ -39,6 +39,27 @@ return new class extends Migration {
 
 **Foreign key indexes:** Laravel auto-creates indexes on `foreignId()`. Add explicit indexes on non-FK columns in `WHERE`, `ORDER BY`, or `JOIN` clauses. Never modify a migration that has been run in production — create a new one.
 
+### Laravel 13 MySQL mutation checks
+
+Laravel 13 requires a non-empty `uniqueBy` argument for `upsert()`, including on MySQL/MariaDB where
+the driver uses real primary/unique indexes to detect conflicts:
+
+```php
+Order::upsert(
+    $rows,
+    ['reference'],
+    ['status', 'total_cents', 'updated_at'],
+);
+```
+
+Back the conflict columns with an actual primary or unique index. Never pass `[]` for `uniqueBy`;
+Laravel 13 throws `InvalidArgumentException` instead of generating invalid SQL.
+
+Also review MySQL deletes that combine joins with `orderBy()` or `limit()`. Laravel 13 now compiles
+those clauses instead of silently ignoring them, and standard MySQL/MariaDB variants may reject the
+resulting `DELETE ... JOIN ... ORDER BY ... LIMIT` SQL. Rewrite as an explicit key subquery followed by
+a bounded delete when ordering/limiting is required, and cover it with an integration test on MySQL.
+
 ### `DB::transaction()` — closure pattern
 
 > For how transactions are used inside Actions, see `references/service-layer.md`.
@@ -225,6 +246,7 @@ Order::where('status', 'pending')->explain();      // EXPLAIN rows — check for
 | Process 10k+ rows | `chunkById()` for mutations, `lazy()`/`cursor()` for reads |
 | Debug slow query | `toRawSql()` then `EXPLAIN` — check for missing indexes |
 | Need related counts without N+1 | `withCount('relation')` |
+| Bulk insert/update by unique key | `upsert($rows, ['real_unique_column'], $updates)` with a non-empty `uniqueBy` |
 
 **Chunking decision tree:**
 
@@ -246,3 +268,7 @@ Order::where('status', 'pending')->explain();      // EXPLAIN rows — check for
 - **Never `chunk()` when mutating rows** — OFFSET shifts when rows change scope. Use `chunkById()`.
 - **Never index every column** — indexes speed reads but slow writes. Index FKs, `WHERE`/`ORDER BY` columns, and composite indexes matching common query patterns.
 - **Never forget to `return` from `DB::transaction()` closures** — if you need the created model outside, return it. The value propagates.
+- **Never pass an empty `uniqueBy` to `upsert()`.** Laravel 13 rejects it; ensure the named conflict
+  columns are backed by real unique indexes on MySQL/MariaDB.
+- **Never assume `orderBy()` / `limit()` on joined MySQL deletes is ignored.** Laravel 13 compiles it;
+  verify the generated SQL and database support before deployment.

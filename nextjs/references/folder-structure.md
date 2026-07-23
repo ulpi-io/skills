@@ -119,7 +119,7 @@ src/
 │   ├── routing.ts                         # next-intl routing config (locales, defaultLocale)
 │   └── request.ts                         # next-intl request config (locale detection, message loading)
 │
-├── proxy.ts                               # Replaces middleware.ts — auth, locale, rewrites, CSP
+├── proxy.ts                               # Node.js interception — auth, locale, rewrites, CSP
 │
 └── messages/                              # i18n message files
     ├── en/
@@ -156,7 +156,8 @@ Underscore prefix (`_components/`) makes the directory private to the router -- 
 
 ### Parallel route slots and `default.tsx`
 
-Every `@slotname/` directory must contain a `default.tsx`. Without it, soft navigation fails and the build breaks.
+Every `@slotname/` directory must contain a `default.tsx`. Next.js 16 fails the build when it is
+missing.
 
 ```tsx
 // src/app/[locale]/@modal/default.tsx — return null when no modal active
@@ -211,6 +212,8 @@ Is it a component?
 - **Never create route handlers for data fetching.** No `app/api/products/route.ts`. Use Server Components with the API client or Server Actions for mutations.
 - **Never use relative imports beyond one level.** Always `@/` alias: `'@/components/ui/button'`, never `'../../../components/ui/button'`.
 - **Never omit `default.tsx` from parallel route slots.** Build fails without it.
+- **Never rename Edge middleware blindly.** `proxy.ts` always runs on Node.js; retain deprecated
+  `middleware.ts` only when an installed integration has a verified Edge-runtime requirement.
 - **Never put `_components/` outside `src/app/`.** Shared components go in `src/components/`.
 - **Never use PascalCase file names.** Files: `kebab-case.tsx`. Exports: `PascalCase`.
 - **Never place a component in `ui/` if it uses `t()` or business logic.** It belongs in `features/`.

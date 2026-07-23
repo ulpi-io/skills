@@ -76,6 +76,20 @@ CORS_ALLOWED_ORIGINS=https://app.example.com
 
 Expose rate limit headers in `exposed_headers` so the client can read them from JavaScript.
 
+### Laravel 13 request forgery protection
+
+Stateless `routes/api.php` endpoints do not use CSRF middleware. Web and Filament routes do. Laravel
+13 renamed the middleware and added origin-aware checks through `Sec-Fetch-Site`:
+
+```php
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+```
+
+Replace direct `VerifyCsrfToken` or `ValidateCsrfToken` references in middleware exclusions and tests
+with `PreventRequestForgery`; the old classes are deprecated aliases. Configure exclusions through
+Laravel 13's `preventRequestForgery(...)` middleware configuration API, and never disable the
+middleware globally to make a webhook work. Keep signed webhooks on stateless API routes instead.
+
 ### Rate limiting strategy
 
 This section owns the **strategy rationale** — why each tier exists, which backend, and what the headers mean. See `routing.md` for `RateLimiter::for()` definition code and `throttle:{name}` middleware registration.
@@ -233,6 +247,7 @@ Add before the test stage in CI (see `docker.md` for pipeline skeleton). Run on 
 | Deploying to production | `FORCE_HTTPS=true`, verify security headers, `composer audit` |
 | Adding a new dependency | Run `composer audit` after install |
 | Storing user-submitted text | Strip tags in `prepareForValidation()` |
+| Updating web/Filament CSRF exclusions for Laravel 13 | Use `PreventRequestForgery`, never the deprecated aliases |
 
 ## Never
 

@@ -150,16 +150,24 @@ const faqSchema = {
 ```typescript
 import type { MetadataRoute } from 'next';
 import { routing } from '@/i18n/routing';
-import { getAllProducts } from '@/lib/api/endpoints/products';
+import { getProductCount, getProductsForSitemap } from '@/lib/api/endpoints/products';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
+const SITEMAP_SIZE = 50_000;
 
 export async function generateSitemaps() {
-  return [{ id: 0 }, { id: 1 }]; // split by content type
+  const count = await getProductCount();
+  return Array.from({ length: Math.ceil(count / SITEMAP_SIZE) }, (_, id) => ({ id }));
 }
 
-export default async function sitemap({ id }: { id: number }): Promise<MetadataRoute.Sitemap> {
-  const products = await getAllProducts();
+export default async function sitemap(
+  { id }: { id: Promise<string> },
+): Promise<MetadataRoute.Sitemap> {
+  const page = Number(await id); // generated sitemap ids are async strings in Next.js 16
+  const products = await getProductsForSitemap({
+    offset: page * SITEMAP_SIZE,
+    limit: SITEMAP_SIZE,
+  });
   return products.flatMap((p) =>
     routing.locales.map((locale) => ({
       url: `${BASE_URL}/${locale}/products/${p.slug}`,

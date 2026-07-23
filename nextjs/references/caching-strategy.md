@@ -2,14 +2,17 @@
 
 ## What
 
-Next.js 16 replaces the old fetch-based caching model with the `'use cache'` directive. Caching is opt-in, explicit, and requires `cacheComponents: true` in `next.config.ts` — without it, every `'use cache'` directive is silently ignored.
+With Next.js 16.2 Cache Components enabled, `'use cache'` is the explicit model for caching function
+and component output. Cache Components are opt-in and require `cacheComponents: true` in
+`next.config.ts`; do not treat this flag as a universal requirement for applications that have not
+adopted the model.
 
 ### Prerequisite
 
 ```typescript
-// next.config.ts — required for ANY caching to work
+// next.config.ts — required for Cache Components APIs
 const nextConfig: NextConfig = {
-  cacheComponents: true,  // WITHOUT THIS, 'use cache' is silently ignored
+  cacheComponents: true,
 };
 ```
 
@@ -79,13 +82,17 @@ A single cached function can have multiple tags. Invalidating any one tag invali
 |-----|-----------|---------------|-----------|
 | `updateTag(tag)` | Read-your-writes — user sees fresh data immediately | Server Actions only | `updateTag(tag: string)` |
 | `revalidateTag(tag, profile)` | SWR background refresh — serves stale, refreshes behind the scenes | Server Actions, route handlers | `revalidateTag(tag: string, profile: string)` |
-| `refresh()` | Refreshes uncached data only — no cache involvement | Server-side | `refresh()` |
+| `refresh()` | Refreshes the client router; no cache invalidation | Server Actions only | `refresh()` |
 
-**`updateTag(tag)`** — The acting user sees the updated data on the very next render. Other users continue seeing the cached version until it naturally revalidates. Use for user-facing mutations where the person who made the change must see it immediately.
+**`updateTag(tag)`** — Immediately expires entries for the tag so the next read waits for fresh data.
+It is designed for read-your-own-writes flows, but tag invalidation is not a per-user cache scope. Use
+specific tags and call it only from a Server Action.
 
 **`revalidateTag(tag, profile)`** — Marks the tagged cache entry as stale and triggers a background refresh. The next request gets the old data while fresh data is generated. The second argument is the `cacheLife` profile name (e.g., `'minutes'`, `'hours'`, or a custom profile). The single-argument form is deprecated — always pass the profile.
 
-**`refresh()`** — Server-side equivalent of `router.refresh()`. Re-runs Server Components to pick up fresh uncached data. Does not touch the cache at all. Use when data is not cached but the page needs to reflect a change.
+**`refresh()`** — Refreshes the client router from a Server Action so Server Components re-run. It
+does not invalidate cached data. Use when uncached or request-derived data must be reflected after a
+mutation.
 
 ### The four cache layers
 
@@ -242,12 +249,14 @@ export async function updatePreferences(formData: FormData): Promise<ActionResul
 
 ## Never
 
-- **No missing `cacheComponents: true`** — without it, every `'use cache'` is dead code. No error, no warning. This is the single most common caching mistake.
+- **No Cache Components API without `cacheComponents: true`** — the directive and related
+  `cacheLife` / `cacheTag` APIs require this deliberate rendering-model opt-in.
 - **No single-argument `revalidateTag(tag)`** — the single-arg form is deprecated. Always pass the `cacheLife` profile as the second argument: `revalidateTag('products', 'hours')`.
 - **No `updateTag` outside Server Actions** — `updateTag` only works inside Server Actions. In route handlers or other server code, use `revalidateTag`.
 - **No caching of non-serializable arguments** — class instances, functions, Symbols, and DOM nodes cannot be arguments to cached functions. Restructure to pass plain objects.
 - **No `'use cache'` on user-specific mutable data** — cart contents, active form state, and session data should not be cached. Cache misses are cheap; stale user data is a bug.
 - **No `'use cache: private'` for shared content** — private cache is per-request. Use default `'use cache'` for content shared across users.
-- **No `refresh()` to invalidate cached data** — `refresh()` only affects uncached data. To invalidate cache entries, use `updateTag` or `revalidateTag` with the appropriate tag.
+- **No `refresh()` outside a Server Action or to invalidate cached data** — it refreshes the client
+  router only. Use `updateTag` or `revalidateTag` for cache entries.
 - **No caching without tags** — every `'use cache'` function should call `cacheTag()`. Without tags, you have no way to invalidate specific entries and must wait for time-based expiry.
 - **No forgetting that `cacheTag` is additive** — a function with `cacheTag('products', 'featured')` is invalidated when EITHER tag is invalidated. Design tags so unwanted cross-invalidation does not occur.

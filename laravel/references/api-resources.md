@@ -6,12 +6,50 @@ API Resources transform Eloquent models into JSON responses. Every endpoint retu
 
 - **`JsonResource`** — single item. Wraps one model via `toArray()`.
 - **`ResourceCollection`** — list of items. Wraps a paginator, automatically includes `meta` (pagination) and `links` (navigation URLs).
+- **`JsonApiResource`** — Laravel 13's first-party JSON:API implementation. Use only when the
+  external contract requires the JSON:API specification.
 
 All list endpoints are paginated. No exceptions. Use `->paginate()` for offset or `->cursorPaginate()` for infinite scroll. Never `->get()` on a list endpoint.
 
 **Localization convention:** return machine-readable codes and keys in all responses. Never return pre-translated strings. The client holds the translation table and maps `"status": "pending"` or `"error_code": "ORDER_NOT_FOUND"` to the user's locale. The API never changes when a new language is added.
 
 ## How
+
+### Choose the response contract first
+
+Keep `JsonResource` / `ResourceCollection` as the default for this project's existing camelCase
+`data` envelope. Laravel 13's `JsonApiResource` is not a drop-in formatting upgrade; it changes the
+media type and response shape to the JSON:API specification, including resource objects,
+relationships, sparse fieldsets, and includes.
+
+For an explicit JSON:API endpoint, generate the resource with:
+
+```bash
+php artisan make:resource OrderResource --json-api
+```
+
+```php
+use Illuminate\Http\Resources\JsonApi\JsonApiResource;
+
+final class OrderResource extends JsonApiResource
+{
+    public $attributes = [
+        'reference',
+        'status',
+        'total_cents',
+        'currency',
+    ];
+
+    public $relationships = [
+        'user',
+        'items',
+    ];
+}
+```
+
+Return `OrderResource::collection(Order::paginate(15))`. Laravel sets the JSON:API content type and
+handles the specification's resource and relationship structure. Do not mix a JSON:API resource with
+the custom envelope shown below on the same endpoint.
 
 ### JsonResource with conditional fields
 
@@ -221,6 +259,10 @@ Offset (`paginate`) for page-numbered lists — gives `total` and `last_page`. C
 **Filtering/sorting/including via query params?**
 `spatie/laravel-query-builder`. Declare allowed filters, sorts, includes. Never parse `$request->query()` manually.
 
+**Client explicitly requires JSON:API?**
+Use Laravel 13 `JsonApiResource` and `--json-api`. Keep standard `JsonResource` for all existing API
+contracts; do not migrate response shapes just because the framework added a new resource type.
+
 ## Never
 
 - **Never return Eloquent models directly.** No `return $order`. Raw models expose every column including sensitive fields. Always wrap in an API Resource.
@@ -243,3 +285,6 @@ Offset (`paginate`) for page-numbered lists — gives `total` and `last_page`. C
 - **Never return pre-translated strings.** Return status codes (`"pending"`), error codes (`"ORDER_NOT_FOUND"`), enum values. Client translates. A pre-translated API is locked to one language.
 - **Never manually parse query parameters for filtering.** No `$request->query('status')` with `->where()`. Use `spatie/laravel-query-builder` — it validates allowed filters and prevents arbitrary WHERE injection.
 - **Never build response arrays by hand.** No `return ['data' => $order, 'meta' => [...]]`. Use ResourceCollection for automatic envelope from the paginator.
+- **Never mix JSON:API and custom resource envelopes.** Choose one documented contract per endpoint.
+  `JsonApiResource` is for an explicit JSON:API consumer, not a universal replacement for
+  `JsonResource`.

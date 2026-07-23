@@ -4,8 +4,8 @@
 
 A **developer-time** package (`--dev`) that gives AI coding agents the context and knowledge they need to write high-quality, idiomatic Laravel code. Your end users never interact with it — it helps *you* and your AI tools build faster.
 
-Boost provides three layers:
-1. **MCP Tools** (15 tools) — give AI agents runtime access to your app's schema, logs, errors, docs
+Laravel 13 projects use **Boost 2 (`^2.0`)**. Boost provides three layers:
+1. **MCP Tools** — give AI agents runtime access to your app's schema, logs, errors, and docs
 2. **AI Guidelines** — composable instruction files loaded upfront so agents know your stack's conventions
 3. **Agent Skills** — on-demand knowledge modules activated for specific tasks (Livewire, Pest, Tailwind, etc.)
 
@@ -25,7 +25,7 @@ Key rules:
 ### Installation
 
 ```bash
-composer require laravel/boost --dev
+composer require laravel/boost:"^2.0" --dev
 php artisan boost:install
 ```
 
@@ -54,7 +54,7 @@ These tools give AI agents *live* access to your application state — schema, l
 Composable instruction files that tell AI agents how your stack works. Loaded automatically based on your installed packages.
 
 **Built-in guideline coverage:**
-- Laravel Framework (core, 10.x, 11.x, 12.x)
+- Laravel Framework (core, 10.x, 11.x, 12.x, 13.x)
 - Livewire (core, 2.x, 3.x, 4.x)
 - Flux UI, Folio, Herd
 - Inertia (React/Vue/Svelte, core + versions 1.x–3.x)
@@ -115,11 +115,11 @@ On-demand knowledge modules activated when working on specific tasks. Unlike gui
 
 ### Documentation API
 
-Semantic search over 17,000+ documentation entries covering:
+Semantic search over current Laravel ecosystem documentation, including:
 
 | Package | Versions |
 |---|---|
-| Laravel Framework | 10, 11, 12 |
+| Laravel Framework | 10, 11, 12, 13 |
 | Filament | 2, 3, 4, 5 |
 | Flux UI | current |
 | Inertia | 1, 2 |
@@ -167,7 +167,8 @@ Boost::registerAgent(MyCustomAgent::class);
 
 | Scenario | Action |
 |---|---|
-| Setting up a new Laravel project for AI-assisted development | `composer require laravel/boost --dev && php artisan boost:install` |
+| Setting up a new Laravel 13 project for AI-assisted development | `composer require laravel/boost:"^2.0" --dev && php artisan boost:install` |
+| Deliberately upgrading a Laravel 12 application to 13 | Require Boost `^2.0`, then invoke `/upgrade-laravel-v13` and review the generated diff |
 | AI agent writes wrong patterns for your Laravel version | Check guidelines are up to date: `php artisan boost:update` |
 | Added new packages (Livewire, Pest, etc.) | `php artisan boost:update --discover` |
 | Project has custom conventions AI agents should follow | Add `.ai/guidelines/*.blade.php` or `.md` files |
@@ -187,5 +188,6 @@ Boost::registerAgent(MyCustomAgent::class);
   ```
 - **Never skip `boost:install`.** Without it, your IDE/agent won't have the MCP connection configured and won't use any Boost tools or guidelines.
 - **Never manually edit Boost-generated guideline files.** They get overwritten on `boost:update`. Use `.ai/guidelines/` for custom conventions instead.
+- **Never run `/upgrade-laravel-v13` during unrelated work.** A framework upgrade requires explicit scope, dependency review, and the checks in `upgrading.md`.
 - **Never confuse Boost with the AI SDK.** Boost helps *you* write code with AI agents. The AI SDK (`laravel/ai`, see `ai-sdk.md`) adds AI features *your users* interact with. They serve different audiences.
 - **Never confuse Boost with Laravel MCP.** Boost is a pre-built MCP server for development. `laravel/mcp` (see `mcp.md`) is a framework for building your own MCP servers that expose your app to external AI clients.

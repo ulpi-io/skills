@@ -2,7 +2,10 @@
 
 ## What
 
-Laravel 12 API-only project structure. No Blade, no Livewire, no Inertia, no `resources/views/`. JSON responses via API Resources. Business logic lives in Actions (one class per operation). Filament admin panel is the only UI — self-contained at `/admin`. Every directory has a single responsibility.
+Laravel 13 API-only project structure. No application Blade, Livewire, Inertia, or `resources/views/`
+surface. JSON responses use API Resources. Business logic lives in Actions (one class per operation).
+The optional Filament 5 admin panel is self-contained at `/admin`. Every directory has a single
+responsibility.
 
 ## How
 
@@ -18,6 +21,11 @@ app/
 │   └── User/
 │       ├── RegisterUser.php
 │       └── UpdateUserProfile.php
+│
+├── Ai/                         # Optional Laravel AI SDK surface
+│   ├── Agents/                 # Dedicated promptable agents
+│   ├── Middleware/             # Agent prompt/response middleware
+│   └── Tools/                  # Agent-callable tools
 │
 ├── Console/Commands/           # Custom Artisan commands (only if needed)
 │   └── PruneExpiredTokens.php
@@ -101,7 +109,7 @@ app/
 project-root/
 ├── app/                        # Application code (see tree above)
 ├── bootstrap/
-│   └── app.php                 # Middleware, exception handler (Laravel 12 — NOT Kernel.php)
+│   └── app.php                 # Middleware, exception handler (Laravel 13 — NOT Kernel.php)
 ├── config/                     # Configuration files — all env-driven
 ├── database/
 │   ├── factories/              # Model factories — states, relationships, sequences
@@ -115,7 +123,7 @@ project-root/
 │   └── data/                   # mysql/ + redis/ — gitignored
 ├── routes/
 │   ├── api.php                 # All API routes — versioned groups (/api/v1/)
-│   ├── console.php             # Schedule definitions (Laravel 12 — NOT Kernel.php)
+│   ├── console.php             # Schedule definitions (Laravel 13 — NOT Kernel.php)
 │   └── channels.php            # Broadcast channel authorization (optional)
 ├── tests/
 │   ├── Feature/Api/V1/         # API endpoint tests — mirrors Controllers/
@@ -190,7 +198,7 @@ project-root/
 - **Never return Eloquent models directly from Controllers.** Always wrap in an API Resource — it controls what the client sees.
 - **Never skip the version directory.** Controllers go in `Api/V1/`, not directly in `Controllers/`.
 - **Never use flat Actions without domain grouping.** `Actions/CreateOrder.php` is wrong. Use `Actions/Order/CreateOrder.php`.
-- **Never define schedules in `Kernel.php`.** Laravel 12 uses `routes/console.php`. The Kernel was removed.
-- **Never register middleware in `Kernel.php`.** Laravel 12 uses `bootstrap/app.php` for middleware.
+- **Never define schedules in `Kernel.php`.** Laravel 11+ uses `routes/console.php`; Laravel 13 keeps this structure.
+- **Never register middleware in `Kernel.php`.** Laravel 11+ uses `bootstrap/app.php`; Laravel 13 keeps this structure.
 - **Never create a `Services/` directory with god classes.** One Action per operation. If you need shared utilities between Actions, extract a focused helper Action that other Actions compose.
 - **Never mix test types.** Feature tests (HTTP endpoint tests) go in `tests/Feature/`, unit tests (isolated logic) go in `tests/Unit/`. Mirror the `app/` structure in each.

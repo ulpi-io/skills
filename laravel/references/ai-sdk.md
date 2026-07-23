@@ -2,7 +2,9 @@
 
 ## What
 
-A unified PHP API for building AI-native features into your Laravel application. Provides a consistent interface across multiple AI providers — OpenAI, Anthropic, Gemini, Azure, Groq, xAI, DeepSeek, Mistral, Ollama, Cohere, ElevenLabs, Jina, VoyageAI.
+Laravel 13's first-party PHP API for building AI-native features. It provides a consistent interface
+across multiple AI providers — OpenAI, Anthropic, Gemini, Azure, Groq, xAI, DeepSeek, Mistral,
+Ollama, Cohere, ElevenLabs, Jina, and VoyageAI.
 
 **Agents** are the fundamental building block — dedicated PHP classes that wrap provider calls with tools, middleware, conversation memory, structured output, streaming, and queueing.
 
@@ -30,6 +32,8 @@ Key rules:
 - Use `RemembersConversations` trait for persistent chat — it handles DB storage automatically
 - Always fake agents in tests — `SalesCoach::fake()`, `Image::fake()`, etc.
 - Use failover arrays for resilience — `provider: [Lab::OpenAI, Lab::Anthropic]`
+- Treat vector search as an explicit database architecture choice: Laravel's native vector columns
+  and queries require PostgreSQL with `pgvector`, not this skill's default MySQL stack
 
 ## How
 
@@ -62,11 +66,13 @@ php artisan make:agent ProductAnalyzer --structured  # structured output
 
 ```php
 <?php
-namespace App\Agents;
+namespace App\Ai\Agents;
 
-use Laravel\Ai\Agent;
-use Laravel\Ai\Contracts\{Conversational, HasTools, HasMiddleware};
-use Laravel\Ai\Concerns\{Promptable, RemembersConversations};
+use App\Ai\Middleware\LogPrompts;
+use App\Ai\Tools\{GetCustomerHistory, SearchKnowledgeBase};
+use Laravel\Ai\Contracts\{Agent, Conversational, HasMiddleware, HasTools};
+use Laravel\Ai\Concerns\RemembersConversations;
+use Laravel\Ai\Promptable;
 use Laravel\Ai\Attributes\{Provider, Model, MaxSteps, MaxTokens, Temperature, Timeout};
 use Laravel\Ai\Enums\Lab;
 
@@ -89,15 +95,15 @@ final class SalesCoach implements Agent, Conversational, HasTools, HasMiddleware
     public function tools(): array
     {
         return [
-            new \App\Tools\SearchKnowledgeBase,
-            new \App\Tools\GetCustomerHistory,
+            new SearchKnowledgeBase,
+            new GetCustomerHistory,
         ];
     }
 
     public function middleware(): array
     {
         return [
-            new \App\AgentMiddleware\LogPrompts,
+            new LogPrompts,
         ];
     }
 }
@@ -128,9 +134,11 @@ $response = agent(
 
 ### Streaming
 
-Returns SSE-compatible `StreamableAgentResponse`. Use from a controller route that returns the stream:
+Returns an SSE-compatible `StreamableAgentResponse`. Use from a controller route that returns the stream. A `then` callback receives the completed `StreamedAgentResponse`:
 
 ```php
+use Laravel\Ai\Responses\StreamableAgentResponse;
+
 // In a controller — returns SSE stream to the client
 public function __invoke(AnalyzeRequest $request): StreamableAgentResponse
 {
@@ -149,16 +157,21 @@ public function __invoke(AnalyzeRequest $request): StreamableAgentResponse
 Push agent events to WebSocket channels for real-time UI updates (requires Reverb — see `queues-jobs.md`):
 
 ```php
-// In a controller — broadcast stream events to a private channel
+// In a controller — broadcast each streamed event to a private channel
 public function __invoke(AnalyzeRequest $request): void
 {
-    (new SalesCoach)->stream($request->validated('prompt'))
-        ->broadcast(new PrivateChannel("analysis.{$request->user()->id}"));
+    $channel = new PrivateChannel("analysis.{$request->user()->id}");
+
+    foreach ((new SalesCoach)->stream($request->validated('prompt')) as $event) {
+        $event->broadcast($channel);
+    }
 }
 
 // Or broadcast via queue worker to avoid blocking the request
-(new SalesCoach)->stream($request->validated('prompt'))
-    ->broadcastOnQueue(new PrivateChannel("analysis.{$request->user()->id}"));
+(new SalesCoach)->broadcastOnQueue(
+    $request->validated('prompt'),
+    new PrivateChannel("analysis.{$request->user()->id}"),
+);
 ```
 
 ### Queueing
@@ -190,11 +203,11 @@ Create with `php artisan make:agent ProductAnalyzer --structured`. The agent ret
 ```php
 <?php
 
-namespace App\Agents;
+namespace App\Ai\Agents;
 
-use Laravel\Ai\Agent;
-use Laravel\Ai\Contracts\HasStructuredOutput;
-use Laravel\Ai\Concerns\Promptable;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Ai\Contracts\{Agent, HasStructuredOutput};
+use Laravel\Ai\Promptable;
 use Laravel\Ai\Attributes\{Provider, Model};
 use Laravel\Ai\Enums\Lab;
 
@@ -209,17 +222,14 @@ final class ProductAnalyzer implements Agent, HasStructuredOutput
         return 'Analyze product reviews and extract structured sentiment data.';
     }
 
-    public function schema(): array
+    public function schema(JsonSchema $schema): array
     {
         return [
-            'type' => 'object',
-            'properties' => [
-                'sentiment' => ['type' => 'string', 'enum' => ['positive', 'negative', 'neutral']],
-                'score' => ['type' => 'number', 'minimum' => 0, 'maximum' => 1],
-                'summary' => ['type' => 'string'],
-                'key_themes' => ['type' => 'array', 'items' => ['type' => 'string']],
-            ],
-            'required' => ['sentiment', 'score', 'summary', 'key_themes'],
+            'sentiment' => $schema->string()
+                ->enum(['positive', 'negative', 'neutral'])->required(),
+            'score' => $schema->number()->min(0)->max(1)->required(),
+            'summary' => $schema->string()->required(),
+            'key_themes' => $schema->array()->items($schema->string())->required(),
         ];
     }
 }
@@ -229,8 +239,8 @@ Use from an Action (see `service-layer.md` for Action patterns):
 
 ```php
 $analysis = (new ProductAnalyzer)->prompt("Analyze these reviews: {$reviewText}");
-$sentiment = $analysis->structured(); // Returns decoded array matching the schema
-// $sentiment['score'], $sentiment['sentiment'], $sentiment['key_themes']
+$score = $analysis['score'];
+$sentiment = $analysis['sentiment'];
 ```
 
 ### Provider-specific options
@@ -260,19 +270,19 @@ final class DeepAnalyzer implements Agent, HasProviderOptions
 ### Attachments
 
 ```php
-use Laravel\Ai\Files\{Document, Image};
+use Laravel\Ai\Files;
 
 // Images — from storage, path, URL, or upload
 $response = (new SalesCoach)->prompt('Describe this', attachments: [
-    Image::fromStorage('photos/product.jpg'),
-    Image::fromUrl('https://example.com/image.png'),
-    Image::fromUpload($request->file('photo')),
+    Files\Image::fromStorage('photos/product.jpg'),
+    Files\Image::fromPath('/tmp/product.jpg'),
+    $request->file('photo'),
 ]);
 
 // Documents
 $response = (new SalesCoach)->prompt('Summarize this PDF', attachments: [
-    Document::fromStorage('docs/report.pdf'),
-    Document::fromPath('/tmp/contract.pdf'),
+    Files\Document::fromStorage('docs/report.pdf'),
+    Files\Document::fromPath('/tmp/contract.pdf'),
 ]);
 ```
 
@@ -284,29 +294,31 @@ php artisan make:tool RandomNumberGenerator
 
 ```php
 <?php
-namespace App\Tools;
+namespace App\Ai\Tools;
 
-use Laravel\Ai\Tool;
-use Laravel\Ai\Tool\Request;
-use Laravel\Ai\Support\JsonSchema;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Ai\Contracts\Tool;
+use Laravel\Ai\Tools\Request;
+use Stringable;
 
-final class RandomNumberGenerator extends Tool
+final class RandomNumberGenerator implements Tool
 {
-    public function description(): string
+    public function description(): Stringable|string
     {
         return 'Generate a random number between min and max.';
     }
 
-    public function schema(JsonSchema $schema): JsonSchema
+    public function schema(JsonSchema $schema): array
     {
-        return $schema
-            ->integer('min', 'Minimum value')
-            ->integer('max', 'Maximum value');
+        return [
+            'min' => $schema->integer()->min(0)->required(),
+            'max' => $schema->integer()->required(),
+        ];
     }
 
-    public function handle(Request $request): mixed
+    public function handle(Request $request): Stringable|string
     {
-        return random_int($request->get('min'), $request->get('max'));
+        return (string) random_int($request['min'], $request['max']);
     }
 }
 ```
@@ -328,29 +340,22 @@ php artisan make:agent-middleware LogPrompts
 ```php
 <?php
 
-namespace App\AgentMiddleware;
+namespace App\Ai\Middleware;
 
-use Laravel\Ai\AgentPrompt;
 use Closure;
 use Illuminate\Support\Facades\Log;
+use Laravel\Ai\Prompts\AgentPrompt;
 
 final class LogPrompts
 {
     public function handle(AgentPrompt $prompt, Closure $next): mixed
     {
-        Log::info('Agent prompted', [
-            'agent' => class_basename($prompt->agent()),
-            'prompt' => $prompt->text(),
-        ]);
+        Log::info('Agent prompted', ['prompt' => $prompt->prompt]);
 
-        $response = $next($prompt);
-
-        Log::info('Agent responded', [
-            'agent' => class_basename($prompt->agent()),
-            'tokens' => $response->usage(),
-        ]);
-
-        return $response;
+        return $next($prompt)->then(fn ($response) => Log::info(
+            'Agent responded',
+            ['text' => $response->text],
+        ));
     }
 }
 ```
@@ -360,7 +365,8 @@ Assign in the agent's `middleware()` method (see agent example above). Middlewar
 ### Image generation
 
 ```php
-use Laravel\Ai\Facades\Image;
+use Laravel\Ai\Files;
+use Laravel\Ai\Image;
 
 $image = Image::of('A donut on a plate')
     ->quality('high')
@@ -369,12 +375,12 @@ $image = Image::of('A donut on a plate')
     ->generate();
 
 $path = $image->store();          // store to default disk
-$path = $image->storeAs('images', 'donut.png');
+$path = $image->storeAs('images/donut.png');
 $image->storePublicly();
 
 // With reference images
 $image = Image::of('Make it blue')->attachments([
-    \Laravel\Ai\Files\Image::fromStorage('original.png'),
+    Files\Image::fromStorage('original.png'),
 ])->generate();
 
 // Queued
@@ -385,7 +391,7 @@ $image = Image::of('A donut')->queue()
 ### Audio (TTS)
 
 ```php
-use Laravel\Ai\Facades\Audio;
+use Laravel\Ai\Audio;
 
 $audio = Audio::of('Hello, welcome to our app')
     ->female()
@@ -398,7 +404,7 @@ $audio->store();
 ### Transcription (STT)
 
 ```php
-use Laravel\Ai\Facades\Transcription;
+use Laravel\Ai\Transcription;
 
 $transcript = Transcription::fromStorage('recordings/meeting.mp3')
     ->diarize()   // speaker identification
@@ -408,7 +414,8 @@ $transcript = Transcription::fromStorage('recordings/meeting.mp3')
 ### Embeddings and vector search
 
 ```php
-use Laravel\Ai\Facades\Embeddings;
+use Illuminate\Support\Str;
+use Laravel\Ai\Embeddings;
 use Laravel\Ai\Enums\Lab;
 
 // Single
@@ -420,20 +427,21 @@ $embeddings = Embeddings::for(['text1', 'text2'])
     ->generate(Lab::OpenAI, 'text-embedding-3-small');
 
 // Caching — in config/ai.php or per-request
-$embeddings = Embeddings::for('query')->cache()->generate();
+$embeddings = Embeddings::for(['query'])->cache()->generate();
 ```
 
-**PostgreSQL pgvector** — add a `vector()` column, create HNSW index, query with similarity:
+**PostgreSQL pgvector only** — this feature is unavailable on the default MySQL stack. Adopt it only
+after an explicit database decision, then enable the extension, add an indexed `vector()` column, and
+query by similarity:
 
 ```php
 // Migration
-$table->vector('embedding', dimensions: 1536);
-$table->hnswIndex('embedding');
+Schema::ensureVectorExtensionExists();
+$table->vector('embedding', dimensions: 1536)->index();
 
 // Query
 $results = Product::query()
     ->whereVectorSimilarTo('embedding', $queryEmbedding, minSimilarity: 0.4)
-    ->orderByVectorDistance('embedding', $queryEmbedding)
     ->limit(10)
     ->get();
 
@@ -443,7 +451,7 @@ $results = Product::query()
 ### Reranking
 
 ```php
-use Laravel\Ai\Facades\Reranking;
+use Laravel\Ai\Reranking;
 
 // Raw documents
 $ranked = Reranking::of($documents)->limit(5)->rerank('PHP frameworks');
@@ -456,7 +464,7 @@ $ranked = $posts->rerank('body', 'Laravel tutorials');
 
 ```php
 use Laravel\Ai\Files\Document;
-use Laravel\Ai\Facades\{Files, Stores};
+use Laravel\Ai\{Files, Stores};
 
 // Upload to provider
 $file = Document::fromPath('/path/report.pdf')->put();
@@ -479,23 +487,26 @@ Full faking for all AI capabilities — same pattern as `Queue::fake()`, `Http::
 
 ```php
 // tests/Feature/Http/Controllers/API/V1/AnalysisControllerTest.php
-use App\Agents\SalesCoach;
-use App\Agents\ProductAnalyzer;
-use Laravel\Ai\Facades\{Image, Audio, Transcription, Embeddings, Reranking};
+use App\Ai\Agents\{ProductAnalyzer, SalesCoach};
+use Laravel\Ai\{Audio, Embeddings, Image, Reranking, Transcription};
 
 it('returns AI analysis for a deal', function () {
-    SalesCoach::fake('This deal looks promising. Focus on the ROI angle.');
+    SalesCoach::fake([
+        'This deal looks promising. Focus on the ROI angle.',
+    ])->preventStrayPrompts();
 
     $this->actingAs(authenticatedUser())
         ->postJson('/api/v1/analysis', ['prompt' => 'Analyze this deal'])
         ->assertOk()
         ->assertJsonPath('data.response', 'This deal looks promising. Focus on the ROI angle.');
 
-    SalesCoach::assertPrompted(fn ($prompt) => str_contains($prompt, 'deal'));
+    SalesCoach::assertPrompted(fn ($prompt) => $prompt->contains('deal'));
 });
 
 it('returns structured product analysis', function () {
-    ProductAnalyzer::fake(['sentiment' => 'positive', 'score' => 0.85, 'summary' => 'Great']);
+    ProductAnalyzer::fake([
+        ['sentiment' => 'positive', 'score' => 0.85, 'summary' => 'Great', 'key_themes' => []],
+    ])->preventStrayPrompts();
 
     $result = app(\App\Actions\Product\AnalyzeReviews::class)->execute($product);
 
@@ -504,7 +515,7 @@ it('returns structured product analysis', function () {
 });
 
 it('generates product image', function () {
-    Image::fake();
+    Image::fake()->preventStrayImages();
 
     $this->actingAs(authenticatedUser())
         ->postJson('/api/v1/products/1/generate-image', ['prompt' => 'Product photo'])
@@ -513,20 +524,20 @@ it('generates product image', function () {
     Image::assertGenerated();
 });
 
-// Prevent unfaked calls — fails test if any agent is called without ::fake()
-SalesCoach::preventStrayPrompts();
-ProductAnalyzer::preventStrayPrompts();
 ```
 
-**All fakeable facades:** `SalesCoach::fake()`, `Image::fake()`, `Audio::fake()`, `Transcription::fake()`, `Embeddings::fake()`, `Reranking::fake()`, `Files::fake()`, `Stores::fake()`.
+**Fakeable AI surfaces:** `SalesCoach::fake()`, `Image::fake()`, `Audio::fake()`, `Transcription::fake()`, `Embeddings::fake()`, `Reranking::fake()`, `Files::fake()`, `Stores::fake()`.
 
 **All assertion methods:** `assertPrompted()`, `assertPrompted(fn ($prompt) => ...)`, `assertQueued()`, `assertNeverPrompted()`, `preventStrayPrompts()`, `assertGenerated()`.
 
 ### Events
 
-21+ events dispatched throughout the lifecycle — listen to these for logging, metrics, or side effects (see `queues-jobs.md` for event/listener patterns):
+The SDK dispatches lifecycle events for logging, metrics, and side effects (see `queues-jobs.md` for event/listener patterns), including:
 
-`PromptingAgent`, `AgentPrompted`, `InvokingTool`, `ToolInvoked`, `GeneratingImage`, `ImageGenerated`, `StreamingAgent`, `GeneratingAudio`, `AudioGenerated`, `TranscribingAudio`, `AudioTranscribed`, `GeneratingEmbeddings`, `EmbeddingsGenerated`, `RerankingDocuments`, `DocumentsReranked`, and more.
+`PromptingAgent`, `AgentPrompted`, `StreamingAgent`, `AgentStreamed`, `InvokingTool`,
+`ToolInvoked`, `GeneratingImage`, `ImageGenerated`, `GeneratingAudio`, `AudioGenerated`,
+`GeneratingTranscription`, `TranscriptionGenerated`, `GeneratingEmbeddings`,
+`EmbeddingsGenerated`, `Reranking`, `Reranked`, and more.
 
 Use `Event::fake([AgentPrompted::class])` in tests to assert events were dispatched (see `testing.md`).
 
@@ -549,7 +560,8 @@ Use `Event::fake([AgentPrompted::class])` in tests to assert events were dispatc
 
 ## Never
 
-- **Never inline provider API calls.** Always use Agent classes or facades (`Image`, `Audio`, etc.). Raw HTTP calls bypass middleware, events, failover, and testing hooks:
+- **Never inline provider API calls.** Always use Agent classes or the first-party AI classes
+  (`Image`, `Audio`, etc.). Raw HTTP calls bypass middleware, events, failover, and testing hooks:
   ```php
   // WRONG — raw HTTP, untestable, no middleware/events
   $response = Http::withToken(config('services.openai.key'))
@@ -575,6 +587,9 @@ Use `Event::fake([AgentPrompted::class])` in tests to assert events were dispatc
 - **Never skip `::fake()` in tests.** Unfaked agents make real API calls, costing money and causing flaky tests. Use `preventStrayPrompts()` (see `testing.md` for mocking patterns).
 - **Never hardcode API keys.** Use `.env` variables and `config/ai.php`. Never commit keys to source.
 - **Never use `RemembersConversations` without running the migration.** The trait requires `agent_conversations` and `agent_conversation_messages` tables — publish and migrate first.
+- **Never use Laravel vector migrations or query methods on MySQL.** Laravel 13 currently supports
+  them only on PostgreSQL connections with `pgvector`; changing the database is an explicit
+  architecture decision.
 - **Never return raw agent responses from controllers.** Transform through API Resources (see `api-resources.md`) for consistent response format:
   ```php
   // WRONG — raw response

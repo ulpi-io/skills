@@ -2,11 +2,17 @@
 
 ## What
 
-All tests use **Pest** — never PHPUnit class syntax. Pest provides `test()`/`it()` functions, `expect()` chains, Datasets for data-driven tests, and custom expectations. Feature tests hit API endpoints via `getJson()`, `postJson()`, etc. Unit tests exercise Actions, DTOs, and validators in isolation.
+Laravel 13's test baseline is **Pest 4 on PHPUnit 12**. Write Pest syntax rather than PHPUnit test
+classes. Pest provides `test()`/`it()` functions, `expect()` chains, datasets for data-driven tests,
+and custom expectations. Feature tests hit API endpoints via `getJson()`, `postJson()`, etc. Unit tests
+exercise Actions, DTOs, and validators in isolation.
 
 Organization: `tests/Feature/` mirrors `app/Http/Controllers/` (one file per controller). `tests/Unit/` mirrors `app/Actions/`, `app/Data/`, `app/Rules/` (one file per class). `tests/Pest.php` holds shared traits and custom expectations. See `folder-structure.md` for full directory tree.
 
 Key rules: `RefreshDatabase` on all DB-touching tests, factories for all test data (see `database.md` for states/relationships), `actingAs($user)` for auth, `expect()->toBe()` for assertions. Test happy path, validation, authorization, and edge cases.
+
+For a Laravel 12 to 13 upgrade, require `pestphp/pest:^4.0` and `phpunit/phpunit:^12.0`, then
+review plugins for compatible majors before resolving dependencies.
 
 ## How
 
@@ -191,6 +197,21 @@ Order::factory()->count(3)->recycle($user)->create();                // shared p
 Order::factory()->shipped()->withItems(3)->recycle($user)->create(); // combined
 ```
 
+### Laravel 13 string-factory isolation
+
+Laravel 13 resets custom `Str` UUID, ULID, and random-string factories during test teardown. Register
+the factory in each test or its `beforeEach()` instead of depending on state from an earlier test:
+
+```php
+use Illuminate\Support\Str;
+
+beforeEach(function () {
+    Str::createUuidsUsingSequence([
+        '9d65f0b8-2f5b-4c0a-bc19-4595fd4a50a0',
+    ]);
+});
+```
+
 ### Mocking — facade fakes
 
 ```php
@@ -276,5 +297,7 @@ Configure source in `phpunit.xml` — include `app/`, exclude `app/Providers/`.
 - **Never test framework internals.** Do not test that Laravel validation works. Test that YOUR rules pass/fail for YOUR inputs.
 - **Never mock what you do not own.** Mock facades (`Http::fake`, `Queue::fake`) and injected interfaces. Do not mock Eloquent — use `RefreshDatabase` with real DB.
 - **Never share mutable state between tests.** `RefreshDatabase` resets per test. Do not rely on execution order.
+- **Never rely on a custom `Str` factory leaking between tests.** Laravel 13 resets these factories
+  during teardown; configure deterministic values in each test or `beforeEach()`.
 - **Never scope fakes globally in `beforeEach`.** Scope `Event::fake()`, `Http::fake()` etc. to the test that needs them. Global fakes hide real failures.
 - **Never skip `--coverage --min=80` in CI.** Coverage ratchets up. Set minimum in pipeline (see `docker.md`).

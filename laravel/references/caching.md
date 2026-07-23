@@ -45,9 +45,28 @@ REDIS_CACHE_DB=1
 ```php
 'default' => env('CACHE_STORE', 'redis'),
 'stores' => [
-    'redis' => ['driver' => 'redis', 'connection' => 'cache', 'lock_connection' => 'default', 'prefix' => env('CACHE_PREFIX', 'app')],
+    'redis' => ['driver' => 'redis', 'connection' => 'cache', 'lock_connection' => 'default'],
+],
+'prefix' => env('CACHE_PREFIX', 'app-cache-'),
+'serializable_classes' => false,
+```
+
+### Laravel 13 cache deserialization hardening
+
+Laravel 13 defaults `serializable_classes` to `false`, which prevents cached PHP objects from being
+unserialized. Prefer arrays, scalars, and explicit serialization formats in cache values. If the
+application intentionally caches value objects, allow-list only those classes:
+
+```php
+'serializable_classes' => [
+    App\Data\CachedDashboardStats::class,
+    App\Support\CachedPricingSnapshot::class,
 ],
 ```
+
+Do not restore unrestricted object unserialization. During a Laravel 12 to 13 rollout, also set
+explicit `CACHE_PREFIX`, `REDIS_PREFIX`, and `SESSION_COOKIE` values when key/cookie continuity matters;
+Laravel 13 changed its framework fallback names from underscore to hyphen suffixes.
 
 ### Cache key conventions
 
@@ -199,3 +218,5 @@ Schedule::call(function () {
 - **Never cache inside models or observers.** Cache logic belongs in Actions. Observers make invalidation invisible.
 - **Never over-cache.** A 2ms query that changes every minute gains nothing. Cache when expensive (>50ms) or high frequency.
 - **Never `Cache::flush()` without tags in production.** Untagged flush wipes the entire store. Use `Cache::tags([...])->flush()`.
+- **Never allow arbitrary cached classes to be unserialized.** Keep Laravel 13
+  `serializable_classes` false or use a minimal explicit allow-list.

@@ -2,17 +2,17 @@
 
 ## What
 
-API routes live in `routes/api.php`. Laravel automatically prefixes every route in this file with `/api`. Versioning adds a second prefix (`/v1`), giving all endpoints the base URL `/api/v1/`. Route files available in a Laravel 12 API-only project:
+API routes live in `routes/api.php`. Laravel automatically prefixes every route in this file with `/api`. Versioning adds a second prefix (`/v1`), giving all endpoints the base URL `/api/v1/`. In a new Laravel 13 application, run `php artisan install:api` to install Sanctum and create this file. Route files available in an API-only project:
 
 | File | Purpose |
 |------|---------|
 | `routes/api.php` | All API routes — versioned groups, middleware, rate limiting |
-| `routes/console.php` | Schedule definitions and Artisan closures (Laravel 12 — NOT `Kernel.php`) |
+| `routes/console.php` | Schedule definitions and Artisan closures (Laravel 13 — NOT `Kernel.php`) |
 | `routes/channels.php` | Broadcast channel authorization (optional — only when using Reverb) |
 
 There is no `routes/web.php` in an API-only project. If it exists, delete it.
 
-Middleware is registered in `bootstrap/app.php` (Laravel 12 — NOT `Kernel.php`, which was removed). Rate limiters are defined in `AppServiceProvider::boot()` using `RateLimiter::for()`.
+Middleware is registered in `bootstrap/app.php` (Laravel 11+ — NOT `Kernel.php`). Rate limiters are defined in `AppServiceProvider::boot()` using `RateLimiter::for()`.
 
 ## How
 
@@ -135,7 +135,7 @@ Route::get('/users/{user}/orders/{order}', [OrderController::class, 'show'])
 
 ### Middleware registration in `bootstrap/app.php`
 
-All middleware is registered here — there is no `Kernel.php` in Laravel 12.
+All middleware is registered here — Laravel 13 uses `bootstrap/app.php`, not `Kernel.php`.
 
 ```php
 return Application::configure(basePath: dirname(__DIR__))
@@ -200,6 +200,11 @@ Redis is the backend for all rate limiting. It distributes limits across multipl
 
 Webhook routes are excluded from `auth:sanctum` (external services cannot authenticate as your users). In an API-only project, there is no CSRF concern (CSRF protection applies only to the web middleware group, which does not exist). Webhook routes require: (1) a dedicated rate limit group with higher throughput, (2) signature verification middleware (see `security.md` for HMAC implementation), (3) placement outside the `auth:sanctum` group. See the full `routes/api.php` example above for the complete pattern.
 
+Laravel 13 renamed the web CSRF middleware to
+`Illuminate\Foundation\Http\Middleware\PreventRequestForgery`. The old `VerifyCsrfToken` and
+`ValidateCsrfToken` names remain deprecated aliases. Stateless API routes do not use this middleware,
+but any web or Filament route exclusions and related tests must reference the Laravel 13 class.
+
 ### API versioning strategy
 
 Version via URL prefix: `/api/v1/`, `/api/v2/`. Each version gets its own controller directory (`Http/Controllers/Api/V1/`, `Http/Controllers/Api/V2/`) and its own `prefix('v2')->as('api.v2.')` route group. Non-breaking changes (new fields, new endpoints, new optional parameters) go in the current version. A new version is only created for backward-incompatible changes (removed fields, changed response shape, altered validation rules). Both versions run simultaneously while the old version is deprecated with a removal timeline.
@@ -232,7 +237,7 @@ Run as part of the deployment pipeline (see `docker.md` for the Artisan optimize
 ## Never
 
 - **Never define routes in `routes/web.php`.** This is an API-only project. If the file exists, delete it.
-- **Never register middleware in `Kernel.php`.** It was removed in Laravel 12. Use `bootstrap/app.php`.
+- **Never register middleware in `Kernel.php`.** Laravel 11+ applications use `bootstrap/app.php`.
 - **Never hardcode rate limits inline.** Define all limiters in `AppServiceProvider::boot()` with `RateLimiter::for()`, then reference by name: `throttle:api`.
 - **Never skip rate limiting on auth endpoints.** Login, registration, and password reset need a strict per-IP limit to prevent brute force.
 - **Never expose webhook routes without signature verification middleware.** External payloads must be verified (HMAC-SHA256 + timestamp check). See `security.md`.

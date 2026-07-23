@@ -198,7 +198,7 @@ Route handlers (`route.ts`) exist for two purposes: webhooks from external servi
 ```typescript
 // app/api/webhooks/stripe/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { updateTag } from 'next/cache';
+import { revalidateTag } from 'next/cache';
 import pino from 'pino';
 
 const logger = pino({ name: 'webhook-stripe' });
@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
   if (!verifyStripeSignature(body, signature)) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
   const event = JSON.parse(body);
   logger.info({ type: event.type }, 'stripe_webhook_received');
-  if (event.type === 'checkout.session.completed') updateTag('orders');
+  if (event.type === 'checkout.session.completed') revalidateTag('orders', 'max');
   return NextResponse.json({ received: true });
 }
 ```
@@ -224,7 +224,7 @@ export async function POST(request: NextRequest) {
 | Server Action mutates data | `await apiFetch('/products', { method: 'POST', body })` via base client |
 | Server Action reads before mutating | `await getProduct(id)` — endpoint function for reads |
 | Client Component needs data | Props from parent Server Component. Never fetch client-side. |
-| Webhook from external service | Route handler receives payload, calls `updateTag`/`revalidateTag` |
+| Webhook from external service | Route handler receives payload, calls `revalidateTag(tag, profile)` |
 | On-demand revalidation | Route handler with secret token, calls `revalidateTag` |
 | Public endpoint (no auth) | `apiFetch('/public/products', { public: true })` |
 

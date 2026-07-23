@@ -1,13 +1,13 @@
 ---
 name: laravel
-version: 2.1.0
+version: 3.0.0
 description: |
-  Write and change Laravel the way THIS project already does it, not by framework defaults — a
-  backend reference carrying the real controller/Action/Resource boundaries and conventions for
-  thin controllers, Form Request validation, strict Eloquent, API Resources, Horizon queues,
-  caching, auth, observability, and the Laravel AI/Boost/MCP stack, so a change lands idiomatic
-  and review-ready instead of merely working. Use when a task touches this project's Laravel code
-  and should follow its backend conventions rather than framework defaults.
+  Write and change Laravel the way THIS project already does it, with Laravel 13 as the recommended
+  baseline for new applications and explicit compatibility handling for existing versions. Carries
+  the real controller/Action/Resource boundaries and conventions for thin controllers, Form Request
+  validation, strict Eloquent, API Resources, Horizon queues, caching, auth, observability, and the
+  Laravel AI/Boost/MCP stack. Use when a task touches this project's Laravel code and should follow
+  its backend conventions rather than generic or outdated framework defaults.
 allowed-tools:
   - Bash
   - Read
@@ -32,13 +32,14 @@ This skill is a routing shell over the reference set, not a place to retype the 
 
 Non-negotiable rules:
 1. Load `references/stack.md` first, then only the task-relevant references.
-2. **No business logic in controllers.** Controllers validate (Form Request), delegate (Action), return (API Resource). Nothing else.
-3. **No returning Eloquent models directly.** Every response goes through an API Resource.
-4. **No inline validation.** All validation lives in Form Request classes.
-5. **No `$guarded = []`.** Every model uses explicit `$fillable`.
-6. **No raw queries.** Use Eloquent or query builder with parameter bindings.
-7. **No bare `queue:work`.** All queue processing uses Horizon.
-8. **`Model::shouldBeStrict()`** must be enabled in `AppServiceProvider::boot()`.
+2. Inspect `composer.json` and `composer.lock` before applying version-specific APIs. Recommend Laravel 13 for new applications and explicit upgrades; never silently upgrade an existing application during unrelated work.
+3. **No business logic in controllers.** Controllers validate (Form Request), delegate (Action), return (API Resource). Nothing else.
+4. **No returning Eloquent models directly.** Every response goes through an API Resource.
+5. **No inline validation.** All validation lives in Form Request classes.
+6. **No `$guarded = []`.** Every model uses explicit `$fillable`.
+7. **No raw queries.** Use Eloquent or query builder with parameter bindings.
+8. **No bare `queue:work`.** All queue processing uses Horizon.
+9. **`Model::shouldBeStrict()`** must be enabled in `AppServiceProvider::boot()`.
 </EXTREMELY-IMPORTANT>
 
 # laravel
@@ -59,6 +60,10 @@ Always start with:
 
 That establishes the locked runtime, package, and architecture choices for this Laravel surface.
 
+For a new application, a framework-version decision, or a Laravel 12 to 13 upgrade, also read:
+
+- `references/upgrading.md`
+
 **Success criteria**: The project's Laravel stack choices are explicit before implementation starts.
 
 ## Step 1: Load only the relevant references
@@ -68,6 +73,7 @@ Use the routing table to pick reference files that match the actual task. Do not
 | Task | Read |
 |------|------|
 | Starting a session / understanding the stack | `references/stack.md` |
+| New application, framework version choice, Laravel 12 to 13 upgrade | `references/upgrading.md` |
 | Creating or modifying files, folder conventions | `references/folder-structure.md` |
 | API routes, versioning, middleware | `references/routing.md` |
 | Creating or editing a controller | `references/controller-pattern.md` |
@@ -85,7 +91,7 @@ Use the routing table to pick reference files that match the actual task. Do not
 | Security hardening, CORS, rate limiting, webhooks | `references/security.md` |
 | API documentation generation | `references/api-docs.md` |
 | Telescope, Horizon dashboard, Pulse, health checks | `references/observability.md` |
-| Filament admin panel, resources, pages, widgets | `references/filament.md` |
+| Laravel/Filament integration boundary | `references/filament.md`, then use the `laravel-filament` skill for Filament code |
 | Docker setup, CI/CD, deployment | `references/docker.md` |
 | Notifications, email, SMS | `references/notifications-mail.md` |
 | File uploads, S3, media library | `references/file-storage.md` |
@@ -118,6 +124,7 @@ Use the smallest verification loop that matches the task:
 - PHPUnit or Pest tests
 - focused artisan or framework checks
 - static analysis or linting if already part of the repo workflow
+- for framework upgrades, the dependency and regression checks in `references/upgrading.md`
 
 **Success criteria**: The change is validated in the way this Laravel project expects.
 
@@ -127,6 +134,8 @@ Use the smallest verification loop that matches the task:
 - Do not skip `references/stack.md`.
 - Do not return raw Eloquent models directly.
 - Do not put business logic in controllers.
+- Do not apply Laravel 13-only APIs to a Laravel 12 project unless the task includes the upgrade.
+- Do not pin today's Laravel patch release; use the supported `^13.0` constraint and the lockfile.
 - Do not add `disable-model-invocation`; this is a normal domain skill.
 
 ## When To Load References
@@ -140,7 +149,8 @@ Use the smallest verification loop that matches the task:
 
 Report:
 
-1. which Laravel references were loaded
-2. the architecture pattern chosen
-3. the change made
-4. the verification run
+1. the detected Laravel major and whether Laravel 13 was recommended or already in use
+2. which Laravel references were loaded
+3. the architecture pattern chosen
+4. the change made
+5. the verification run

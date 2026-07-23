@@ -69,8 +69,8 @@ npx skills add https://github.com/ulpi-io/skills --skill browse
 | [secrets](#secrets) | Credential management — encrypted vault, CLI injection, MCP shim |
 | [build-dmg](#build-dmg) | Build distributable DMG installers for macOS Xcode projects |
 | [lokei](#lokei) | Local dev proxy — named HTTPS domains on .test with valid TLS |
-| [nextjs](#nextjs) | Next.js 16 App Router reference — Cache Components, i18n, data layer, atomic components |
-| [laravel](#laravel) | Laravel 12 API framework — Actions pattern, AI SDK, Boost, MCP, Filament, Horizon, Pest |
+| [nextjs](#nextjs) | Next.js 16.2 stable App Router reference — upgrades, Cache Components, i18n, data layer |
+| [laravel](#laravel) | Laravel 13 API framework — Actions, JSON:API, AI SDK, Boost 2, MCP, Horizon, Pest 4 |
 | [laravel-filament](#laravel-filament) | Filament v5 admin panel — resources, schemas, tables, actions, widgets, v3-to-v5 migration |
 | [rust](#rust) | Rust systems programming — storage engines, SIMD, pgwire, DataFusion, tantivy, HNSW, arenas |
 | [nodejs](#nodejs) | Node.js/Bun backend reference — TS-first, pino, Zod, async, queues, testing |
@@ -788,9 +788,9 @@ Requires: `npm i -g lokei && lokei setup`
 npx skills add https://github.com/ulpi-io/skills --skill nextjs
 ```
 
-**Next.js 16 App Router reference for AI coding agents.**
+**Next.js 16.2 stable App Router reference for AI coding agents.**
 
-Comprehensive framework skill covering Cache Components, proxy.ts API-backed data layer, multilingual-first with next-intl, atomic components, structured logging, and analytics tracking. Enforces strict conventions: all strings via `t()`, components max 150 lines, pages max 300 lines. Includes 19 reference files for stack overview, folder structure, components, pages, data fetching, forms, caching, i18n, error handling, logging, analytics, testing, auth, security, SEO, and accessibility.
+Recommends the stable Next.js 16.2 line for new applications while detecting and respecting the resolved version in existing projects. The App Router reference covers version upgrades, async request APIs, typed routes and `next typegen`, Node.js `proxy.ts` with the Edge-middleware exception, opt-in Cache Components and React Compiler, the API-backed data layer, next-intl, structured logging, analytics, testing, security, SEO, and accessibility across 20 focused references. Canary releases remain explicit opt-ins rather than the default recommendation.
 
 ---
 
@@ -800,9 +800,9 @@ Comprehensive framework skill covering Cache Components, proxy.ts API-backed dat
 npx skills add https://github.com/ulpi-io/skills --skill laravel
 ```
 
-**Laravel 12 API framework reference for AI coding agents.**
+**Laravel 13 API framework reference for AI coding agents.**
 
-Comprehensive API-only framework skill enforcing thin controllers, Actions pattern for business logic, Form Requests for validation, API Resources for responses, and Eloquent strict mode. Covers the full Laravel AI ecosystem: AI SDK (agents, embeddings, image/audio generation, vector search, streaming), Boost (AI-assisted development with MCP tools and guidelines), and MCP (exposing your app to external AI clients). Includes 22 reference files for stack overview, folder structure, routing, controllers, validation, Eloquent models, API resources, service layer, auth, database, error handling, logging, caching, queues/jobs, testing, security, API docs, observability, Filament admin, Docker, notifications, file storage, scheduling, AI SDK, Boost, and MCP.
+Recommends Laravel 13 for new applications while detecting and respecting the installed major in existing projects. The API-only framework skill enforces thin controllers, Actions for business logic, Form Requests for validation, API Resources for responses, and Eloquent strict mode. It covers Laravel 13 upgrades, first-party JSON:API resources, queue routing, the Laravel AI SDK, Boost 2, and MCP, with 27 focused references. Filament-specific work routes to the dedicated Filament v5 skill instead of the old embedded v3 cookbook.
 
 ---
 

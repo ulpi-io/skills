@@ -4,7 +4,7 @@
 
 **Sanctum** is the default — first-party SPA (cookie-based session) and mobile (personal access tokens). **Passport** only when OAuth2 is required for third-party API consumers. Roles/permissions via **spatie/laravel-permission**. Per-model authorization via **Policies**. Non-model authorization via **Gates**.
 
-Guards: `config/auth.php`. Middleware registration: `bootstrap/app.php` (Laravel 12 — NOT `Kernel.php`). Stack: `auth:sanctum`, `verified`, `can:`, `role:`, `permission:`.
+Guards: `config/auth.php`. Middleware registration: `bootstrap/app.php` (Laravel 13 — NOT `Kernel.php`). Stack: `auth:sanctum`, `verified`, `can:`, `role:`, `permission:`.
 
 ## How
 

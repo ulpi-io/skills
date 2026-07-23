@@ -12,6 +12,8 @@ Key rules:
 - Implement `failed()` on every critical job
 - Use `ShouldQueue` on listeners for non-critical side effects
 - Three queue priorities: `high`, `default`, `low`
+- In Laravel 13, use `Queue::route(...)` for repeated class/interface defaults instead of scattering
+  queue placement across dispatch sites
 
 ## How
 
@@ -27,13 +29,15 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\{InteractsWithQueue, SerializesModels};
+use Illuminate\Queue\Attributes\{Timeout, Tries};
 use Illuminate\Queue\Middleware\{RateLimited, WithoutOverlapping};
 
+#[Tries(3)]
+#[Timeout(300)]
 final class ProcessOrderShipment implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
     public int $maxExceptions = 2;
     public array $backoff = [30, 120, 300]; // exponential: 30s, 2m, 5m
 
@@ -74,6 +78,29 @@ ProcessOrderShipment::dispatch($order->id, $tracking);                    // def
 ProcessOrderShipment::dispatch($order->id, $tracking)->onQueue('high');   // high priority
 ProcessOrderShipment::dispatch($order->id, $tracking)->delay(now()->addMinutes(5)); // delayed
 ```
+
+Laravel 13 also provides `#[Backoff]` and `#[FailOnTimeout]` job attributes. Existing public job
+properties remain supported; use either the attribute or property form for a setting, not both.
+
+### Laravel 13 central queue routing
+
+Put repeated connection/queue defaults in `AppServiceProvider::boot()`:
+
+```php
+use App\Jobs\GenerateMonthlyReport;
+use App\Jobs\ProcessOrderShipment;
+use Illuminate\Support\Facades\Queue;
+
+public function boot(): void
+{
+    Queue::route(ProcessOrderShipment::class, connection: 'redis', queue: 'high');
+    Queue::route(GenerateMonthlyReport::class, connection: 'redis', queue: 'low');
+}
+```
+
+`Queue::route()` also accepts an interface or an array of classes. A dispatch-time `onConnection()`
+or `onQueue()` call overrides the default, which is useful for exceptional cases. Keep routed queue
+names present in the Horizon supervisor's queue list.
 
 ### Horizon configuration
 
@@ -326,6 +353,7 @@ Reverb container setup in `docker.md`. Set `BROADCAST_CONNECTION=reverb` in `.en
 | Prevent duplicate job execution | `WithoutOverlapping` middleware |
 | Throttle external API calls | `RateLimited` middleware |
 | Real-time client updates (dashboard, chat) | Broadcasting with Reverb + `ShouldBroadcast` |
+| Repeated queue/connection choice by job class | `Queue::route(...)` in a service provider (Laravel 13) |
 
 **Events vs direct Action calls:** Events for side effects (notifications, logging, cache) — caller does not care if they succeed. Direct calls for core logic (payments, inventory) — failure must propagate.
 
@@ -343,4 +371,6 @@ Reverb container setup in `docker.md`. Set `BROADCAST_CONNECTION=reverb` in `.en
 - **Never forget `$afterCommit = true` on queued listeners inside transactions.** Without it, the listener may fire before commit, operating on nonexistent data.
 - **Never dispatch events for core business logic.** Events are for decoupled side effects. If failure must propagate, call the Action directly.
 - **Never hardcode queue names in job classes.** Use `->onQueue('high')` at the dispatch call site.
+- **Never define the same default at every dispatch site.** When placement is class-wide, use Laravel
+  13 `Queue::route(...)`; reserve `onQueue()` for intentional overrides.
 - **Never skip `$this->batch()?->cancelled()` check in batchable jobs.** Cancelled batches continue processing without this guard.

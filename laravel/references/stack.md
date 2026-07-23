@@ -1,28 +1,45 @@
-# Stack — Locked Decisions & Toolchain
+# Stack — Laravel 13 Baseline & Toolchain
 
 Every other reference file assumes these decisions. Do not deviate.
+
+## Version policy
+
+- Recommend **Laravel 13** for new applications and deliberate framework upgrades. Use
+  `laravel/framework:^13.0` so Composer receives compatible minor and patch releases.
+- Before changing an existing application, inspect both `composer.json` and `composer.lock` (or
+  `composer show laravel/framework`). Follow the installed major unless the user explicitly asks for
+  an upgrade.
+- Do not copy Laravel 13-only APIs into a Laravel 12 application. For a new application or a 12 to
+  13 migration, read `upgrading.md` before editing.
+- Do not pin the patch release shown on a documentation page. The lockfile records the resolved
+  version and Composer updates it within the declared constraint.
 
 ## What
 
 | Dependency | Version | Notes |
 |---|---|---|
-| PHP | 8.4+ | Readonly properties, enums, match, named args, intersection types, fibers |
-| Laravel | 12 | API-only. No Blade, no Livewire, no Inertia, no views. |
+| PHP | 8.4 project baseline | Laravel 13 supports PHP 8.3–8.5; keep runtime and CI on the same version |
+| Laravel | 13 (`^13.0`) | Current stable major and recommended default. API-only application surface. |
 | Database | MySQL 8.x | Primary data store |
 | Cache / Queue driver | Redis 7.x | Always — both cache and queue use Redis |
 | Auth (default) | Sanctum | First-party SPA and mobile token auth |
 | Auth (OAuth2) | Passport | Only when third-party API access requires OAuth2 flows |
-| Admin panel | Filament 3 | Self-contained panel at `/admin` — the only UI in the app |
-| Testing | Pest | No PHPUnit syntax. `expect()->toBe()`, not `$this->assertEquals()`. |
+| Admin panel | Filament 5 | Self-contained panel at `/admin`; use the separate `laravel-filament` skill |
+| Testing | Pest 4 / PHPUnit 12 | Write Pest syntax. Laravel 13's upgrade baseline requires these major versions. |
 | Code style | Pint | Laravel preset. Run via `composer lint`. |
 | Queue dashboard | Horizon | Always — never bare `queue:work` |
 | Feature flags | Pennant | First-party. Evaluate per-user or per-team feature rollouts. |
+| AI-assisted development | Boost 2 (`^2.0`, dev only) | Current Laravel 13 guidelines and guided 12 to 13 upgrade support |
+| Application AI | Laravel AI SDK | Optional first-party package for agents, media, embeddings, and provider integrations |
 
 ### API-only configuration
 
 This stack has no web frontend. JSON responses via API Resources. No Blade templates, no Livewire components, no Inertia pages, no views directory. The only UI is the Filament admin panel, which runs as a separate panel and does not conflict with the API-only architecture.
 
-Bootstrap with `laravel new --api` or manually strip the web middleware group, remove `resources/views/`, and remove frontend scaffolding packages.
+Create the application with the current Laravel installer, then run `php artisan install:api` to
+install Sanctum and create `routes/api.php`. For a strictly API-only application, remove the web route
+registration and unused frontend/view scaffolding deliberately; `install:api` adds the API surface but
+does not convert an existing web application automatically.
 
 ### Strict model configuration
 
@@ -40,14 +57,14 @@ This enables three protections at once:
 - `preventSilentlyDiscardingAttributes()` — throws when setting attributes not in `$fillable`
 - `preventAccessingMissingAttributes()` — throws when accessing undefined attributes
 
-### PHP 8.4 features to use
+### PHP language features to use
 
 | Feature | Use for | Example |
 |---|---|---|
 | Readonly properties | DTOs, value objects | `public readonly string $email` |
 | Enums | Status fields, fixed sets | `enum OrderStatus: string { case Pending = 'pending'; }` |
 | `match` expression | Replace switch statements | `match($status) { OrderStatus::Pending => 'waiting' }` |
-| Named arguments | Readability on long arg lists | `Cache::remember(key: $k, ttl: 3600, callback: fn() => ...)` |
+| Named arguments | Your own stable APIs and DTO constructors | `new OrderData(userId: $id, status: $status)` |
 | Constructor promotion | Models, DTOs, Actions | `public function __construct(private readonly UserRepository $users)` |
 | First-class callables | Callbacks, collection ops | `$users->map($this->formatUser(...))` |
 | Intersection types | Typed contracts | `function process(Countable&Iterator $items)` |
@@ -74,6 +91,19 @@ When evaluating a package for the project, walk this list top to bottom. Stop at
 | Cashier | Subscription billing (Stripe/Paddle) | When the app has subscription payments |
 | Reverb | WebSocket server | When the app needs real-time broadcasting |
 | Pint | Code style fixer | Always. Laravel preset. |
+| Boost | AI-assisted development and version-aware guidance | Development dependency only; Laravel 13 uses `^2.0` |
+| AI SDK | Provider-neutral agents, media, embeddings, and vector integrations | Only when the product needs AI features |
+
+### Laravel 13 capabilities
+
+Prefer these first-party APIs when their contract matches the task:
+
+| Capability | Laravel 13 API | Selection rule |
+|---|---|---|
+| JSON:API responses | `JsonApiResource` / `make:resource --json-api` | Use only when clients require the JSON:API specification; keep `JsonResource` for the existing custom envelope |
+| Central queue placement | `Queue::route(...)` | Use for class/interface defaults; dispatch-time `onQueue()` may still override it |
+| AI features | `laravel/ai` | Prefer over direct provider HTTP calls; vector queries require PostgreSQL with `pgvector` |
+| Request forgery protection | `PreventRequestForgery` | Use for web/Filament middleware references; stateless API routes do not use CSRF middleware |
 
 #### Spatie packages (spatie/laravel-*)
 
@@ -196,5 +226,8 @@ Add when you need per-user/per-team feature rollout or server-side A/B testing. 
 - **No inline validation** — always use Form Request classes.
 - **No business logic in controllers** — delegate to Actions.
 - **No community packages when a first-party or Spatie package covers the need** — follow the hierarchy.
+- **No named arguments on Laravel framework methods by default** — Laravel does not include parameter
+  names in its backwards-compatibility promise. Use positional arguments unless the call has been
+  checked against the installed framework version.
 - **No `Kernel.php`** — removed in Laravel 11+. Middleware goes in `bootstrap/app.php`, schedules in `routes/console.php`.
 - **No `Handler.php`** — removed in Laravel 11+. Exception handling goes in `bootstrap/app.php` via `withExceptions()`.
