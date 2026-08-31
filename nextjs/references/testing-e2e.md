@@ -1,318 +1,218 @@
-# E2E Testing — Playwright
+# Production HTTP, Browser and Integrated Testing
 
-## What
+## Three explicit levels
 
-Playwright tests verify critical user paths through the running application: navigation, form submissions, authentication, locale switching, error recovery, and visual layout. Tests run against a real dev or preview server, exercising the full stack — proxy.ts, Server Components, Server Actions, and client interactivity. They do NOT retest logic covered by Vitest (Zod schemas, API client, action return types). See `references/testing-unit.md`.
+1. **Unit/component tests** prove schemas, URL policies, state merging, and response guards. They are
+   fast regression proof and cannot establish production HTTP behavior.
+2. **Production HTTP/browser tests** run the built Next.js server and assert response status,
+   headers, raw body, rendered UI, redirects, and content negotiation. They are required for public
+   404s, Markdown, canonicals, sitemap, robots, `/llms.txt`, and raw-HTML visibility.
+3. **Integrated Compose tests** run Next.js, the real backend, database, cache/queue services, and any
+   required realtime worker through the repository's one canonical test stack. They are required for
+   backend cookie sessions, CSRF, billing state, downloads, webhooks, queues, and authenticated
+   workflows. Tear the stack down afterward.
 
-### Setup — playwright.config.ts
+A frontend browser run with the backend mocked is not full stack. Directly invoking a Route Handler
+or `notFound()` is not deployed-response proof.
+
+## Run repository scripts
+
+Read `package.json`, root scripts, CI, and Compose docs. Use their build/start/test/teardown commands;
+do not replace them with generic commands that omit setup, fixtures, or services. Do not require
+manually pre-generating all public pages merely to test them: SSR and dynamic rendering are valid.
+
+For the production HTTP level, build first and start the production server, not the dev server. A
+Playwright configuration can point at that already-built server:
 
 ```typescript
-import { defineConfig, devices } from '@playwright/test';
-
 export default defineConfig({
-  testDir: './e2e', outputDir: './e2e/test-results',
-  fullyParallel: true, forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0, workers: process.env.CI ? 4 : undefined,
-  reporter: process.env.CI ? [['html', { open: 'never' }], ['github']] : [['html', { open: 'on-failure' }]],
-  use: { baseURL: process.env.BASE_URL ?? 'http://localhost:3000', trace: 'on-first-retry', screenshot: 'only-on-failure' },
-  projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
-    { name: 'mobile-chrome', use: { ...devices['Pixel 5'] } },
-    { name: 'mobile-safari', use: { ...devices['iPhone 13'] } },
-  ],
-  webServer: { command: 'npm run dev', url: 'http://localhost:3000', reuseExistingServer: !process.env.CI, timeout: 120_000 },
-});
-```
-
-### File organization
-
-All e2e files live under `e2e/` at the project root — never inside `src/`:
-
-```
-e2e/
-  fixtures/           # Custom fixtures (auth.fixture.ts) and test data (test-data.ts)
-  pages/              # Page object models (products.page.ts, login.page.ts)
-  tests/              # Spec files (checkout.spec.ts, auth.spec.ts, i18n.spec.ts)
-```
-
-## How
-
-### Page object pattern
-
-```typescript
-// e2e/pages/products.page.ts
-import type { Locator, Page } from '@playwright/test';
-
-export class ProductsPage {
-  readonly heading: Locator;
-  readonly productCards: Locator;
-  readonly searchInput: Locator;
-
-  constructor(readonly page: Page) {
-    this.heading = page.getByRole('heading', { level: 1 });
-    this.productCards = page.getByTestId('product-card');
-    this.searchInput = page.getByRole('searchbox');
-  }
-
-  async goto(locale = 'en') { await this.page.goto(`/${locale}/products`); }
-
-  async search(query: string) {
-    await this.searchInput.fill(query);
-    await this.searchInput.press('Enter');
-    await this.page.waitForURL(/q=/);
-  }
-
-  async selectProduct(index: number) {
-    await this.productCards.nth(index).click();
-    await this.page.waitForURL(/\/products\/.+/);
-  }
-}
-```
-
-Selectors: `getByRole`/`getByLabel` first, `getByTestId` second. Never CSS selectors or XPath. Page objects expose actions — tests read like user stories.
-
-### Testing user flows — navigation and forms
-
-```typescript
-// e2e/tests/checkout.spec.ts
-import { test, expect } from '@playwright/test';
-import { ProductsPage } from '../pages/products.page';
-
-test('browse → add to cart → checkout', async ({ page }) => {
-  const products = new ProductsPage(page);
-  await products.goto();
-  await products.selectProduct(0);
-
-  await page.getByRole('button', { name: /add to cart/i }).click();
-  await expect(page.getByRole('status')).toContainText(/added/i);
-
-  await page.getByRole('link', { name: /cart/i }).click();
-  await expect(page).toHaveURL(/\/cart/);
-  await expect(page.getByTestId('cart-item')).toHaveCount(1);
-
-  await page.getByRole('link', { name: /checkout/i }).click();
-  await page.getByLabel(/email/i).fill('test@example.com');
-  await page.getByLabel(/address/i).fill('123 Test Street');
-  await page.getByRole('button', { name: /place order/i }).click();
-  await expect(page).toHaveURL(/\/confirmation/);
-});
-```
-
-### Testing authentication flows
-
-```typescript
-// e2e/fixtures/auth.fixture.ts — reusable authenticated state
-import { test as base, expect } from '@playwright/test';
-
-export const test = base.extend<{ authenticatedPage: typeof base['page'] }>({
-  authenticatedPage: async ({ page }, use) => {
-    await page.goto('/en/login');
-    await page.getByLabel(/email/i).fill(process.env.E2E_USER_EMAIL!);
-    await page.getByLabel(/password/i).fill(process.env.E2E_USER_PASSWORD!);
-    await page.getByRole('button', { name: /sign in/i }).click();
-    await expect(page).toHaveURL(/\/dashboard/);
-    await use(page);
+  testDir: './tests/e2e',
+  forbidOnly: Boolean(process.env.CI),
+  retries: 0,
+  use: {
+    baseURL: process.env.TEST_BASE_URL,
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
-});
-
-// e2e/tests/auth.spec.ts
-import { test } from '../fixtures/auth.fixture';
-import { expect } from '@playwright/test';
-
-test('authenticated user sees dashboard', async ({ authenticatedPage: page }) => {
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-});
-
-test('unauthenticated user redirected to login', async ({ page }) => {
-  await page.goto('/en/dashboard');
-  await expect(page).toHaveURL(/\/login/);
-});
-
-test('logout clears session', async ({ authenticatedPage: page }) => {
-  await page.getByTestId('user-menu').click();
-  await page.getByRole('menuitem', { name: /sign out/i }).click();
-  await expect(page).toHaveURL(/\/login/);
-  await page.goto('/en/dashboard');
-  await expect(page).toHaveURL(/\/login/);
+  webServer: process.env.TEST_BASE_URL
+    ? undefined
+    : { command: 'npm run start', url: 'http://127.0.0.1:3000', reuseExistingServer: false },
 });
 ```
 
-### Testing i18n — locale switching and RTL
+The repository may wrap this in a script or container. Follow that wrapper.
+
+## Raw server-rendered HTML
+
+For each public page, inspect the original response body before JavaScript executes:
 
 ```typescript
-// e2e/tests/i18n.spec.ts
-import { test, expect } from '@playwright/test';
+test('public page exposes meaningful raw HTML', async ({ request }) => {
+  const response = await request.get(`/${DEFAULT_LOCALE}/pricing`, {
+    headers: { Accept: 'text/html' },
+  });
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toMatch(/^text\/html\b/i);
 
-test('switches locale and content updates', async ({ page }) => {
-  await page.goto('/en/products');
-  const enHeading = await page.getByRole('heading', { level: 1 }).textContent();
-  await page.getByTestId('locale-switcher').click();
-  await page.getByRole('option', { name: /Espa/i }).click();
-  await expect(page).toHaveURL(/\/es\/products/);
-  const esHeading = await page.getByRole('heading', { level: 1 }).textContent();
-  expect(esHeading).not.toBe(enHeading);
+  const html = await response.text();
+  const document = parseHtml(html);
+  expect(document.querySelectorAll('h1')).toHaveLength(1);
+  expect(document.querySelector('h1')?.textContent?.trim()).not.toBe('');
+  expect(meaningfulText(document).length).toBeGreaterThanOrEqual(500);
+  expect(headingLevels(document)).toSatisfy(doesNotSkipLevels);
 });
+```
 
-test('RTL layout for Arabic locale', async ({ page }) => {
-  await page.goto('/ar/products');
-  expect(await page.locator('html').getAttribute('dir')).toBe('rtl');
-  const navBox = await page.getByRole('navigation').boundingBox();
-  expect(navBox).not.toBeNull();
-  expect(navBox!.x).toBeLessThan(200); // Nav at viewport start in RTL
-});
+`meaningfulText` excludes scripts, styles, JSON-LD, navigation/footer boilerplate, and whitespace.
+Assert the actual localized value proposition, pricing explanation, contact identity, or trust copy
+appropriate to the page. A hydrated browser body length is insufficient because client-only content
+can hide an empty original document.
 
-test('all locales render translated content', async ({ page }) => {
-  for (const locale of ['en', 'es', 'ar']) {
-    await page.goto(`/${locale}/products`);
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('');
+Run this gate for the localized homepage, pricing/product pages, About, Contact, and Privacy. Each
+trust page needs at least 500 meaningful raw-HTML characters, one H1, ordered H2/H3 headings,
+metadata, canonical/Open Graph, suitable JSON-LD, Markdown mirror, sitemap/`llms.txt` entry, and
+footer link.
+
+## Complete HTML and Markdown 404 contract
+
+Use a collision-resistant unknown path and test all three requests against the built server:
+
+```typescript
+const missing = `/${DEFAULT_LOCALE}/path-that-does-not-exist-${Date.now()}`;
+
+test('unknown route has HTML and Markdown recovery responses', async ({ request }) => {
+  const html = await request.get(missing, { headers: { Accept: 'text/html' } });
+  expect(html.status()).toBe(404);
+  expect(html.headers()['content-type']).toMatch(/^text\/html\b/i);
+  const htmlBody = await html.text();
+  const htmlDocument = parseHtml(htmlBody);
+  expect(htmlDocument.querySelectorAll('h1')).toHaveLength(1);
+  const recoveryUrls = [...htmlDocument.querySelectorAll('a[href]')].map((link) =>
+    new URL(link.getAttribute('href') ?? '', CANONICAL_ORIGIN).href,
+  );
+  expect(recoveryUrls).toEqual(expect.arrayContaining([
+    `${CANONICAL_ORIGIN}/${DEFAULT_LOCALE}`,
+    `${CANONICAL_ORIGIN}/sitemap.xml`,
+    `${CANONICAL_ORIGIN}/llms.txt`,
+    CANONICAL_DOCS_OR_PRODUCT_INDEX,
+  ]));
+
+  for (const target of [missing, `${missing}.md`]) {
+    const markdown = await request.get(target, {
+      headers: target.endsWith('.md') ? {} : { Accept: 'text/markdown' },
+    });
+    expect(markdown.status(), target).toBe(404);
+    expect(markdown.headers()['content-type'], target).toBe('text/markdown; charset=utf-8');
+    expect(markdown.headers()['vary'], target).toContain('Accept');
+    const body = await markdown.text();
+    expect(body).toContain('# Page not found');
+    expect(body).toContain(target);
+    expect(body).toContain(`${CANONICAL_ORIGIN}/${DEFAULT_LOCALE}`);
+    expect(body).toContain(`${CANONICAL_ORIGIN}/sitemap.xml`);
+    expect(body).toContain(`${CANONICAL_ORIGIN}/llms.txt`);
+    expect(body).toContain(CANONICAL_DOCS_OR_PRODUCT_INDEX);
   }
 });
 ```
 
-### Testing error states
+Also execute the release smoke with curl (substitute the configured canonical origin and locale):
 
-```typescript
-// e2e/tests/error-states.spec.ts
-import { test, expect } from '@playwright/test';
-
-test('404 for unknown route', async ({ page }) => {
-  await page.goto('/en/nonexistent-route');
-  await expect(page.getByRole('heading')).toContainText(/not found/i);
-  await expect(page.getByRole('link', { name: /home/i })).toBeVisible();
-});
-
-test('API failure triggers error boundary with retry', async ({ page }) => {
-  await page.route('**/api/v1/products*', (route) =>
-    route.fulfill({ status: 500, body: '{"error":"Internal"}' }),
-  );
-  await page.goto('/en/products');
-  await expect(page.getByRole('button', { name: /retry|try again/i })).toBeVisible();
-});
-
-test('form validation errors display inline', async ({ page }) => {
-  await page.goto('/en/contact');
-  await page.getByRole('button', { name: /submit|send/i }).click();
-  await expect(page.getByRole('alert').first()).toBeVisible();
-});
+```bash
+curl -i "$PUBLIC_ORIGIN/$DEFAULT_LOCALE/path-that-does-not-exist"
+curl -i -H 'Accept: text/markdown' \
+  "$PUBLIC_ORIGIN/$DEFAULT_LOCALE/path-that-does-not-exist"
+curl -i "$PUBLIC_ORIGIN/$DEFAULT_LOCALE/path-that-does-not-exist.md"
 ```
 
-Use `page.route()` to intercept API calls and simulate failures. Never depend on backend state.
+Visible text alone is not enough. Status, content type, `Vary`, non-empty body, original path, and all
+recovery links are release gates.
 
-### Test data management
+## Canonical, schema and machine-readable HTTP tests
 
-```typescript
-// e2e/fixtures/test-data.ts
-export const TEST_USER = {
-  email: process.env.E2E_USER_EMAIL ?? 'e2e@example.com',
-  password: process.env.E2E_USER_PASSWORD ?? 'Test123!',
-} as const;
-```
+Against the built server, fetch and parse:
 
-**API mocking with `page.route()`** for deterministic tests:
+- localized canonical and Open Graph URLs;
+- Organization and SoftwareApplication JSON-LD, including stable `@id` linkage and verified
+  identity fields;
+- sitemap and robots;
+- a successful Markdown mirror through both access forms;
+- `/llms.txt` and `/llms-full.txt`.
 
-```typescript
-test.beforeEach(async ({ page }) => {
-  await page.route('**/api/v1/products', (route) =>
-    route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify({
-        data: [{ id: 'p1', slug: 'widget', name: 'Widget', price: 29.99 }],
-        pagination: { page: 1, totalPages: 1 },
-      }),
-    }),
-  );
-});
-```
+Require all public URLs to use the configured canonical HTTPS origin. Reject known legacy domains,
+staging origins, and accidental apex URLs from emitted bodies. Parse `/llms.txt` and require the four
+instruction sections described in `machine-readable.md`, plus absolute Homepage, Pricing,
+Documentation, Privacy, Contact, Sitemap, and full-content links.
 
-Mock at the API boundary. Tests exercise proxy.ts, Server Components, and Server Actions — only the external backend is mocked.
+Test the owned noncanonical host at the deployed reverse proxy/CDN: it must redirect straight to the
+canonical host in one hop while preserving path and query. A Next.js unit test cannot prove this.
 
-### Visual regression patterns
+## Internationalization
 
-```typescript
-test('products page snapshot', async ({ page }) => {
-  await page.route('**/api/v1/products*', (route) => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({ data: [{ id: 'p1', name: 'Widget', price: 9.99 }], pagination: { page: 1, totalPages: 1 } }),
-  }));
-  await page.goto('/en/products');
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page).toHaveScreenshot('products-en.png', { maxDiffPixelRatio: 0.01 });
-});
+For every supported locale, verify:
 
-test('RTL layout snapshot', async ({ page }) => {
-  await page.goto('/ar/products');
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page).toHaveScreenshot('products-ar-rtl.png', { maxDiffPixelRatio: 0.01 });
-});
-```
+- the route renders localized visible content and metadata rather than default-locale fallback;
+- `<html lang>` and direction are correct;
+- canonical and hreflang URLs are locale-aware;
+- the Markdown mirror uses the same locale;
+- 404 recovery copy and links are localized;
+- logical CSS and keyboard/focus behavior work in RTL where applicable.
 
-Generate baselines: `npx playwright test --update-snapshots`. Always mock API data so snapshots are deterministic.
+Use accessible locators (`getByRole`, `getByLabel`) for browser interactions. Prefer `<Link>` and
+semantic navigation assertions over CSS selectors.
 
-### CI integration
+## Browser-flow discipline
 
-```yaml
-# .github/workflows/e2e.yml
-name: E2E Tests
-on: [push, pull_request]
-jobs:
-  e2e:
-    runs-on: ubuntu-latest
-    strategy: { matrix: { shard: [1, 2, 3, 4] } }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: npm ci
-      - run: npx playwright install --with-deps
-      - run: npx playwright test --shard=${{ matrix.shard }}/${{ strategy.job-total }}
-        env: { CI: 'true', BASE_URL: 'http://localhost:3000' }
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with: { name: 'report-${{ matrix.shard }}', path: e2e/test-results/, retention-days: 7 }
-```
+Cover the critical journeys affected by the change: navigation/forms, authentication and logout,
+loading/empty/error/retry states, locale switching, keyboard interaction, and responsive behavior.
+Use the repository's existing fixtures and seed lifecycle so every test starts from isolated,
+deterministic data.
 
-`forbidOnly` prevents `.only` in CI. `retries: 2` handles flaky browsers. `--shard` parallelizes. Artifacts upload on failure.
+- Prefer `getByRole` and `getByLabel`; use a stable test ID only when no semantic locator exists.
+- Wait on an observable condition (`expect`, URL, response, or element state), never a fixed timeout.
+- Keep release-gate retries at zero. Traces and screenshots are failure diagnostics, not a way to
+  convert a flaky first attempt into green.
+- Run the browsers/devices required by the repository. Include an RTL locale in visual or layout
+  coverage when RTL is supported.
+- Use visual snapshots selectively for complex layouts, responsive breakpoints, or RTL—not for every
+  page and never as the only behavioral assertion.
+- Keep credentials and fixture secrets out of source control.
 
-## When
+## Integrated Compose contract
 
-### What to e2e test — critical paths only
+Use the repository's canonical integration script/Compose project. It must include the real Next.js
+app, backend, database, Redis/cache/queues, and any service required by the workflow. Seed isolated
+test identities and clean them up through the repository fixture lifecycle.
 
-```
-├─ Login → dashboard → protected action                    → E2e
-├─ Browse → product detail → add to cart → checkout        → E2e
-├─ Locale switch → translated content → RTL layout         → E2e
-├─ 404 pages, error boundaries with retry                  → E2e
-├─ Form submission end-to-end (submit → server → result)   → E2e
-├─ Navigation between major sections                       → E2e
-├─ Zod schema rejects bad input                            → Unit (not e2e)
-├─ Server Action returns correct ActionResult              → Unit (not e2e)
-├─ API client attaches auth headers                        → Unit (not e2e)
-└─ Component renders props correctly                       → Unit (not e2e)
-```
+Integrated scenarios include:
 
-If a failure would block revenue or lock users out, it is a critical path.
+- login/logout/session expiry and authenticated-layout redirects;
+- CSRF bootstrap, success, missing token, and forged Origin;
+- spoofed workspace/role/user headers that do not alter backend policy decisions;
+- billing checkout/portal/recovery state and provider-host URL validation;
+- secure downloads and safe header/status forwarding;
+- webhook signature/idempotency and queue side effects;
+- realtime/polling behavior where the product depends on it.
 
-### When to mock vs use real backend
+Always run the documented teardown, including after failure. Preserve artifacts/logs needed for
+diagnosis before teardown.
 
-| Scenario | Strategy |
-|----------|----------|
-| Feature tests (navigation, forms, i18n) | `page.route()` mock API responses |
-| Visual regression | Always mock — deterministic data required |
-| Smoke tests against staging | Real backend, no mocks |
-| Auth flow credentials | Environment variables, never hardcoded |
+## Retries and flakiness
 
-Add visual snapshots when: complex layout could regress (product grid, dashboard), RTL needs verification, redesign being validated. Do NOT snapshot every page.
+Retries may collect traces or compare diagnostics, but a flaky first failure remains a failed release
+gate. Do not configure CI so a later retry converts that run into green. Reproduce and fix the race,
+or quarantine/delete the invalid test through the repository's explicit policy.
 
 ## Never
 
-- **No testing Zod validation in e2e.** Validation is a unit test concern. E2e verifies errors display to the user.
-- **No CSS selectors or XPath.** Use `getByRole`, `getByLabel`, `getByTestId`. Accessible selectors resist markup changes.
-- **No `page.waitForTimeout()`.** Use `waitForURL`, `waitForSelector`, `expect().toBeVisible()`. Hard waits cause flaky tests.
-- **No test interdependence.** Each test starts clean. Never rely on previous test side effects.
-- **No credentials in source code.** Use environment variables or fixture files excluded from version control.
-- **No testing third-party services.** Mock external APIs with `page.route()`. Tests must pass offline.
-- **No snapshot tests for every page.** Snapshot critical layouts and RTL variants only.
-- **No e2e tests for unit-level logic.** If you test a return value, use Vitest. E2e costs 10-100x more.
+- No dev-server-only proof for production response contracts.
+- No direct handler invocation presented as HTTP negotiation proof.
+- No "full stack" label when the backend is mocked.
+- No hydrated browser DOM as the only raw-content check.
+- No visual-only 404 assertion.
+- No generic commands substituted for repository scripts.
+- No fixed `waitForTimeout()` in place of an observable condition.
+- No CSS/XPath selector when an accessible locator expresses the behavior.
+- No shared test state that depends on another test running first.
+- No retry-masked release gate.
+- No integrated stack left running after the suite.
+- No claim that source changes alone prove external indexing or brand ranking.

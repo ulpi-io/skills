@@ -2,17 +2,20 @@
 
 ## What
 
-Next.js App Router uses filesystem-based routing under `src/app/`. Directories become URL segments. Special files (`page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`, `not-found.tsx`, `default.tsx`) define route behavior. Directories prefixed with `_` are private — ignored by the router. Directories wrapped in `()` are route groups — organize without adding URL segments. All routes live under `[locale]/` for multilingual support via next-intl.
+Next.js App Router uses filesystem-based routing under `src/app/`. Directories become URL segments. Special files (`page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`, `not-found.tsx`, `default.tsx`) define route behavior. Directories prefixed with `_` are private — ignored by the router. Directories wrapped in `()` are route groups — organize without adding URL segments. User-facing HTML and Markdown pages live under `[locale]/` for multilingual support via next-intl; root protocol endpoints such as sitemap, robots, and `llms.txt` remain unlocalized where their specifications require it.
 
 ## How
 
-### Full `src/` tree
+### Illustrative `src/` tree
+
+Preserve the repository's established names and route groups. This tree demonstrates boundaries; it
+is not a migration mandate.
 
 ```
 src/
 ├── app/
 │   ├── [locale]/                          # All routes under locale — next-intl
-│   │   ├── layout.tsx                     # Root locale layout — NextIntlClientProvider, theme script, fonts
+│   │   ├── layout.tsx                     # Root locale layout — NextIntlClientProvider, theme contract, fonts
 │   │   ├── page.tsx                       # Homepage — /[locale]
 │   │   ├── not-found.tsx                  # Locale-aware 404 page
 │   │   ├── loading.tsx                    # Root loading skeleton
@@ -21,7 +24,11 @@ src/
 │   │   ├── (marketing)/                   # Route group — shared marketing layout, no URL segment
 │   │   │   ├── layout.tsx                 # Marketing-specific layout (nav + footer)
 │   │   │   ├── about/
-│   │   │   │   └── page.tsx               # /[locale]/about
+│   │   │   │   └── page.tsx               # /[locale]/about; registry also supplies .md mirror
+│   │   │   ├── contact/
+│   │   │   │   └── page.tsx               # /[locale]/contact; registry also supplies .md mirror
+│   │   │   ├── legal/privacy/
+│   │   │   │   └── page.tsx               # /[locale]/legal/privacy; registry also supplies .md mirror
 │   │   │   └── pricing/
 │   │   │       ├── page.tsx               # /[locale]/pricing
 │   │   │       └── _components/           # Route-private components for pricing
@@ -56,9 +63,8 @@ src/
 │   │       └── (.)products/[slug]/
 │   │           └── page.tsx               # Intercepted product modal
 │   │
-│   ├── [...slug]/
-│   │   └── md/
-│   │       └── route.ts                   # Markdown mirror route handler
+│   ├── internal/markdown/[...slug]/
+│   │   └── route.ts                       # Explicit Response target for negotiated/.md rewrites
 │   ├── sitemap.ts                         # Dynamic sitemap generation
 │   ├── robots.ts                          # Robots.txt generation
 │   ├── llms.txt/
@@ -68,9 +74,12 @@ src/
 │   ├── api/
 │   │   ├── webhooks/
 │   │   │   └── stripe/
-│   │   │       └── route.ts               # Webhook handler — only valid use of route.ts
+│   │   │       └── route.ts               # Webhook handler
 │   │   └── csp-report/
 │   │       └── route.ts                   # CSP violation reporting endpoint
+│   ├── api/secure-download/[id]/route.ts  # Fixed/allowlisted same-origin stream
+│   ├── api/mutation-bridge/route.ts       # Narrow CSRF-validated browser mutation bridge
+│   ├── unsubscribe/route.ts               # Protocol endpoint (for example one-click unsubscribe)
 │   └── global-error.tsx                   # Catches errors in root layout
 │
 ├── components/
@@ -82,20 +91,19 @@ src/
 │       ├── product-card.tsx               # Can use translations, can compose ui/ primitives
 │       └── user-avatar.tsx                # No data fetching, no server actions
 │
-├── actions/                               # Server Actions — one file per domain
+├── actions/                               # Server Actions where the repository uses them
 │   ├── products.ts                        # 'use server' at top, Zod-validated mutations
-│   ├── auth.ts                            # Login, logout, register actions
-│   └── theme.ts                           # setTheme action
+│   └── auth.ts                            # Login/logout only when owned by this layer
 │
 ├── lib/
 │   ├── api/
-│   │   ├── client.ts                      # apiFetch<T>() — base typed fetcher, import 'server-only'
-│   │   └── endpoints/                     # One file per API domain
-│   │       ├── products.ts                # getProduct(), getProducts(), etc.
-│   │       └── users.ts                   # getUser(), getCurrentUser(), etc.
+│   │   ├── client.ts                      # Shared browser/server transport
+│   │   ├── products.ts                    # Approved browser domain client
+│   │   ├── products-server.ts             # RSC/server domain client, import 'server-only'
+│   │   ├── users.ts                       # Approved browser domain client when needed
+│   │   └── users-server.ts                # RSC/server domain client
 │   ├── auth/
-│   │   ├── session.ts                     # Jose encryption, cookie read/write, import 'server-only'
-│   │   └── dal.ts                         # verifySession(), authorization helpers, import 'server-only'
+│   │   └── server-session.ts              # Verified backend session + server request options
 │   ├── validations/                       # Zod schemas — one file per domain
 │   │   ├── products.ts                    # createProductSchema, updateProductSchema
 │   │   └── auth.ts                        # loginSchema, registerSchema
@@ -105,11 +113,14 @@ src/
 │   │   └── providers/                     # Provider mappers (GA, PostHog)
 │   │       └── ga.ts
 │   ├── seo/
-│   │   └── page-registry.ts              # Page entries for llms.txt, sitemap
+│   │   ├── site-config.ts                 # Validated canonical origin
+│   │   ├── identity.ts                    # Verified legal/contact identity
+│   │   └── page-registry.ts              # Page entries for llms.txt, sitemap, Markdown
 │   └── logger.ts                          # Pino setup, import 'server-only'
 │
 ├── hooks/                                 # Shared client hooks — only 'use client' utilities
-│   └── use-debounce.ts
+│   ├── use-debounce.ts
+│   └── use-entity-request.ts              # Abort/generation guard for interactive requests
 │
 ├── types/                                 # Shared TypeScript types/interfaces
 │   ├── api.ts                             # ApiError, PaginatedResponse<T>, ActionResult<T>
@@ -119,7 +130,7 @@ src/
 │   ├── routing.ts                         # next-intl routing config (locales, defaultLocale)
 │   └── request.ts                         # next-intl request config (locale detection, message loading)
 │
-├── proxy.ts                               # Node.js interception — auth, locale, rewrites, CSP
+├── proxy.ts                               # Node.js interception — locale, rewrites, CSP; not session auth
 │
 └── messages/                              # i18n message files
     ├── en/
@@ -136,13 +147,23 @@ src/
         └── auth.json
 ```
 
+### Public trust-anchor routes
+
+A public commercial product includes `/<locale>/about`, `/<locale>/contact`, and
+`/<locale>/legal/privacy` plus their Markdown mirrors. Register all three in the shared page registry,
+sitemap, `/llms.txt`, and public footer. Their visible content and structured data consume the same
+verified legal/contact identity module; never duplicate or invent corporate facts in page files.
+Every locale renders translated visible copy, metadata, recovery links, and Markdown headings from
+the same message catalogs. Do not use the default locale's copy as a silent fallback in another
+locale.
+
 ### Component tiers
 
 | Tier | Location | Can do | Cannot do |
 |------|----------|--------|-----------|
 | 1 -- primitives | `src/components/ui/` | Props-only, purely presentational | Business logic, data fetching, translations, server actions |
-| 2 -- features | `src/components/features/` | Translations via `t()`, compose ui/ primitives | Data fetching, server actions |
-| 3 -- route-specific | `src/app/*/_components/` | Everything (fetch, actions, translations, compose any tier) | Reuse outside its route |
+| 2 -- features | `src/components/features/` | Translations, primitives, approved browser domain clients when interactive | Ad hoc fetches, server-only imports |
+| 3 -- route-specific | `src/app/*/_components/` | Server or client behavior appropriate to the route | Reuse outside its route |
 
 Underscore prefix (`_components/`) makes the directory private to the router -- not a route segment.
 
@@ -182,16 +203,19 @@ Is it a Server Action (mutation)?
 Is it a Zod validation schema?
   └─ Yes → src/lib/validations/{domain}.ts
 
-Is it an API endpoint wrapper?
-  └─ Yes → src/lib/api/endpoints/{domain}.ts
+Is it an API domain wrapper?
+  ├─ RSC/server-only context → src/lib/api/{domain}-server.ts
+  └─ Approved interactive browser context → src/lib/api/{domain}.ts
 
 Is it a shared TypeScript type?
   └─ Yes → src/types/{domain}.ts
 
-Is it a route handler?
-  └─ Is it for webhooks or revalidation?
-       └─ Yes → src/app/api/{service}/route.ts
-       └─ No  → Do NOT create a route handler. Use Server Actions or API client.
+Is it a Route Handler?
+  └─ Does it own a real HTTP/protocol boundary: machine-readable output, webhook,
+     revalidation, secure file stream, same-origin CSRF mutation bridge, CSP report,
+     or one-click unsubscribe?
+       ├─ Yes → src/app/**/route.ts with a fixed/allowlisted upstream and shared transport
+       └─ No  → Use the existing server/browser domain client or Server Action pattern.
 
 Is it a component?
   └─ Is it presentational with zero business logic?
@@ -209,7 +233,9 @@ Is it a component?
 - **Never co-locate Server Actions with pages.** Actions live in `src/actions/`, not next to `page.tsx`.
 - **Never use barrel exports** (`index.ts` re-exports). They defeat tree-shaking and create circular dependencies.
 - **Never put Zod schemas in action files.** Schemas go in `src/lib/validations/` so both actions and forms can import them without pulling in `'use server'` modules.
-- **Never create route handlers for data fetching.** No `app/api/products/route.ts`. Use Server Components with the API client or Server Actions for mutations.
+- **Never create a generic CRUD or arbitrary-upstream Route Handler.** Use only the bounded cases in
+  `api-client-pattern.md`; fixed targets, minimal headers, Origin validation, and safe response
+  forwarding are required for BFF handlers.
 - **Never use relative imports beyond one level.** Always `@/` alias: `'@/components/ui/button'`, never `'../../../components/ui/button'`.
 - **Never omit `default.tsx` from parallel route slots.** Build fails without it.
 - **Never rename Edge middleware blindly.** `proxy.ts` always runs on Node.js; retain deprecated

@@ -1,257 +1,192 @@
-# Authentication — BFF Pattern, Sessions & Authorization
+# Authentication — Backend Session Contract
 
-## What
+## Start with the repository contract
 
-Next.js acts as a Backend-For-Frontend (BFF) between the browser and the backend API. The browser never sees raw API tokens. Next.js holds access and refresh tokens server-side in an encrypted httpOnly first-party cookie. The cookie is transport between browser and Next.js — the real auth is the access token attached to backend API calls server-side.
+Do not choose an authentication architecture from framework preference. Read the backend contract,
+cookie/domain configuration, existing session helper, authenticated layouts, and tests. Preserve the
+project's model unless the user explicitly requests an auth migration.
 
+Common valid authority shapes include a backend-owned cookie session, a Next.js-owned session
+provider, a server-side token BFF, or a trusted external identity proxy. They are not
+interchangeable. Trace login, cookie creation, current-user lookup, browser/server request paths,
+CSRF, unauthenticated redirects, workspace selection, logout, password reset, and global session
+invalidation before editing. Write down which system owns identity, session lifecycle, and final
+authorization.
+
+When the backend contract is Laravel Sanctum first-party cookie authentication, do **not** replace it
+with encrypted access/refresh JWTs in a Next.js cookie and do not add bearer tokens to Laravel
+requests. For another backend, preserve its verified session protocol rather than importing this
+example blindly.
+
+```text
+Browser ── Sanctum/XSRF cookies ──▶ Laravel
+   │
+   └── Next.js RSC/Action/Route Handler
+          └── forwards required Cookie + trusted Origin + locale ──▶ Laravel
 ```
-Browser  ──cookie──▶  Next.js (BFF)  ──Bearer token──▶  Backend API
-                      encrypts/decrypts                   verifies tokens
-                      tokens in cookie                    issues tokens
-```
 
-**Dependencies:** Jose (JWT encryption/decryption — not verification, backend verifies), `server-only` (prevents auth modules from leaking to client bundles).
+The shared boundaries are:
 
-**File structure:** `src/lib/auth/session.ts` (createSession, getSession, updateSession, deleteSession), `src/lib/auth/dal.ts` (verifySession with React.cache, authorization helpers).
+- `src/lib/api/client.ts`: common browser/server transport, credentials, CSRF bootstrap, response
+  parsing, and typed errors.
+- `src/lib/auth/server-session.ts`: server-only Cookie/Origin request options and the React-cached
+  `getServerSession()` call.
+- `src/lib/api/*-server.ts`: RSC, layout, Server Action, and server Route Handler domain calls.
+- plain `src/lib/api/<domain>.ts` modules: approved browser transport for interactive clients such as
+  polling, Reverb-backed views, autosave, and load-more.
 
-## How
+Both server and browser domain modules must use `src/lib/api/client.ts`; neither creates an ad hoc
+backend fetch path.
 
-### session.ts — encrypt tokens in httpOnly cookie
+If the established project instead uses a server-side token BFF, keep tokens server-only, serialize
+refresh to prevent rotation races, expose only a minimal session DTO to Client Components, and test
+invalidation across every privileged surface. Do not introduce that model into a backend-cookie
+application merely because it is another valid shape.
+
+## Sanctum browser requests
+
+Every browser request to Laravel uses `credentials: 'include'`. Before a non-GET mutation, the shared
+client initializes Sanctum with `GET /sanctum/csrf-cookie`, reads the URL-decoded `XSRF-TOKEN`
+cookie, and sends it as `X-XSRF-TOKEN` on the mutation.
 
 ```typescript
-// src/lib/auth/session.ts
-import 'server-only';
-import { cookies } from 'next/headers';
-import { SignJWT, jwtVerify } from 'jose';
-
-const SESSION_COOKIE = 'session';
-const SECRET = new TextEncoder().encode(process.env.SESSION_SECRET!); // 32+ chars
-
-interface SessionPayload {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number; // access token exp (epoch seconds)
-}
-
-export async function createSession(accessToken: string, refreshToken: string): Promise<void> {
-  const expiresAt = decodeTokenExp(accessToken);
-  const cookieStore = await cookies();
-  const encrypted = await new SignJWT({ accessToken, refreshToken, expiresAt } satisfies SessionPayload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('30d')
-    .sign(SECRET);
-  cookieStore.set(SESSION_COOKIE, encrypted, {
-    httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 30,
+async function prepareSanctumMutation(): Promise<string | undefined> {
+  const response = await fetch(apiUrl('/sanctum/csrf-cookie'), {
+    method: 'GET',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
   });
+  if (!response.ok) throw new ApiError(response.status, 'Could not establish a secure session.');
+  return readDecodedXsrfCookie();
 }
 
-export async function getSession(): Promise<SessionPayload | null> {
-  const cookie = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!cookie) return null;
-  try {
-    const { payload } = await jwtVerify(cookie, SECRET, { algorithms: ['HS256'] });
-    return payload as unknown as SessionPayload;
-  } catch { return null; }
-}
+export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  const method = options.method ?? 'GET';
+  const token = method === 'GET' ? undefined : await prepareSanctumMutation();
+  const headers = new Headers(options.headers);
+  headers.set('Accept', 'application/json');
+  if (token !== undefined) headers.set('X-XSRF-TOKEN', token);
 
-export async function updateSession(accessToken: string, refreshToken: string): Promise<void> {
-  await createSession(accessToken, refreshToken);
-}
-export async function deleteSession(): Promise<void> {
-  (await cookies()).delete(SESSION_COOKIE);
-}
-function decodeTokenExp(token: string): number {
-  return JSON.parse(atob(token.split('.')[1]!)).exp as number;
-}
-```
-
-Jose signs both tokens into a single cookie. `getSession` returns `null` on missing/tampered cookies. `SESSION_SECRET` must be 32+ characters — never `NEXT_PUBLIC_`.
-
-### dal.ts — verifySession with React.cache
-
-```typescript
-// src/lib/auth/dal.ts
-import 'server-only';
-import { cache } from 'react';
-import { redirect } from 'next/navigation';
-import { getSession, updateSession, deleteSession } from '@/lib/auth/session';
-import { apiFetch } from '@/lib/api/client';
-
-interface SessionUser { userId: string; role: string; accessToken: string; }
-
-export const verifySession = cache(async (): Promise<SessionUser> => {
-  const session = await getSession();
-  if (!session) redirect('/login');
-
-  const now = Math.floor(Date.now() / 1000);
-  if (session.expiresAt > now) {
-    const claims = JSON.parse(atob(session.accessToken.split('.')[1]!));
-    return { userId: claims.sub, role: claims.role, accessToken: session.accessToken };
-  }
-
-  // Access token expired — refresh
-  try {
-    const tokens = await apiFetch<{ accessToken: string; refreshToken: string }>(
-      '/auth/refresh',
-      { method: 'POST', body: JSON.stringify({ refreshToken: session.refreshToken }), public: true },
-    );
-    await updateSession(tokens.accessToken, tokens.refreshToken);
-    const claims = JSON.parse(atob(tokens.accessToken.split('.')[1]!));
-    return { userId: claims.sub, role: claims.role, accessToken: tokens.accessToken };
-  } catch { await deleteSession(); redirect('/login'); }
-});
-```
-
-`React.cache()` deduplicates within a single request — page, layout, and Server Action all calling `verifySession()` hits the session once. Returns `SessionUser` or redirects; callers never receive `null`.
-
-### Login Server Action
-
-```typescript
-// src/actions/auth.ts
-'use server';
-import { redirect } from 'next/navigation';
-import { apiFetch } from '@/lib/api/client';
-import { createSession, deleteSession } from '@/lib/auth/session';
-import { loginSchema } from '@/lib/validations/auth';
-import type { ActionResult } from '@/types/actions';
-
-export async function loginAction(
-  _prevState: ActionResult<void> | null, formData: FormData,
-): Promise<ActionResult<void>> {
-  const parsed = loginSchema.safeParse({
-    email: formData.get('email'), password: formData.get('password'),
+  const response = await fetch(apiUrl(path), {
+    ...options,
+    method,
+    headers,
+    credentials: 'include',
   });
-  if (!parsed.success) {
-    return { success: false, error: 'validation_failed',
-      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]> };
-  }
-  try {
-    const tokens = await apiFetch<{ accessToken: string; refreshToken: string }>(
-      '/auth/login', { method: 'POST', body: JSON.stringify(parsed.data), public: true },
-    );
-    await createSession(tokens.accessToken, tokens.refreshToken);
-  } catch {
-    return { success: false, error: 'auth.invalidCredentials' };
-  }
-  redirect(formData.get('callbackUrl')?.toString() || '/');
-}
-
-export async function logoutAction(): Promise<void> {
-  await deleteSession();
-  redirect('/login');
+  return parseApiResponse<T>(response);
 }
 ```
 
-`public: true` skips auth header injection — no session exists yet. `'auth.invalidCredentials'` is a translation key passed to `t()`. `redirect()` called outside try/catch — it throws internally.
+Centralize this behavior. Domain clients must not each implement their own CSRF bootstrap or cookie
+logic.
 
-### API client integration — 401 refresh with race lock
+## Trusted server request context
 
-The API client (see `references/api-client-pattern.md`) handles auth automatically. On 401, it refreshes and retries. Module-level mutex prevents parallel 401s from firing duplicate refreshes:
+Server requests forward only the context Laravel actually needs:
+
+- the incoming session `Cookie` header;
+- the configured canonical first-party `Origin`, validated as an absolute allowed origin at startup;
+- the validated locale/`Accept-Language` value;
+- `X-XSRF-TOKEN` when a server-side mutation requires the existing Sanctum token;
+- explicit correlation or content headers owned by the shared transport.
+
+Use one server request-options helper and force `cache: 'no-store'` for session and authenticated
+requests. Never copy the complete inbound header set to Laravel.
 
 ```typescript
-// Inside src/lib/api/client.ts — refresh lock
-let refreshPromise: Promise<{ accessToken: string; refreshToken: string }> | null = null;
+export async function getServerApiRequestOptions(
+  options: ServerApiRequestOptions = {},
+): Promise<ApiRequestOptions> {
+  const requestCookies = await cookies();
+  const headers = new Headers(options.headers);
+  const cookie = serializeCookies(requestCookies);
 
-export async function refreshAccessToken(): Promise<{ accessToken: string; refreshToken: string } | null> {
-  if (refreshPromise) return refreshPromise;
-  const session = await getSession();
-  if (!session?.refreshToken) return null;
-  refreshPromise = apiFetch<{ accessToken: string; refreshToken: string }>(
-    '/auth/refresh',
-    { method: 'POST', body: JSON.stringify({ refreshToken: session.refreshToken }), public: true },
-  ).finally(() => { refreshPromise = null; });
-  try {
-    const tokens = await refreshPromise;
-    await updateSession(tokens.accessToken, tokens.refreshToken);
-    return tokens;
-  } catch { await deleteSession(); return null; }
+  if (cookie !== '') headers.set('Cookie', cookie);
+  headers.set('Origin', resolveCanonicalFirstPartyOrigin());
+  headers.set('Accept-Language', await resolveValidatedLocale());
+
+  const xsrf = requestCookies.get('XSRF-TOKEN')?.value;
+  if (xsrf) headers.set('X-XSRF-TOKEN', decodeURIComponentSafely(xsrf));
+
+  return { ...options, headers, cache: 'no-store' };
 }
 ```
 
-Concurrent 401s coalesce into one refresh call — without this, parallel refreshes invalidate each other's tokens (rotation).
+The canonical origin comes from validated configuration. Never construct Laravel's `Origin` from an
+inbound `Origin`, `Referer`, `Host`, or `X-Forwarded-Host`. Forwarded-host headers remain untrusted
+unless a known proxy boundary has already validated and normalized them; even then, public identity
+and Laravel's first-party origin should come from configuration.
 
-### proxy.ts — optimistic route protection
+## Session resolution and redirects
 
-```typescript
-// Inside proxy.ts (see references/routing.md for full proxy.ts)
-const sessionCookie = request.cookies.get('session')?.value;
-const isPublic = PUBLIC_PATHS.some(
-  (p) => pathname === `/${locale}${p}` || pathname === `/${locale}`,
-);
-if (!sessionCookie && !isPublic) {
-  const loginUrl = request.nextUrl.clone();
-  loginUrl.pathname = `/${locale}/login`;
-  loginUrl.searchParams.set('callbackUrl', pathname);
-  return NextResponse.redirect(loginUrl);
-}
-```
+`getServerSession()` calls Laravel's authenticated `/auth/me`-style endpoint through the server
+request helper, validates the response shape, uses `cache()` from React to deduplicate within one
+render/request, and remains `no-store` through its transport.
 
-Optimistic only — checks cookie presence, not validity. Expired sessions pass through. Real auth is in `verifySession()` at the data layer.
-
-### Server Action authorization
-
-Every Server Action calls `verifySession()` before any mutation — Server Actions are public HTTP endpoints, proxy.ts does not protect them.
-
-```typescript
-export async function deletePostAction(formData: FormData) {
-  const session = await verifySession();                                         // 1. Authenticate
-  const parsed = z.string().uuid().safeParse(formData.get('postId'));           // 2. Validate
-  if (!parsed.success) return { success: false, error: 'validation_failed' };
-  const post = await getPost(parsed.data);                                      // 3. Authorize (IDOR, see security.md)
-  if (post.authorId !== session.userId) return { success: false, error: 'forbidden' };
-  await deletePost(parsed.data);                                                // 4. Mutate
-  updateTag('posts');
-  return { success: true, data: undefined };
-}
-```
-
-### Client-side auth state — props, no context
+Authenticated layouts own login redirects and workspace selection. They resolve the verified
+session before rendering the protected subtree; `proxy.ts` owns locale/rewrite/security concerns and
+does not infer authentication from cookie presence.
 
 ```tsx
-// Server Component passes minimal user info as props
-const session = await verifySession();
-return <Header userName={session.userId} userRole={session.role} />;
-
-// Client Component receives auth as props — never fetches, never stores
-'use client';
-function Header({ userName, userRole }: { userName: string; userRole: string }) {
-  const t = useTranslations('common');
-  return <nav><span>{t('nav.greeting', { name: userName })}</span></nav>;
+export default async function AuthenticatedLayout({ children }: LayoutProps<'/[locale]/(app)'>) {
+  const session = await getServerSessionOrRedirect();
+  return <AppShell session={session}>{children}</AppShell>;
 }
 ```
 
-## When
+Use the repository's existing 401 mapping and locale-aware login URL. Do not duplicate session calls
+in every page when the owning layout already establishes the session, but every separately callable
+mutation still performs server-side authentication and authorization.
 
-| Scenario | What to call |
-|----------|-------------|
-| User submits login form | `loginAction` → `createSession()` |
-| User clicks logout | `logoutAction` → `deleteSession()` → redirect |
-| Server Component needs user data | `verifySession()` — returns `SessionUser` or redirects |
-| Server Action needs authorization | `verifySession()` then check resource ownership |
-| API client sends backend request | `getSession()` reads token, attaches `Authorization` header |
-| Access token expired during API call | API client catches 401, calls `refreshAccessToken()`, retries |
-| Refresh token also expired | `deleteSession()` → `redirect('/login')` |
-| proxy.ts checks route access | Read session cookie presence — optimistic redirect if missing |
-| Client component needs user info | Receive as props from parent Server Component |
+## Authorization and workspace trust
 
-### Token refresh — proactive vs reactive
+Never authorize from inbound `x-workspace-id`, `x-workspace-role`, `x-user-role`, or similarly named
+browser-controlled headers. Do not let a client header override session-derived identity even when a
+route, component, or old test already sends one.
 
-| Strategy | Where | How |
-|----------|-------|-----|
-| Proactive | `verifySession()` in DAL | Checks `expiresAt` before API call. Refreshes preemptively. |
-| Reactive | `apiFetch()` in API client | Catches 401. Refreshes and retries. Defense-in-depth. |
+Treat aliases such as `x-user-id`, `x-is-admin`, tenant headers, and legacy spellings the same way.
+Client-supplied IDs may select a resource, but only the verified session and backend policy can
+authorize it.
 
-Both exist. Proactive avoids the wasted 401 round-trip. Reactive catches edge cases where the token expires between DAL check and API call.
+Resolve the user, active workspace, membership, and role from the verified Sanctum session. Validate
+route workspace identifiers against that session, then send the intended resource identifier to
+Laravel. Laravel policies and scoped queries remain the final authorization authority; hiding a UI
+control or checking a role in Next.js is only presentation/early rejection, never sufficient access
+control.
+
+Server Actions and browser-facing mutation Route Handlers are public entry points. Each must:
+
+1. obtain the verified session;
+2. validate untrusted input;
+3. resolve workspace/resource context from that session;
+4. call Laravel through the shared client;
+5. rely on Laravel policy enforcement for the final decision.
+
+## Required tests
+
+- Prove login, logout, session expiry, and CSRF failure through the integrated Next.js + Laravel
+  stack.
+- When the product supports sign-out-everywhere or an auth epoch, prove invalidation across every
+  privileged page, mutation, Route Handler, download, and realtime surface rather than only the UI.
+- Spoof every supported and legacy role/workspace header (`x-workspace-id`, `x-workspace-role`,
+  `x-user-role`, and aliases) with both higher and cross-tenant values. Access and effective role must
+  not change.
+- Prove a browser mutation first obtains the CSRF cookie, sends `X-XSRF-TOKEN`, and includes
+  credentials.
+- Prove server session reads are `no-store`, forward only the required cookies/context, and use the
+  configured canonical Origin even when `Origin`, `Referer`, `Host`, and forwarded-host headers are
+  forged.
+- Treat unit tests as fast regression proof; the Sanctum/CSRF contract requires the canonical
+  integrated Compose stack before release.
 
 ## Never
 
-- **No Auth.js / NextAuth.** Backend owns identity, token issuance, and user management. Next.js stores tokens — it does not manage accounts, providers, or OAuth flows.
-- **No iron-session.** Jose + cookies is simpler for BFF. iron-session adds abstraction without benefit when the backend issues JWTs.
-- **No localStorage / sessionStorage for tokens.** XSS can read them. httpOnly cookies are inaccessible to JavaScript.
-- **No direct browser-to-backend-API calls.** All API traffic routes through Next.js. Tokens never leave the server.
-- **No token exposure to client components.** Never pass `accessToken` or `refreshToken` as props. Pass only display data (name, role, avatar URL).
-- **No page-level auth as sole protection.** proxy.ts is optimistic. Pages and Server Actions still need `verifySession()`. Server Actions are separate HTTP endpoints.
-- **No JWT verification in Next.js.** Backend verifies tokens. Next.js only encrypts/decrypts the session cookie and decodes claims (`exp`, `sub`, `role`). Never import a verification key.
-- **No auth context providers.** Server Components call `verifySession()` and pass user info as props. No `<AuthProvider>`. See `references/component-anatomy.md`.
-- **No inline fetch for auth endpoints.** Use `apiFetch` with `{ public: true }`. See `references/api-client-pattern.md`.
+- No encrypted JWT access/refresh-token cookie when the project contract is a Sanctum session.
+- No bearer-token storage or refresh-token rotation in the Next.js layer unless a different
+  repository explicitly defines that architecture.
+- No auth decision in `proxy.ts` based on cookie presence.
+- No authorization from browser-supplied role, user, tenant, or workspace headers.
+- No request-derived first-party Origin.
+- No full inbound-header forwarding to Laravel.
+- No cached authenticated/session response beyond React's per-render/request deduplication.
+- No claim that a mocked Laravel response proves Sanctum, CSRF, or policy behavior.

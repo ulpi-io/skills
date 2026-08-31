@@ -29,7 +29,9 @@ import { routing } from './routing';
 
 export default getRequestConfig(async ({ requestLocale }) => {
   let locale = await requestLocale;
-  if (!locale || !routing.locales.includes(locale as any)) locale = routing.defaultLocale;
+  if (!locale || !routing.locales.some((supported) => supported === locale)) {
+    locale = routing.defaultLocale;
+  }
 
   const common = (await import(`@/messages/${locale}/common.json`)).default;
   const products = (await import(`@/messages/${locale}/products.json`)).default;
@@ -56,7 +58,7 @@ export default async function LocaleLayout({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  if (!routing.locales.includes(locale as any)) notFound();
+  if (!routing.locales.some((supported) => supported === locale)) notFound();
 
   const messages = await getMessages();
   const dir = RTL_LOCALES.includes(locale) ? 'rtl' : 'ltr';
@@ -80,7 +82,7 @@ export default async function LocaleLayout({
 ```
 messages/
   en/
-    common.json      # Shared: nav, footer, buttons, errors, theme labels
+    common.json      # Shared: nav, footer, buttons, errors, accessibility labels
     products.json    # Product pages
     auth.json        # Login, register, password reset
     checkout.json    # Cart and checkout flow
@@ -103,10 +105,7 @@ Every locale has the same namespace files with identical keys. Missing files cra
   "button.cancel": "Cancel",
   "button.loading": "Loading...",
   "error.generic": "Something went wrong. Please try again.",
-  "error.notFound": "Page not found",
-  "theme.light": "Light",
-  "theme.dark": "Dark",
-  "theme.system": "System"
+  "error.notFound": "Page not found"
 }
 ```
 

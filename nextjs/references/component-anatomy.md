@@ -9,8 +9,8 @@ A component is a single `.tsx` file with one named export. Every component follo
 | Tier | Location | Allowed | Forbidden |
 |------|----------|---------|-----------|
 | Primitives | `src/components/ui/` | Props only, presentational, Tailwind styling, `ref` forwarding | Hooks with side effects, data fetching, translations `t()`, business logic, server actions |
-| Features | `src/components/features/` | Translations `t()`, compose ui/ primitives, client hooks (`useState`, `useTranslations`) | Data fetching, server actions, direct API calls |
-| Route-specific | `src/app/*/_components/` | Everything: data fetching, server actions, translations, compose any tier | Reuse outside its route. If needed in 2+ routes, promote to features/ |
+| Features | `src/components/features/` | Translations, primitives, client hooks, approved browser domain clients when interactive | Ad hoc fetches, server-only imports |
+| Route-specific | `src/app/*/_components/` | Server or client behavior appropriate to the route | Reuse outside its route. If needed in 2+ routes, promote to features/ |
 
 ### File template
 
@@ -51,7 +51,7 @@ export { AddToCartButton };                 // 5. Named export (default only for
 
 ```tsx
 import Image from 'next/image';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 
 import { getTranslations } from 'next-intl/server';
 
@@ -197,18 +197,24 @@ Add `'use client'` ONLY when the component uses: event handlers (`onClick`, `onC
 | Data type | Where it lives | Why |
 |-----------|---------------|-----|
 | Server data (products, users, content) | Server Component props via API client | No client state. Server Components render with fresh data. |
+| Interactive remote data (polling, load-more, autosave, realtime) | Client state via approved browser domain module | Required for live interaction; guard entity identity and stale responses. |
 | URL state (filters, pagination, sort) | `searchParams` in Server Component, update via `<Link>` / `router.push()` | Shareable, bookmarkable, survives refresh. No `useState`. |
 | Form input state | `useState` in `'use client'` leaf | Ephemeral, local to the form. |
 | UI toggles (modal, accordion, menu) | `useState` in `'use client'` leaf | Ephemeral, local to the component. |
 | Optimistic UI (pending mutations) | `useOptimistic` or `useActionState` | Temporary while Server Action completes. |
-| Theme preference | Cookie — server-read, set via Server Action | Must be server-readable. See `references/page-checklist.md`. |
-| Auth state | Server-side session via DAL | Never in client state. See `references/auth.md`. |
+| Theme preference | Follow the locked design contract | Do not create theme state for a light-only product. |
+| Auth state | Verified server session helper | Never in client state. See `references/auth.md`. |
 
-**What we do NOT use** — No Redux, no React Query / TanStack Query, no Zustand for server data. Server data belongs in Server Components. No Context API for data that should be props — prop drilling through Server Components has no re-render cost. Exception: Context is valid for app-wide client concerns (e.g., toast notifications).
+Prefer Server Components for initial server-renderable data. Do not impose a blanket ban on browser
+API modules, stores, or a query library when the repository already uses them for interactive remote
+state. Keep the project's chosen state architecture and use `client-async-state.md` to prevent stale
+entity updates. Context remains appropriate only for genuinely shared client concerns.
 
 **`useState` is correct for:** form inputs, UI toggles, animation state, debounced search input, temporary client-only state that does not survive navigation.
 
-**`useState` is WRONG for:** API data (use Server Component), URL state like filters (use `searchParams`), auth/session (use server-side session), data multiple components need (pass as props from Server Component).
+**`useState` is wrong for:** server-renderable initial data with no interaction need, duplicate URL
+state, or trusted auth/session identity. It is valid for bounded interactive API state when the
+component applies abort/generation and merge guards.
 
 ## Never
 
@@ -224,10 +230,10 @@ export function ProductBadge({ ... }) { ... }
 // product-badge.tsx → export { ProductBadge }
 ```
 
-### useEffect for data fetching
+### Data fetching boundary
 
 ```tsx
-// WRONG — client-side fetch in useEffect
+// WRONG — ad hoc backend fetch with no shared transport or stale-response guard
 'use client';
 function ProductList() {
   const [products, setProducts] = useState([]);
@@ -237,14 +243,18 @@ function ProductList() {
   return products.map(p => <div key={p.id}>{p.name}</div>);
 }
 
-// RIGHT — Server Component with API client
-import { getProducts } from '@/lib/api/endpoints/products';
+// RIGHT for initial content — Server Component with server domain client
+import { getProducts } from '@/lib/api/products-server';
 async function ProductList() {
   const products = await getProducts();
   return products.map(p => <div key={p.id}>{p.name}</div>);
 }
 export { ProductList };
 ```
+
+For polling, pagination, realtime, or autosave, a Client Component may call the plain browser domain
+module. It must pass an `AbortSignal`, capture the entity ID/generation, and use functional state
+updates. See `api-client-pattern.md` and `client-async-state.md`.
 
 ### Hardcoded strings
 
@@ -275,6 +285,7 @@ export { ProductList };
 - **Never `any` in props.** Define explicit TypeScript interfaces.
 - **Never `'use client'` on pages or layouts.** Push to the smallest leaf component.
 - **Never `useEffect` to sync state to URL.** Read `searchParams` directly in Server Components.
-- **Never `<QueryClientProvider>` wrapping the app.** Server Components handle data fetching.
+- **Never add a global data provider that contradicts the repository architecture.** Preserve an
+  existing approved client-state/query layer when interactive requirements need it.
 - **Never `createContext()` for per-page data.** Pass as props from Server Components.
 - For accessibility patterns (ARIA, keyboard, focus management), see `references/accessibility.md`.

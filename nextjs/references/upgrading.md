@@ -1,26 +1,26 @@
-# Next.js Stable Version Selection and Upgrade
+# Next.js Version Selection and Upgrade
 
 ## Recommendation
 
-Use the **stable Next.js 16.2 line** for new applications. On 2026-07-20, both the npm `latest`
-dist-tag and the official GitHub release marked **16.2.10** as latest. Treat that patch number as a
-verification snapshot, not a permanent pin: create with `create-next-app@latest`, resolve from the
-stable `latest` tag, and commit the resulting lockfile.
-
-On the same verification date, Next.js 16.3 existed only as a prerelease. Do not recommend
-`next@canary` or any prerelease by default. Prereleases are appropriate only when the user explicitly
-accepts prerelease churn to test a specific fix or feature.
-
-For an existing application, inspect the declared and resolved versions before writing code:
+For an existing application, the manifest, resolved lockfile, installed package, and installed docs
+are the version authority. Inspect them before writing version-specific code:
 
 ```bash
 # Read package.json and the active lockfile first, then use the project's package manager.
 pnpm why next
 node -p "require('next/package.json').version"
+
+# Read the bundled docs that match that exact installed package.
+find node_modules/next/dist/docs -maxdepth 2 -type f | sort
 ```
 
-An ordinary feature or bug fix does not authorize a framework upgrade. Follow the installed major
-and minor unless the request includes the upgrade.
+When an application declares or resolves `next: 16.3.x`, preserve that release line and do not
+downgrade it. An ordinary feature, security fix, public-page change, or bug fix does not authorize a
+framework upgrade or downgrade.
+
+For a new application, use the official stable generator and commit its resolved lockfile. Do not
+encode a dated minor ceiling in a reusable skill. A prerelease or canary is appropriate only when the
+user explicitly accepts that release channel for a specific fix or experiment.
 
 ## New App Router application
 
@@ -30,8 +30,8 @@ Let the official generator choose a compatible Next.js, React, TypeScript, and E
 pnpm create next-app@latest
 ```
 
-For this skill's architecture, select TypeScript, ESLint, the App Router, `src/`, and the `@/*`
-alias. After generation, keep the resolved stable version in the lockfile. Enable these options only
+Select TypeScript, ESLint, the App Router, `src/`, and the `@/*` alias when they match the project
+brief. After generation, keep the resolved stable version in the lockfile. Enable these options only
 after understanding their scope:
 
 - `typedRoutes: true` is the recommended type-safety default.
@@ -95,21 +95,25 @@ Audit every item that exists in the application:
 Do not enable Cache Components, React Compiler, View Transitions, or another opt-in merely because a
 codemod exposes it. Each has a separate migration or build/runtime tradeoff.
 
-## Next.js 16.2 capabilities
+## Installed Next.js 16.3 capabilities
 
-Use these only when the task needs them:
+Next.js 16.3 is a released line, not a prerelease. The official 16.3 material includes bundled
+version-matched documentation for agents and Instant Navigations tooling. Use a 16.3 capability only
+when the installed package's docs describe it and the task needs it:
 
-- The stable Adapters API uses top-level `adapterPath` and is for deployment platforms or custom
-  build integrations, not ordinary application code.
-- `<Link transitionTypes={['...']}>` and router `transitionTypes` integrate with React View
-  Transitions only when `experimental.viewTransition` is enabled.
-- `next start --inspect` attaches a debugger to the production server.
-- `unstable_catchError()` and `unstable_retry()` remain experimental in 16.2. Prefer normal route
-  error files and `reset()` unless the task explicitly accepts an unstable API.
+- Prefer the installed docs under `node_modules/next/dist/docs/` over remembered behavior or a web
+  article written for another patch.
+- Treat Instant Navigations, partial prefetching, and related test helpers as opt-in architecture
+  work. Do not retrofit them during unrelated changes.
+- Check the installed API name and stability marker before using any feature described as
+  experimental, canary-only, or newly stabilized.
+- Keep deployment adapters and compiler/cache flags as explicit project decisions; a new minor does
+  not authorize enabling them automatically.
 
 ## Verification
 
-Run project scripts when they exist. A typical gate after a Next.js upgrade is:
+Run project scripts when they exist. Do not replace them with a generic command sequence. A typical
+gate after an explicitly requested Next.js upgrade includes:
 
 ```bash
 pnpm exec next typegen
@@ -126,6 +130,7 @@ Verify both the manifest constraint and the resolved lockfile version.
 ## Never
 
 - Never silently upgrade Next.js during unrelated work.
+- Never downgrade a project from its declared and resolved 16.3.x line.
 - Never recommend a canary because it has a larger version number than the stable release.
 - Never claim compatibility from dependency installation alone; run type generation and a production
   build.
@@ -135,7 +140,8 @@ Verify both the manifest constraint and the resolved lockfile version.
 
 ## Official sources
 
-- [Next.js 16.2 release](https://nextjs.org/blog/next-16-2)
+- [Next.js 16.3 release](https://nextjs.org/blog/next-16-3)
+- [Next.js blog](https://nextjs.org/blog)
 - [Next.js 16 upgrade guide](https://nextjs.org/docs/app/guides/upgrading/version-16)
 - [Next.js upgrading guide](https://nextjs.org/docs/app/guides/upgrading)
 - [Next.js releases](https://github.com/vercel/next.js/releases)

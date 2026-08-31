@@ -1,239 +1,184 @@
-# Machine-Readable Content — Markdown Mirrors, llms.txt & Content Negotiation
+# Machine-Readable Content — Markdown, llms.txt and Negotiation
 
-## What
+## Public contract
 
-Every public page has a markdown counterpart. AI agents, generative engines, and CLI tools get clean markdown instead of parsing HTML. Three components:
+For products that intentionally support agent-readable discovery, public HTML pages have Markdown
+mirrors, `/llms.txt` explains when and how to use the product, and `/llms-full.txt` provides the
+approved expanded corpus. All output uses the same validated canonical HTTPS origin as metadata,
+JSON-LD, sitemap, and robots.
 
-1. **Markdown mirrors** — `.md` URL for every public HTML page, returning content as clean markdown.
-2. **llms.txt** — index of all public pages with titles and one-line descriptions, linking to `.md` URLs.
-3. **llms-full.txt** — concatenated markdown of every public page in a single response.
+Machine-readable public endpoints are a valid Route Handler use. They return explicit responses and
+do not act as generic backend proxies.
 
-### Two access methods — both handled by proxy.ts (NOT next.config.ts rewrites)
+## Markdown mirrors and page registry
 
-**Method 1 — `.md` URL suffix:**
-1. Request to `example.com/en/products/widget.md`
-2. `proxy.ts` detects `.md` suffix, strips it, rewrites to `/en/products/widget/md`
-3. Route handler at `app/[...slug]/md/route.ts` calls `generateMarkdown(locale)`
-4. Returns `Content-Type: text/markdown; charset=utf-8` with `Vary: Accept`
-
-**Method 2 — `Accept: text/markdown` header:**
-1. Request to `example.com/en/products/widget` with `Accept: text/markdown`
-2. `proxy.ts` detects `text/markdown` in Accept header, rewrites to `/en/products/widget/md`
-3. Same route handler runs, same flow
-
-### `generateMarkdown()` signature
+Keep one public-page registry that supplies sitemap, Markdown mirrors, and agent indexes. Each entry
+records its locale-aware path, title/description source, Markdown generator, indexability, and any
+structured-data/trust-page classification. Adding a public page updates this registry in the same
+change.
 
 ```typescript
-async function generateMarkdown(locale: string): Promise<string>
-```
-
-Co-located with the page at `src/app/[locale]/products/[slug]/_lib/markdown.ts`. Calls the same data-fetching function as the HTML page. Returns clean markdown — no navigation chrome, no component markup.
-
-### Page registry — `src/lib/seo/page-registry.ts`
-
-```typescript
-export interface PageEntry {
-  path: string;           // URL pattern: '/products/[slug]'
-  title: string;          // Human-readable: 'Product Detail'
-  description: string;    // One-line summary for llms.txt
-  namespace: string;      // i18n namespace for translations
+interface MarkdownPageContext {
+  readonly locale: string;
+  readonly pathname: string;
+  readonly params: Readonly<Record<string, string>>;
 }
 
-export const pageRegistry: PageEntry[] = [
-  { path: '/', title: 'Home', description: 'Main landing page', namespace: 'home' },
-  { path: '/products', title: 'Products', description: 'Product catalog with filtering', namespace: 'products' },
-  { path: '/products/[slug]', title: 'Product Detail', description: 'Individual product page', namespace: 'products' },
-];
-```
-
-**Sync strategy:** manually maintained, validated at build time — missing entries produce a build warning. Used by llms.txt, llms-full.txt, and sitemap.ts (see `references/seo.md`).
-
-### Caching
-
-All markdown route handlers use `'use cache'` + `cacheLife('days')` + `cacheTag('content')`. Invalidate on content changes via `revalidateTag('content', 'days')`.
-
-## How
-
-### proxy.ts — markdown mirror routing
-
-Add before the auth check in `proxy.ts` (see `references/routing.md` for the full proxy pattern):
-
-```typescript
-// src/proxy.ts — markdown mirror routing block
-export function proxy(request: NextRequest): NextResponse {
-  const { pathname } = request.nextUrl;
-  const accept = request.headers.get('Accept') ?? '';
-
-  // Method 1: .md suffix → strip suffix, rewrite to /md route handler
-  if (pathname.endsWith('.md') && !pathname.startsWith('/api/')) {
-    const url = request.nextUrl.clone();
-    url.pathname = `${pathname.slice(0, -3)}/md`;
-    return NextResponse.rewrite(url);
-  }
-
-  // Method 2: Accept: text/markdown → rewrite to /md route handler
-  if (accept.includes('text/markdown') && !pathname.startsWith('/api/') && !pathname.endsWith('/md')) {
-    const url = request.nextUrl.clone();
-    url.pathname = `${pathname}/md`;
-    return NextResponse.rewrite(url);
-  }
-
-  // ... locale detection, auth check, security headers (see routing.md, security.md)
-  return NextResponse.next();
+interface PublicPageEntry {
+  readonly pattern: string;
+  readonly titleKey: string;
+  readonly descriptionKey: string;
+  readonly match: (pathname: string) => MarkdownPageContext | null;
+  readonly loadMarkdown: (context: MarkdownPageContext) => Promise<string>;
 }
 ```
 
-### Route handler — `app/[...slug]/md/route.ts`
+The HTML page and Markdown generator use the same locale, message catalogs, domain data, and verified
+identity source. Do not maintain a second copy of translations, prices, capabilities, corporate
+details, or product claims. A localized Markdown URL must render that locale rather than silently
+falling back to the default language.
+
+Co-locate the Markdown builder with the page or its domain module, but keep matching/indexing in the
+shared registry. Dynamic entries receive their validated path params explicitly; a generator must
+not reach for an undefined route variable or infer params from a rewritten internal URL. The
+negotiated Route Handler resolves a registry match, calls `loadMarkdown(context)`, and returns an
+explicit response. Cache successful mirrors only through the repository's documented cache model;
+do not let a cached success or fallback obscure a real unknown-route 404.
+
+Support both:
+
+1. `GET /<locale>/<path>.md`;
+2. `GET /<locale>/<path>` with `Accept: text/markdown`.
+
+Both successful forms return `Content-Type: text/markdown; charset=utf-8` and `Vary: Accept`. Cache
+only according to the project's rendering contract. Use `'use cache'`, `cacheLife`, or `cacheTag`
+only when Cache Components is enabled and the installed Next.js docs support the exact API.
+
+## Unknown-route negotiation
+
+The proxy distinguishes known mirrors from unknown Markdown requests. Before rewriting an unknown
+request to an internal 404 handler, it captures the original pathname and overwrites a project-owned
+internal header (or validates a private query value). Never preserve a client-supplied internal-path
+header.
+
+The negotiated Route Handler returns an explicit response rather than calling `notFound()`:
 
 ```typescript
-import { NextRequest, NextResponse } from 'next/server';
-import { cacheLife, cacheTag } from 'next/cache';
-import { pageRegistry } from '@/lib/seo/page-registry';
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ slug: string[] }> },
-) {
-  'use cache';
-  cacheLife('days');
-  cacheTag('content');
-
-  const { slug } = await params;
-  const segments = slug.filter((s) => s !== 'md'); // strip trailing 'md'
-  const locale = segments[0] ?? 'en';
-  const pagePath = '/' + segments.slice(1).join('/');
-
-  const entry = resolveRegistryEntry(pagePath);
-  if (!entry) return new NextResponse('Not found', { status: 404 });
-
-  const { generateMarkdown } = await entry.loader();
-  const markdown = await generateMarkdown(locale);
-
-  return new NextResponse(markdown, {
-    headers: {
-      'Content-Type': 'text/markdown; charset=utf-8',
-      'Vary': 'Accept',
-      'Cache-Control': 'public, max-age=86400, s-maxage=604800',
-    },
-  });
-}
-
-function resolveRegistryEntry(pagePath: string) {
-  return pageRegistry.find((entry) => {
-    const pattern = entry.path.replace(/\[[\w.]+\]/g, '[^/]+');
-    return new RegExp(`^${pattern}$`).test(pagePath) || entry.path === pagePath;
-  });
-}
+return new Response(markdown404(originalPath), {
+  status: 404,
+  headers: {
+    'Content-Type': 'text/markdown; charset=utf-8',
+    Vary: 'Accept',
+  },
+});
 ```
 
-### `generateMarkdown` — product page example
+The body is non-empty and contains:
 
-```typescript
-// src/app/[locale]/products/[slug]/_lib/markdown.ts
-import 'server-only';
-import { getTranslations } from 'next-intl/server';
-import { getProduct } from '@/lib/api/endpoints/products';
-import { formatPrice } from '@/lib/utils/format';
+- `# Page not found`;
+- the original requested pathname;
+- an absolute canonical localized-homepage link;
+- an absolute sitemap link;
+- an absolute `/llms.txt` link;
+- an absolute documentation or product-index link.
 
-export async function generateMarkdown(locale: string): Promise<string> {
-  const t = await getTranslations({ locale, namespace: 'products' });
-  const product = await getProduct(slug);
+The same unknown `.md` path behaves identically. The HTML representation returns a real localized
+`text/html` 404 with recovery links. See `error-handling.md` and `testing-e2e.md`.
 
-  const lines: string[] = [
-    `# ${product.name}`,
-    '',
-    product.description,
-    '',
-    `## ${t('detail.specifications')}`,
-    '',
-    `- **${t('detail.price')}:** ${formatPrice(product.price, product.currency)}`,
-    `- **${t('detail.category')}:** ${product.category}`,
-    `- **${t('detail.availability')}:** ${product.inStock ? t('detail.inStock') : t('detail.outOfStock')}`,
-  ];
+## llms.txt is an instruction document
 
-  if (product.features.length > 0) {
-    lines.push('', `## ${t('detail.features')}`, '');
-    for (const feature of product.features) lines.push(`- ${feature}`);
-  }
+`/llms.txt` is not merely a link index. Its body must have these parseable H2 sections:
 
-  lines.push('', '---', '', `[${t('nav.allProducts')}](/${locale}/products) | [${t('nav.home')}](/${locale})`);
-  return lines.join('\n');
-}
+```markdown
+# Product name
+> One truthful sentence describing the product.
+
+## When to use Product name
+
+Specific best-fit jobs, supported channels, and use-case boundaries.
+
+## How agents should use Product name
+
+Explain when to read documentation, direct a user into the application, or use a documented API.
+State the authentication/operator requirements for actions.
+
+## Do not use Product name when
+
+List unsupported channels, unofficial scraping, credential harvesting, prohibited outreach, and
+unsupported autonomous actions.
+
+## Key resources
+
+- [Homepage](https://www.example.com/en)
+- [Pricing](https://www.example.com/en/pricing)
+- [Documentation](https://www.example.com/en/docs)
+- [Privacy](https://www.example.com/en/legal/privacy)
+- [Contact](https://www.example.com/en/contact)
+- [Sitemap](https://www.example.com/sitemap.xml)
+- [Full agent-readable content](https://www.example.com/llms-full.txt)
 ```
 
-Same `getProduct()` call as the HTML page. All heading labels use `t()`. Output is clean markdown with internal links — no HTML tags, no navigation chrome.
+Use the real product name and canonical origin from configuration. Every link is absolute HTTPS. Do
+not emit an old TLD, old brand, apex/noncanonical host, staging host, request Host, or forwarded host
+unless that host is deliberately documented only as a redirect source.
 
-### llms.txt route handler
+`/llms-full.txt` includes only approved public content, identifies the canonical source URL for each
+section, and never leaks authenticated routes, internal API paths, translation keys, draft copy,
+secrets, or private data.
 
-```typescript
-// app/llms.txt/route.ts
-import { NextResponse } from 'next/server';
-import { cacheLife, cacheTag } from 'next/cache';
-import { pageRegistry } from '@/lib/seo/page-registry';
+## Trust-anchor pages
 
-const SITE_NAME = 'Acme Store';
-const SITE_DESCRIPTION = 'E-commerce platform for premium widgets';
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
+Every public commercial product includes these locale-aware pages in the registry and agent indexes:
 
-export async function GET() {
-  'use cache';
-  cacheLife('days');
-  cacheTag('content');
+- `/<locale>/about`;
+- `/<locale>/contact`;
+- `/<locale>/legal/privacy`.
 
-  const lines: string[] = [`# ${SITE_NAME}`, `> ${SITE_DESCRIPTION}`, '', '## Docs'];
-  for (const entry of pageRegistry) {
-    if (!entry.path.includes('[')) {
-      lines.push(`- [${entry.title}](${BASE_URL}${entry.path}.md): ${entry.description}`);
-    }
-  }
-  lines.push('', '## Optional', `- [Full content](${BASE_URL}/llms-full.txt): Complete content dump`);
+Each has a Markdown mirror, sitemap entry, `llms.txt` resource entry, footer link, canonical metadata,
+and suitable JSON-LD. The corporate identity must come from verified operator input and remain
+consistent across all three pages. Do not invent a legal name, email, phone number, address, social
+profile, or jurisdiction.
 
-  return new NextResponse(lines.join('\n'), {
-    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400, s-maxage=604800' },
-  });
-}
-```
+## Canonical-domain checks
 
-**llms.txt exact format:**
-```
-# Site Name
-> Brief site description in default locale
+Maintain a repository check that parses or scans public output/configuration for forbidden legacy
+domains and accidental apex canonicals. Keep a narrow allowlist for the intentional redirect-source
+configuration and its tests; do not permit old domains in emitted metadata or documents.
 
-## Docs
-- [Page Title](https://example.com/page.md): One-line description
-- [Page Title](https://example.com/other-page.md): One-line description
+The check covers at least canonical/alternate metadata, Open Graph URLs, JSON-LD IDs and URLs,
+sitemap, robots, Markdown mirrors, `/llms.txt`, and `/llms-full.txt`.
 
-## Optional
-- [Full content](https://example.com/llms-full.txt): Complete content dump
-```
+## Required tests
 
-### llms-full.txt — `app/llms-full.txt/route.ts`
+Unit tests:
 
-Same structure as llms.txt handler. Iterates `pageRegistry` (skipping dynamic patterns), calls each page's `generateMarkdown('en')`, concatenates all output separated by `\n\n---\n\n` with `<!-- url: ${BASE_URL}${entry.path} -->` as header above each section. Same caching: `'use cache'` + `cacheLife('days')` + `cacheTag('content')`. Returns `Content-Type: text/plain; charset=utf-8`.
+- parse `/llms.txt` and require each H2 section above exactly once;
+- require all key-resource links to use the configured canonical HTTPS origin;
+- require about, contact, and privacy entries in the page registry;
+- reject legacy/noncanonical domains and internal routes from generated bodies;
+- test explicit 404 response body generation and original-path validation.
 
-## When
+Production HTTP tests against the built server:
 
-| Scenario | Implementation |
-|----------|---------------|
-| Adding a new public page | Add `PageEntry` to registry, co-locate `generateMarkdown` in `_lib/markdown.ts` |
-| Dynamic pages (product, article) | `generateMarkdown` fetches from same endpoint as HTML page |
-| Static pages (about, legal) | `generateMarkdown` returns hardcoded markdown with `t()` for headings |
-| Content update | `revalidateTag('content', 'days')` invalidates mirrors, llms.txt, llms-full.txt |
-| Testing markdown output | `curl -H 'Accept: text/markdown' https://example.com/en/products` or `curl https://example.com/en/products.md` |
-| Sitemap integration | See `references/seo.md` — sitemap includes `.md` URLs as alternates |
+- fetch `/llms.txt` and `/llms-full.txt`; require status 200, expected content type, and a non-empty
+  body;
+- fetch a real page as HTML, with `Accept: text/markdown`, and via `.md`;
+- fetch an unknown HTML path, the same path with `Accept: text/markdown`, and the unknown `.md` path;
+  assert status, content type, `Vary`, original path, and recovery links;
+- inspect sitemap and robots from HTTP, not only generated functions.
 
-**New page checklist:** 1. Create `page.tsx` + `_lib/markdown.ts`  2. Implement `generateMarkdown(locale)` using same data-fetching function  3. Add `PageEntry` to `src/lib/seo/page-registry.ts`  4. Build and verify no missing-entry warning  5. Test with `curl`
-
-**Cross-references:** `seo.md` (metadata, structured data, sitemaps, robots.ts AI crawler rules), `routing.md` (full proxy.ts pattern), `caching-strategy.md` (`'use cache'` + `cacheLife` + `cacheTag`), `i18n-conventions.md` (`getTranslations()` in `generateMarkdown`)
+Direct Route Handler invocation is useful unit coverage but cannot prove proxy negotiation,
+production rendering, CDN variation, or the actual HTTP status/body.
 
 ## Never
 
-- **No `next.config.ts` rewrites for markdown routing** — all request interception goes through `proxy.ts`. Config rewrites cannot inspect Accept headers or apply conditional logic.
-- **No navigation chrome in markdown output** — `generateMarkdown` returns content only. No headers, footers, sidebars, breadcrumbs, or component markup.
-- **No HTML tags in markdown output** — standard markdown only. No `<div>`, no `<span>`, no JSX. Links use `[text](url)` format.
-- **No skipping the page registry** — every public page needs an entry in `src/lib/seo/page-registry.ts`. Missing entries mean `llms.txt` is incomplete.
-- **No hardcoded strings in `generateMarkdown`** — all heading labels use `t()`. Content from the API comes through data fetching.
-- **No separate data fetching** — `generateMarkdown` calls the same endpoint functions as the HTML page. Do not duplicate fetch logic.
-- **No blocking AI crawlers** — `robots.ts` must allow `GPTBot`, `ClaudeBot`, `PerplexityBot`, `CCBot` on `*.md` URLs (see `references/seo.md`).
-- **No missing `Vary: Accept` header** — route handler must set `Vary: Accept` so CDNs cache HTML and markdown responses separately.
-- **No forgetting `cacheTag('content')`** — without the tag, content updates cannot invalidate markdown mirrors, llms.txt, or llms-full.txt.
+- No `llms.txt` that is only a summary plus unstructured link list.
+- No relative or noncanonical links in agent instructions.
+- No Markdown content maintained independently from the visible page's facts.
+- No dynamic Markdown generator that receives only a locale while implicitly depending on route
+  params; pass validated params in its context.
+- No `notFound()` exception as the negotiated catch-all Route Handler response.
+- No trusted client-supplied original-path header.
+- No missing `Vary: Accept` on negotiated representations.
+- No machine-readable page omitted from the canonical page registry.
+- No claim of live correctness without HTTP checks for `/llms.txt` and `/llms-full.txt`.

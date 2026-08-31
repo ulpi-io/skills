@@ -1,29 +1,21 @@
 ---
 name: nextjs
-version: 2.2.0
 description: |
-  Build Next.js the way THIS project's App Router already works, with the current stable Next.js
-  16.2 line recommended for new applications and explicit compatibility handling for existing
-  versions. Carries the real server/client boundaries and conventions for pages, layouts, async
-  request APIs, the project API-client data layer, Server Actions, Cache Components, metadata,
-  i18n, accessibility, analytics, and testing. Use when a task touches this project's Next.js App
-  Router surface and should follow its conventions rather than generic or prerelease defaults.
+  Build or review a Next.js App Router surface against the project's installed framework version
+  and established architecture. Covers pages, layouts, async request APIs, server and browser API
+  clients, authentication, client concurrency, Route Handlers, metadata, i18n, accessibility,
+  machine-readable content, and layered testing. Use when a task touches Next.js and must preserve
+  project-specific decisions such as the resolved framework version, backend session protocol,
+  canonical domain, and locked visual theme.
 allowed-tools:
   - Bash
   - Read
   - Write
   - Edit
   - Grep
-argument-hint: "[Next.js page, component, route, or caching task]"
-arguments:
-  - request
-when_to_use: |
-  Use when the task touches Next.js pages, layouts, components, routing, metadata, server actions,
-  caching, i18n, logging, analytics, or tests. Examples: "build this App Router page", "fix this
-  server action", "update metadata", "wire translations", "change caching behavior". Do NOT use
-  for standalone Node or Nest backends with no Next.js surface (nodejs / nestjs), or for non-Next
-  React apps — it supplies App Router conventions, not the bug hunt, plan, or build itself.
-effort: high
+metadata:
+  version: "3.0.0"
+  argument-hint: "[Next.js page, component, route, or caching task]"
 ---
 
 <EXTREMELY-IMPORTANT>
@@ -31,13 +23,15 @@ This skill is a routing shell over the Next.js reference set, not the full frame
 
 Non-negotiable rules:
 1. Read `references/stack.md` first.
-2. Inspect `package.json` and the active lockfile before applying version-specific APIs. Recommend
-   the stable Next.js 16.2 line for new applications; never silently upgrade an existing project or
-   select a canary release during unrelated work.
-3. Then load only the references needed for the actual task.
-4. Keep user-visible text translated.
-5. Keep data access in the project’s API-client pattern.
-6. Keep the heavy Next.js guidance in `references/`, not inline here.
+2. Read the repository's `AGENTS.md`, `CLAUDE.md`, and closest module map when present. They define
+   the real route families, localization, design/theme, auth, transport, and test contracts.
+3. Read the application `package.json`, resolved lockfile, and the installed version-matched Next.js
+   docs under that package's `node_modules/next/dist/docs/` before applying version-specific guidance.
+4. Follow the installed version unless the user explicitly requests an upgrade. Never upgrade,
+   downgrade, or switch release channels during unrelated work.
+5. Then load only the references needed for the actual task.
+6. Keep user-visible text translated and all backend traffic in the project's shared API transport.
+7. Keep the heavy Next.js guidance in `references/`, not inline here.
 </EXTREMELY-IMPORTANT>
 
 # nextjs
@@ -76,6 +70,7 @@ Use the routing table to pick reference files that match the task. Do not bulk-l
 | Creating or editing a page or layout | `references/page-checklist.md` |
 | Component structure, client/server boundaries | `references/component-anatomy.md` |
 | Data fetching, API client, fetch wrappers | `references/api-client-pattern.md` |
+| Polling, pagination, autosave, stale async responses | `references/client-async-state.md` |
 | Server actions, mutations, revalidation | `references/server-actions.md` |
 | Caching, ISR, on-demand revalidation | `references/caching-strategy.md` |
 | Translations, locale routing, message files | `references/i18n-conventions.md` |
@@ -85,6 +80,7 @@ Use the routing table to pick reference files that match the task. Do not bulk-l
 | Authentication, middleware, session | `references/auth.md` |
 | Security headers, CSP, CSRF, rate limiting | `references/security.md` |
 | SEO, metadata, Open Graph, sitemap | `references/seo.md` |
+| Agent-ready public pages, trust anchors, 404s, llms.txt | `references/agent-readiness.md` |
 | Accessibility, ARIA, keyboard navigation | `references/accessibility.md` |
 | Unit tests, component tests | `references/testing-unit.md` |
 | E2E tests, Playwright | `references/testing-e2e.md` |
@@ -99,22 +95,29 @@ Multiple tasks? Read multiple files. The references are self-contained.
 Keep these rules active:
 
 - async request-bound APIs are awaited
-- data access uses the project API client, not ad hoc fetches or ORM calls
+- data access uses the project API client, not ad hoc backend fetches or ORM calls
+- RSC/server calls use the project's server domain modules; approved interactive clients use its
+  browser domain modules; both converge on the shared transport
 - visible strings go through the localization layer
 - pages and layouts stay server-first unless a leaf component truly needs client mode
 - metadata and SEO requirements stay attached to page work
+- authentication and authorization come from the verified backend session, never browser-controlled
+  role or workspace headers
 
 **Success criteria**: The change fits the project’s App Router architecture instead of generic framework defaults.
 
 ## Step 3: Verify the affected surface
 
-Use the narrowest relevant verification:
+Run the repository's own scripts at the level that can prove the behavior:
 
-- unit tests
-- e2e tests
-- linting or type checks
-- `next typegen` when route helpers or route structure changed
-- page or route smoke validation
+- lint, `next typegen`, typecheck, and focused unit/component tests
+- a built production Next.js server for HTTP status, headers, raw HTML, negotiation, redirects, and
+  browser behavior
+- the canonical integrated Compose stack when Laravel session, CSRF, queues, billing, downloads,
+  webhooks, or another backend boundary is involved
+
+Direct handler invocation cannot prove production HTTP behavior. A frontend run with Laravel mocked
+is not a full-stack test.
 
 **Success criteria**: The changed Next.js surface still behaves correctly.
 
@@ -124,10 +127,18 @@ Use the narrowest relevant verification:
 - Do not skip `references/stack.md`.
 - Do not hardcode user-facing strings when i18n is required.
 - Do not bypass the project’s API-client and caching conventions.
+- Do not replace or relocate the project's authentication/session authority during unrelated work.
+- Do not add or remove theme support contrary to the project's locked design contract.
 - Do not apply Next.js 16-only APIs to an older project unless the task includes the upgrade.
-- Do not recommend `next@canary` or any prerelease unless the user explicitly opts into prerelease
-  testing.
+- Do not downgrade a project that already declares or resolves Next.js 16.3.x.
+- Do not recommend `next@canary` or another prerelease unless the user explicitly opts into that
+  release channel.
 - Do not add `disable-model-invocation`; this is a normal domain skill.
+
+For a public-page task, also load `agent-readiness.md`, `page-checklist.md`, `seo.md`,
+`machine-readable.md`, and `testing-e2e.md`. Do not call it complete until the applicable raw-HTML, canonical identity,
+structured-data, trust-page, HTML/Markdown 404, and live HTTP checks pass. Report external search
+engine and brand-discoverability work separately from code completion.
 
 ## When To Load References
 
@@ -143,8 +154,9 @@ Use the narrowest relevant verification:
 
 Report:
 
-1. the detected Next.js version and whether the stable 16.2 line was recommended or already in use
+1. the declared and resolved Next.js version and which installed documentation was consulted
 2. which Next.js references were loaded
-3. the architecture pattern chosen
+3. the repository architecture or project profile followed
 4. the change made
-5. the verification run
+5. the verification run at each applicable test level
+6. remaining deployment, live-endpoint, integration, or external-discoverability work

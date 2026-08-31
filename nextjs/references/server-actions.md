@@ -2,11 +2,18 @@
 
 ## What
 
-Server Actions are async functions that run on the server, invoked from forms or client code. They handle all mutations: creating, updating, and deleting data through the API client. Every Server Action validates input with Zod, authorizes the user, calls the API, and revalidates cached data.
+Server Actions are async functions that run on the server and are invoked from forms or client code.
+Use them for server-native mutations when that matches the repository architecture. They are not the only
+valid mutation transport: an established browser API module or narrowly scoped same-origin Route Handler may
+be the correct boundary for interactive clients. Every Server Action validates input; protected actions
+also resolve the verified session. All actions use the shared server API client and revalidate cached data
+when applicable.
 
 ### File location
 
-`src/actions/{domain}.ts` — one file per domain (e.g., `cart.ts`, `products.ts`, `users.ts`). The `'use server'` directive at the top of the file makes every exported function a Server Action.
+Follow the repository's existing action location. A common convention is `src/actions/{domain}.ts`, one file
+per domain. The `'use server'` directive at the top makes every exported function in that module a Server
+Action.
 
 ### Return type — discriminated union
 
@@ -40,11 +47,11 @@ Three APIs, each with different semantics. Call-site pattern only — see `refer
 ### Complete Server Action — addToCartAction
 
 ```typescript
-// src/actions/cart.ts
+// src/actions/cart.ts — illustrative; adapt imports to the repository
 'use server';
 import { updateTag } from 'next/cache';
-import { verifySession } from '@/lib/auth/dal';
-import { addToCartItem } from '@/lib/api/endpoints/cart';
+import { getServerSession } from '@/lib/auth/server-session';
+import { addToCartItem } from '@/lib/api/cart-server';
 import { addToCartSchema } from '@/lib/validations/cart';
 import type { ActionResult } from '@/types/actions';
 import type { CartItem } from '@/types/cart';
@@ -54,7 +61,8 @@ export async function addToCartAction(
   formData: FormData,
 ): Promise<ActionResult<CartItem>> {
   // 1. Authenticate
-  const session = await verifySession();
+  const session = await getServerSession();
+  if (!session) return { success: false, error: 'auth.required' };
 
   // 2. Validate
   const parsed = addToCartSchema.safeParse({
@@ -72,17 +80,21 @@ export async function addToCartAction(
 
   // 3. Mutate via API client
   try {
-    const item = await addToCartItem(session.userId, parsed.data);
+    const item = await addToCartItem(parsed.data);
     // 4. Revalidate — user sees updated cart immediately
     updateTag('cart');
     return { success: true, data: item };
-  } catch (error) {
+  } catch {
     return { success: false, error: 'cart.addFailed' };
   }
 }
 ```
 
-`_prevState` is required by `useActionState` (underscore signals unused). `verifySession()` is `React.cache()`-wrapped — deduplicated per request (see `references/auth.md`). Error strings like `'cart.addFailed'` are translation keys — the form passes them to `t()`. See `references/security.md` for IDOR prevention.
+`_prevState` is required by `useActionState` (underscore signals unused). In a cookie-session project,
+`getServerSession()` remains `React.cache()`-wrapped and `no-store`, and the shared server client forwards only
+the required Cookie, configured first-party Origin, and locale. Error strings such as `'cart.addFailed'` are
+translation keys that the form passes to `t()`. The backend policy remains the final authorization authority;
+see `references/auth.md` and `references/security.md`.
 
 ### Zod validation schema
 
@@ -210,17 +222,18 @@ export async function deletePostAction(postId: string) {
 }
 
 // RIGHT — validate, authenticate, authorize (IDOR check), then mutate
-const session = await verifySession();
+const session = await getServerSession();
+if (!session) return { success: false, error: 'auth.required' };
 const parsed = z.string().uuid().safeParse(formData.get('postId'));
 if (!parsed.success) return { success: false, error: 'validation_failed' };
-const post = await getPost(parsed.data);
-if (post.authorId !== session.userId) return { success: false, error: 'forbidden' };
-await deletePost(parsed.data);
+await deletePost(parsed.data); // the backend policy authorizes this session and resource
 updateTag('posts');
 return { success: true, data: undefined };
 ```
 
-Server Actions are public HTTP endpoints — anyone can POST directly. Always validate with Zod and authorize with `verifySession()`. See `references/security.md` for IDOR prevention.
+Server Actions are public HTTP endpoints: callers can POST directly. Validate with the repository's schema
+tool, resolve the verified session, and require the backend to authorize the operation against the resource.
+Never substitute an inbound workspace or role header for the session. See `references/security.md`.
 
 ### Throwing errors instead of returning
 
@@ -241,8 +254,11 @@ Use `safeParse`, not `parse`. Wrap API calls in try/catch and return `{ success:
 
 - **No `useFormStatus` in the form component itself** — it reads the **parent** `<form>`, so it must be in a child component. Calling it in the same component that renders `<form>` always returns `{ pending: false }`.
 - **No `revalidateTag(tag)` with one argument** — deprecated in Next.js 16. Always pass the `cacheLife` profile as the second argument: `revalidateTag('products', 'hours')`.
-- **No inline fetch in actions** — call the API client from `src/lib/api/endpoints/`. See `references/api-client-pattern.md`.
+- **No ad hoc fetch in actions** — call the shared server domain module, which uses
+  `src/lib/api/client.ts`. See `references/api-client-pattern.md`.
 - **No `redirect()` inside try/catch** — `redirect()` throws internally. Calling it inside a `catch` block will swallow the redirect. Call `redirect()` after the try/catch.
 - **No `'use server'` on individual functions** — put it at the file top. One directive covers all exports and keeps actions co-located by domain.
 - **No hardcoded error messages** — return translation keys (`'cart.addFailed'`). The form component calls `t(key)` to display the translated message.
-- **No skipping `verifySession()`** — even if the page is behind auth in proxy.ts, the action is a separate entry point. See `references/auth.md`.
+- **No relying on a layout redirect as action authorization** — an action is a separate entry point. Resolve
+  the verified session again and let the backend policy make the final resource decision. See
+  `references/auth.md`.

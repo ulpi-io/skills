@@ -1,246 +1,146 @@
-# Unit Testing — Vitest
+# Unit and Component Testing — Fast Regression Proof
 
-## What
+## Scope
 
-Vitest tests pure functions, Zod schemas, API client modules, Server Actions, hooks, and component rendering in isolation.
+Unit/component tests prove pure contracts quickly: schemas, provider URL policies, API transport
+logic, state merging, stale-response guards, Server Action mapping, hooks, and component behavior.
+They do not prove production HTTP negotiation, raw server-rendered HTML, reverse-proxy redirects,
+cookie interoperability, or backend authorization.
 
-### Setup — vitest.config.ts
+Use the repository's existing runner and setup. A Vitest project commonly uses jsdom for components
+and a node environment for server-only modules. Keep path aliases aligned with `tsconfig.json`, load
+`@testing-library/jest-dom/vitest`, and follow the repository's test-location convention.
+
+## Shared API transport tests
+
+For a first-party Sanctum transport, mock `fetch` only while testing `client.ts` itself and prove:
+
+- GET uses `credentials: 'include'`;
+- a mutation first calls `/sanctum/csrf-cookie`;
+- the mutation sends the decoded `X-XSRF-TOKEN` and includes credentials;
+- malformed/empty/error responses map to the common typed error;
+- AbortSignal, query values, FormData, and request IDs propagate correctly;
+- browser and server base URLs fail loud when absent or invalid.
 
 ```typescript
-import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
-import path from 'node:path';
+it('bootstraps Sanctum before a mutation', async () => {
+  document.cookie = 'XSRF-TOKEN=csrf%20value; Path=/';
+  const fetchMock = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    .mockResolvedValueOnce(new Response('{"data":{"id":"1"}}', { status: 200 }));
+  vi.stubGlobal('fetch', fetchMock);
 
-export default defineConfig({
-  plugins: [react()],
-  test: {
-    environment: 'jsdom', globals: true,
-    setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
-    coverage: { provider: 'v8', include: ['src/**'], exclude: ['src/test/**'] },
-  },
-  resolve: { alias: { '@': path.resolve(__dirname, './src') } },
+  await apiRequest('/api/v1/items', { method: 'POST', body: { name: 'One' } });
+
+  expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/sanctum/csrf-cookie');
+  const mutation = fetchMock.mock.calls[1]?.[1];
+  expect(mutation?.credentials).toBe('include');
+  expect(new Headers(mutation?.headers).get('X-XSRF-TOKEN')).toBe('csrf value');
 });
 ```
 
-Path aliases must match `tsconfig.json`. Setup file (`src/test/setup.ts`) imports `@testing-library/jest-dom/vitest` for matchers like `toBeInTheDocument()`.
+Endpoint/domain-module tests mock `apiRequest` or `serverApiRequest`, not raw fetch. Assert paths,
+encoding, schema parsing, request options, and failure mapping.
 
-### File organization
+## Trusted request-context tests
 
-Co-locate tests: `cart.ts` + `cart.test.ts`, `products.ts` + `products.test.ts`. One convention per project — co-located `.test.ts` or `__tests__/` directories. Never mix both.
+Test the server options/session helper with forged inputs:
 
-## How
+- `x-workspace-id`, `x-workspace-role`, `x-user-role`, and every supported legacy alias;
+- `Origin`, `Referer`, `Host`, `X-Forwarded-Host`, and `Forwarded`;
+- cross-tenant workspace IDs and elevated role strings.
 
-### Testing a Server Action — complete example
+The output must still use the configured canonical first-party Origin, include only required cookies
+and allowlisted headers, resolve user/workspace/role from the mocked verified backend session, and
+remain `cache: 'no-store'`. The helper must not forward the forged identity headers.
+
+These tests guard local code paths; the integrated Compose suite must still prove Laravel policies
+and Sanctum behavior.
+
+## External navigation policy tests
+
+Every API-provided URL used by `window.location`, router navigation, server redirect, or popup opening
+has a provider-specific validator. Test each policy separately for its documented positive hosts and
+paths.
+
+Reject at least:
+
+- `http:` and protocol-relative values in production;
+- unrelated hosts and exact-host lookalikes (`trusted.example.evil.test`);
+- suffix confusion (`eviltrusted.example`) and subdomains when only the exact host is allowed;
+- user-info authorities (`trusted.example@evil.test` and `evil.test@trusted.example`);
+- encoded, Unicode/punycode, mixed-case, trailing-dot, and whitespace host tricks;
+- alternate ports;
+- unexpected provider paths, fragments, or redirect parameters where the policy forbids them.
+
+Maintain separate policies/tests for Stripe Checkout, Billing Portal, invoice recovery, Meta,
+WhatsApp, Telegram, TikTok, YouTube, and every integration OAuth provider. A test that accepts every
+value passing `z.string().url()` is a security regression.
+
+## Async entity and merge tests
+
+Read `client-async-state.md`. Use deferred promises to complete requests out of order and prove:
+
+- entity A cannot overwrite entity B after a route/thread/workspace change;
+- stale errors cannot replace the active entity's success state;
+- poll, Reverb, and load-more results merge through functional state updates without lost rows or
+  duplicates;
+- filter/date-range changes invalidate old results and cursors;
+- autosave cannot send or acknowledge another entity's snapshot;
+- abort/unmount prevents obsolete updates;
+- timeout becomes a visible retryable terminal state.
 
 ```typescript
-// src/actions/cart.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { addToCartAction } from './cart';
-vi.mock('@/lib/api/endpoints/cart', () => ({ addToCartItem: vi.fn() }));
-vi.mock('@/lib/auth/dal', () => ({ verifySession: vi.fn() }));
-vi.mock('next/cache', () => ({ updateTag: vi.fn() }));
-import { addToCartItem } from '@/lib/api/endpoints/cart';
-import { verifySession } from '@/lib/auth/dal';
-import { updateTag } from 'next/cache';
-
-const UUID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
-function fd(data: Record<string, string>): FormData {
-  const f = new FormData();
-  for (const [k, v] of Object.entries(data)) f.append(k, v);
-  return f;
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
 }
-
-describe('addToCartAction', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(verifySession).mockResolvedValue({ userId: 'u1', role: 'user' });
-  });
-
-  it('returns success and calls updateTag on valid input', async () => {
-    const item = { id: 'ci1', productId: 'p1', quantity: 2 };
-    vi.mocked(addToCartItem).mockResolvedValue(item);
-    const result = await addToCartAction(null, fd({ productId: UUID, quantity: '2' }));
-    expect(result).toEqual({ success: true, data: item });
-    expect(addToCartItem).toHaveBeenCalledWith('u1', { productId: UUID, quantity: 2 });
-    expect(updateTag).toHaveBeenCalledWith('cart');
-  });
-
-  it('returns fieldErrors when Zod validation fails', async () => {
-    const result = await addToCartAction(null, fd({ productId: 'bad', quantity: '0' }));
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error).toBe('validation_failed');
-      expect(result.fieldErrors?.productId).toBeDefined();
-    }
-    expect(addToCartItem).not.toHaveBeenCalled();
-    expect(updateTag).not.toHaveBeenCalled();
-  });
-
-  it('returns error when API call fails', async () => {
-    vi.mocked(addToCartItem).mockRejectedValue(new Error('fail'));
-    const result = await addToCartAction(null, fd({ productId: UUID, quantity: '1' }));
-    expect(result).toEqual({ success: false, error: 'cart.addFailed' });
-    expect(updateTag).not.toHaveBeenCalled();
-  });
-
-  it('return type matches ActionResult discriminated union', async () => {
-    vi.mocked(addToCartItem).mockResolvedValue({ id: 'ci1', productId: 'p1', quantity: 1 });
-    const result = await addToCartAction(null, fd({ productId: UUID, quantity: '1' }));
-    if (result.success) expect(result.data).toBeDefined();
-    else expect(result.error).toBeDefined();
-  });
-});
 ```
 
-**Pattern:** Mock API client, `verifySession`, `next/cache`. Call with `FormData`. Assert return matches `ActionResult<T>`, correct API called, `updateTag` invoked. Every suite must include a validation failure test where the API is never called.
+Resolve the newer request first and the old request last. In-order promises do not reproduce the
+race.
 
-### Testing an API endpoint module — complete example
+## Server Action and component tests
 
-```typescript
-// src/lib/api/endpoints/products.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-vi.mock('@/lib/api/client', () => ({ apiFetch: vi.fn() }));
-import { apiFetch } from '@/lib/api/client';
-import { getProduct, getProducts } from './products';
+For each mutation, test validation rejection, unauthenticated/unauthorized mapping, success,
+backend-error mapping, and cache/router effects owned by the action. Mock the verified session and
+domain client. Never infer authorization from a page/layout mock.
 
-describe('products endpoint module', () => {
-  beforeEach(() => { vi.clearAllMocks(); });
-  it('getProduct calls apiFetch with correct path', async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ id: 'p1', slug: 'widget' });
-    expect(await getProduct('widget')).toEqual({ id: 'p1', slug: 'widget' });
-    expect(apiFetch).toHaveBeenCalledWith('/products/widget');
-  });
-  it('getProducts appends query params', async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ data: [], pagination: {} });
-    await getProducts({ page: 2, category: 'electronics' });
-    expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining('page=2'));
-  });
-  it('getProducts with no params calls base path', async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ data: [], pagination: {} });
-    await getProducts();
-    expect(apiFetch).toHaveBeenCalledWith('/products');
-  });
-});
-```
+For components, use accessible queries (`getByRole`, `getByLabelText`) and test visible behavior,
+loading, empty, error, retry, locale-specific copy, and keyboard interaction. Mock the translation
+hook with an identity or controlled message function only when translation correctness is not the
+subject.
 
-Mock `apiFetch` at the module level. Never mock `fetch` for endpoint modules — mock the API client layer.
+## Machine-readable unit tests
 
-### Testing the API client — mock fetch
+- Parse JSON-LD and assert required Organization and SoftwareApplication fields and `@id` references.
+- Require schema facts/prices to come from the same published visible data fixture.
+- Parse `/llms.txt` output and require `## When to use ...`, `## How agents should use ...`,
+  `## Do not use ...`, and `## Key resources` exactly once.
+- Require canonical absolute HTTPS links and reject configured legacy/noncanonical domains.
+- Test the Markdown 404 body and original-path validator, including forged internal headers.
 
-When testing `client.ts` itself, mock global `fetch` and Next.js server functions:
+These tests do not prove the HTTP status, content type, `Vary`, rewrite path, or production body.
 
-```typescript
-// src/lib/api/client.test.ts
-vi.mock('next/headers', () => ({
-  headers: vi.fn().mockResolvedValue(new Headers({ 'accept-language': 'en' })),
-}));
-vi.mock('@/lib/auth/session', () => ({
-  getSession: vi.fn().mockResolvedValue({ accessToken: 'tok_123' }),
-  refreshAccessToken: vi.fn(),
-}));
-vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-  new Response(JSON.stringify({ id: 1 }), { status: 200 }),
-));
+## Test-level boundary
 
-it('attaches Authorization and Accept-Language headers', async () => {
-  await apiFetch('/products/1');
-  const headers = vi.mocked(fetch).mock.calls[0]![1]!.headers as Headers;
-  expect(headers.get('Authorization')).toBe('Bearer tok_123');
-  expect(headers.get('Accept-Language')).toBe('en');
-});
-```
+| Behavior | Minimum proof |
+|---|---|
+| Schema, URL policy, merge, response guard | Unit/component test |
+| Status, headers, raw HTML, content negotiation, browser UI | Built production HTTP/browser test |
+| Sanctum, CSRF, backend policies, billing, downloads, webhooks, queues | Integrated canonical Compose test |
 
-### Testing Zod schemas
-
-```typescript
-// src/lib/validations/cart.test.ts
-import { describe, it, expect } from 'vitest';
-import { addToCartSchema } from './cart';
-const VALID = { productId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', quantity: 3 };
-
-it('accepts valid input', () => { expect(addToCartSchema.safeParse(VALID).success).toBe(true); });
-it('rejects non-UUID productId', () => {
-  const r = addToCartSchema.safeParse({ ...VALID, productId: 'abc' });
-  if (!r.success) expect(r.error.flatten().fieldErrors.productId).toBeDefined();
-});
-it('rejects quantity below 1', () => { expect(addToCartSchema.safeParse({ ...VALID, quantity: 0 }).success).toBe(false); });
-it('rejects quantity above 99', () => { expect(addToCartSchema.safeParse({ ...VALID, quantity: 100 }).success).toBe(false); });
-```
-
-Test success and failure. Verify the correct field is flagged. Cover boundary values.
-
-### Testing hooks — renderHook
-
-```typescript
-import { renderHook, act } from '@testing-library/react';
-import { useDebounce } from './use-debounce';
-
-it('debounces value updates', async () => {
-  vi.useFakeTimers();
-  const { result, rerender } = renderHook(
-    ({ value, delay }) => useDebounce(value, delay),
-    { initialProps: { value: 'hello', delay: 300 } },
-  );
-  rerender({ value: 'world', delay: 300 });
-  expect(result.current).toBe('hello');
-  await act(() => { vi.advanceTimersByTime(300); });
-  expect(result.current).toBe('world');
-  vi.useRealTimers();
-});
-```
-
-### Testing components
-
-Mock `next-intl` with an identity function. For async Server Components that fetch data, mock the API endpoint module and `await` the component function before passing to `render`.
-
-```tsx
-vi.mock('next-intl', () => ({ useTranslations: () => (key: string) => key }));
-
-it('renders product name and price', () => {
-  render(<ProductCard name="Widget" price={29.99} currency="USD"
-    imageUrl="/w.jpg" imageAlt="A widget" slug="widget" />);
-  expect(screen.getByText('Widget')).toBeInTheDocument();
-});
-```
-
-## When
-
-### Unit test vs e2e test — decision tree
-
-```
-├─ Pure function, Zod schema, API client logic           → Unit test
-├─ Server Action: validation, API call, return type      → Unit test
-├─ Server Action: full form → action → UI update         → E2e test
-├─ Custom hook logic, component render from props        → Unit test
-├─ Navigation, form e2e, i18n switching, auth flow       → E2e test
-└─ Visual layout, responsive design                      → E2e test
-```
-
-If it returns a value or renders predictable output from props, unit test. If it involves navigation, browser state, or full request cycle, e2e test. See `references/testing-e2e.md`.
-
-### What to mock
-
-**Always mock:** `apiFetch` (never hit a real API), `verifySession()` (no real session), `next/cache` (`updateTag`/`revalidateTag` — side effects), `next/headers` (`headers()`/`cookies()` — no request context).
-
-**Never mock:** Zod schemas (subject under test, fast), utility functions (pure, deterministic).
-
-**Identity mock:** `next-intl` `useTranslations` — returns the key as the value, sufficient for unit tests.
-
-### When to write tests
-
-**Always:** New Server Action (validation + success + failure), new Zod schema (valid + each invalid field + boundaries), new API endpoint module (path + params), new custom hook (state + transitions), new feature component (output given props), bug fixes (regression test).
-
-**Optional:** New `ui/` component — only if it has conditional rendering logic.
+Run repository scripts rather than substitute commands. Do not pre-generate every public page merely
+to unit test it.
 
 ## Never
 
-- **No testing implementation details.** Test behavior (return values, rendered output), not internal state.
-- **No mocking Zod schemas.** Run the real schema. They are fast and their logic is the subject under test.
-- **No `fetch` mocking for endpoint modules.** Mock `apiFetch`. Only mock `fetch` when testing `client.ts` itself.
-- **No snapshot tests.** Brittle, no signal. Assert specific elements and content.
-- **No testing `t()` return values.** Mock `useTranslations` as identity function. Translation correctness is an i18n concern.
-- **No testing framework behavior.** Do not test that `redirect()` works or `'use server'` creates a Server Action.
-- **No skipping validation failure path.** Every Server Action suite must test Zod rejection with API never called.
-- **No `any` in test files.** Use `vi.mocked()` for typed mock instances.
-- **No order-dependent tests.** Each test independent. `beforeEach` with `vi.clearAllMocks()`.
+- No direct `notFound()` or mocked Route Handler test presented as deployed-response proof.
+- No test that authorizes from browser-controlled role/workspace headers.
+- No raw fetch mock for a domain module; mock the shared transport there.
+- No only-happy-path schema or URL policy test.
+- No async race test that resolves in request order.
+- No snapshots as the sole behavior assertion.
+- No order-dependent tests or leaked fake timers/mocks.
+- No claim of "full stack" when the backend is mocked.

@@ -2,7 +2,11 @@
 
 ## What
 
-Every public page needs `generateMetadata` with full OG, Twitter, canonical, and hreflang tags. Structured data (JSON-LD) gets rich results. Sitemaps and robots.ts control crawling. AEO (Answer Engine Optimization) makes content extractable by AI search. GEO (Generative Engine Optimization) is implemented through JSON-LD structured data and markdown mirrors (see `references/machine-readable.md`). All visible strings use `t()`.
+Every public page needs localized metadata with Open Graph, canonical, and hreflang tags. Structured
+data, sitemap, robots, internal links, visible content, and Markdown mirrors make the site legible to
+search and answer engines. All public URLs come from one validated canonical identity source; never
+derive them from request Host or forwarded headers. All visible strings and localized metadata use
+the project's translation layer.
 
 ## How
 
@@ -13,16 +17,17 @@ Every public page needs `generateMetadata` with full OG, Twitter, canonical, and
 import type { Metadata } from 'next';
 import { getTranslations } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
-import { getProduct } from '@/lib/api/endpoints/products';
+import { getProduct } from '@/lib/api/products-server';
+import { siteIdentity } from '@/lib/seo/site-config';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
+const BASE_URL = siteIdentity.canonicalOrigin; // validated once; never request-derived
 
 export async function generateMetadata({
   params,
 }: { params: Promise<{ locale: string; slug: string }> }): Promise<Metadata> {
   const { locale, slug } = await params;
   const t = await getTranslations({ locale, namespace: 'products' });
-  const product = await getProduct(slug);
+  const product = await getProduct(slug, locale);
   const url = `${BASE_URL}/${locale}/products/${slug}`;
   const ogImage = product.imageUrl ?? `${BASE_URL}/og-default.png`;
 
@@ -51,8 +56,12 @@ export async function generateMetadata({
       title: product.name,
       description: t('meta.description', { name: product.name }),
       images: [ogImage],
-      site: '@yoursite',
-      creator: '@yoursite',
+      ...(siteIdentity.verifiedTwitterHandle
+        ? {
+            site: siteIdentity.verifiedTwitterHandle,
+            creator: siteIdentity.verifiedTwitterHandle,
+          }
+        : {}),
     },
     robots: { index: true, follow: true },
   };
@@ -89,10 +98,11 @@ const breadcrumbSchema = {
     { '@type': 'ListItem', position: 3, name: product.name },
   ],
 };
+const serializeJsonLd = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003c');
 return (
   <>
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }} />
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(productSchema) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbSchema) }} />
     <main><h1>{product.name}</h1></main>
   </>
 );
@@ -106,8 +116,64 @@ return (
 | `Article` | Blog, news, content | `headline`, `author`, `datePublished`, `dateModified`, `image` |
 | `FAQ` | FAQ page or section | `mainEntity` array of `Question` + `acceptedAnswer` |
 | `BreadcrumbList` | Every page with breadcrumbs | `itemListElement` with position, name, item URL |
-| `Organization` | Homepage / about | `name`, `url`, `logo`, `sameAs` (social links) |
+| `Organization` | Homepage / about / trust pages | `@context`, `@type`, stable `@id`, `name`, `legalName`, `description`, `url`, `logo`, `email`, `telephone`, `contactPoint`, complete `PostalAddress`, verified-only `sameAs`, `brand` |
+| `SoftwareApplication` | Homepage / product page | `name`, `description`, `url`, `applicationCategory`, `operatingSystem`, truthful published `offers`, `publisher` referencing Organization `@id` |
 | `WebSite` + `SearchAction` | Homepage | `name`, `url`, `potentialAction` with target URL template |
+
+### Organization and SoftwareApplication identity graph
+
+Build the organization from one verified identity input, not page-local literals:
+
+```typescript
+const organizationId = `${canonicalOrigin}/#organization`;
+const organization = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  '@id': organizationId,
+  name: identity.brandName,
+  legalName: identity.legalName,
+  description: identity.description,
+  url: canonicalOrigin,
+  logo: `${canonicalOrigin}${identity.logoPath}`,
+  email: identity.email,
+  telephone: identity.telephone,
+  contactPoint: {
+    '@type': 'ContactPoint',
+    contactType: identity.contactType,
+    email: identity.email,
+    telephone: identity.telephone,
+    ...(identity.availableLanguage ? { availableLanguage: identity.availableLanguage } : {}),
+    ...(identity.areaServed ? { areaServed: identity.areaServed } : {}),
+  },
+  address: {
+    '@type': 'PostalAddress',
+    streetAddress: identity.address.street,
+    addressLocality: identity.address.locality,
+    addressRegion: identity.address.region,
+    postalCode: identity.address.postalCode,
+    addressCountry: identity.address.country,
+  },
+  sameAs: identity.verifiedProfiles,
+  brand: { '@type': 'Brand', name: identity.brandName },
+};
+
+const application = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: product.name,
+  description: product.description,
+  url: localizedHomepage,
+  applicationCategory: product.applicationCategory,
+  operatingSystem: product.operatingSystem,
+  offers: publishedPrices.map(toSchemaOffer),
+  publisher: { '@id': organizationId },
+};
+```
+
+Include `availableLanguage` and `areaServed` only when truthful. `sameAs` contains verified owned
+profiles only. Software offers come only from prices currently published to users; draft, retired,
+admin-only, or future prices must not appear as live offers. Every schema fact must match visible
+server-rendered page content.
 
 ### Article schema — GEO fields
 
@@ -117,8 +183,7 @@ const articleSchema = {
   headline: article.title, description: article.excerpt, image: article.imageUrl,
   author: { '@type': 'Person', name: article.authorName, url: article.authorUrl },
   datePublished: article.publishedAt, dateModified: article.updatedAt,
-  publisher: { '@type': 'Organization', name: t('meta.siteName'),
-    logo: { '@type': 'ImageObject', url: `${BASE_URL}/logo.png` } },
+  publisher: { '@id': organizationId },
 };
 ```
 
@@ -150,9 +215,9 @@ const faqSchema = {
 ```typescript
 import type { MetadataRoute } from 'next';
 import { routing } from '@/i18n/routing';
-import { getProductCount, getProductsForSitemap } from '@/lib/api/endpoints/products';
+import { getProductCount, getProductsForSitemap } from '@/lib/api/products-server';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
+const BASE_URL = getCanonicalOrigin();
 const SITEMAP_SIZE = 50_000;
 
 export async function generateSitemaps() {
@@ -190,7 +255,7 @@ Every entry includes `lastModified`, `changeFrequency` (`'daily'` for homepage, 
 
 ```typescript
 import type { MetadataRoute } from 'next';
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
+const BASE_URL = getCanonicalOrigin();
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -221,6 +286,47 @@ AI crawlers explicitly allowed — we want AI indexing. Markdown mirrors (`refer
 
 GEO is three concrete patterns, not buzzwords: (1) JSON-LD structured data (this file) with Article `author`/`datePublished`/`dateModified` for generative engine attribution, (2) markdown mirrors (`references/machine-readable.md`) providing clean parseable content at every URL, and (3) `<time>` elements for semantic date markup generative engines parse for freshness.
 
+### Canonical identity and domain normalization
+
+One validated site configuration supplies the canonical HTTPS origin and localized homepage to
+canonical/alternate metadata, Open Graph URLs, JSON-LD IDs, sitemap, robots, Markdown mirrors,
+`/llms.txt`, and `/llms-full.txt`. Never construct public URLs from request `Host`, `Origin`,
+`Referer`, or forwarded-host headers.
+
+Owned apex and legacy domains redirect straight to the canonical host in one hop while preserving
+path and query. Test that behavior at the deployed reverse proxy/CDN. Maintain a repository check that
+rejects legacy-domain and accidental apex URLs in emitted public artifacts, with a narrow exception
+only for intentional redirect-source configuration/tests.
+
+### Trust-anchor and raw-HTML requirements
+
+A public commercial product ships localized About, Contact, and Privacy pages at
+`/<locale>/about`, `/<locale>/contact`, and `/<locale>/legal/privacy`. Each has:
+
+- at least 500 meaningful characters in the original server-rendered HTML;
+- one localized H1 and ordered H2/H3 hierarchy;
+- localized metadata, self-canonical, Open Graph, and suitable JSON-LD;
+- a Markdown mirror plus sitemap and `/llms.txt` entries;
+- a public-footer link;
+- the same verified legal name, email, telephone, and complete address.
+
+Do not invent missing corporate facts. Critical value proposition, pricing explanation, contact
+identity, and trust content must appear before JavaScript executes. Fetch and parse the original HTTP
+document in addition to running browser assertions; SSR is acceptable and static generation is not
+required.
+
+### Code-controlled vs external discoverability
+
+Report these result categories separately:
+
+| Category | Examples | Completion rule |
+|---|---|---|
+| Code-controlled | Canonical domain, indexability, metadata, schema, sitemap, robots, internal links, content, redirect chains | May be complete after production HTTP and deployed redirect verification passes. |
+| Operator/external | Search Console ownership, sitemap submission, indexing requests, Bing Webmaster Tools, consistent business listings, social-profile ownership, press/backlinks, recrawl time | Remains awaiting external validation until those actions and a clean brand search confirm the canonical domain. |
+
+Do not mark brand discoverability fixed merely because metadata or schema changed. Source code can
+make the site eligible and coherent; it cannot guarantee ranking or recrawl timing.
+
 ## When
 
 ### generateMetadata decision tree
@@ -230,7 +336,8 @@ GEO is three concrete patterns, not buzzwords: (1) JSON-LD structured data (this
 | Public product | Product image | Product + BreadcrumbList | index, follow |
 | Public article | Article image | Article + BreadcrumbList | index, follow |
 | FAQ page | Default OG | FAQPage + BreadcrumbList | index, follow |
-| Homepage | Default OG | Organization + WebSite + SearchAction | index, follow |
+| Homepage | Default OG | Organization + WebSite + SoftwareApplication | index, follow |
+| About / Contact / Privacy | Default OG | Organization plus page-appropriate schema | index, follow |
 | Login / register | None | None | **noindex, nofollow** |
 | Admin pages | None | None | **noindex, nofollow** |
 
@@ -252,7 +359,12 @@ Validate JSON-LD with [Google Rich Results Test](https://search.google.com/test/
 - **No missing hreflang alternates.** Every locale variant must link to every other via `alternates.languages`. Missing hreflang causes duplicate content penalties.
 - **No missing canonical URL.** Self-referencing canonical on every page. Without it, search engines pick the wrong URL.
 - **No Article schema without `author`, `datePublished`, `dateModified`.** Required for rich results and GEO attribution.
-- **No JSON-LD in separate utility files.** Co-locate schema generation with the page component. Schema depends on page-specific data.
+- **No duplicated identity literals in page files.** Keep the verified Organization builder/shared
+  identity source central; compose page-specific schema beside the page.
 - **No blocking `.md` URLs in robots.txt.** AI crawlers need markdown mirror access. Allow `/*.md` for all AI User-Agents.
 - **No FAQ schema on pages without visible FAQ content.** Schema must match visible content. Hidden schema triggers manual action penalties.
 - **No hardcoded strings in metadata.** All visible metadata values use `t()` — title templates, descriptions, breadcrumb labels, site name.
+- **No structured-data price that is not visibly and currently published.** Draft or unpublished
+  offers are not live offers.
+- **No discoverability "fixed" verdict from code alone.** Report operator/external validation
+  separately.

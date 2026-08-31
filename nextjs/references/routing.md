@@ -2,7 +2,12 @@
 
 ## What
 
-Next.js 16.2 App Router uses filesystem-based routing. Directories under `src/app/` become URL segments. Navigation uses `<Link>` (server and client) or `useRouter` (client only). Server-side redirects use `redirect()` / `permanentRedirect()`. Route protection, locale detection, and rewrites normally live in `proxy.ts`, which always runs on Node.js. Keep deprecated `middleware.ts` only when the application has a proven Edge-runtime requirement.
+The installed Next.js App Router uses filesystem-based routing. Directories under `src/app/` become
+URL segments. Navigation uses `<Link>` (server and client) or `useRouter` (client only). Server-side
+redirects use `redirect()` / `permanentRedirect()`. When a project uses backend-verified cookie
+sessions, `proxy.ts` should own locale and machine-readable rewrites while authenticated layouts
+resolve the verified session. Keep
+deprecated `middleware.ts` only when an installed integration has a proven Edge-runtime requirement.
 
 ### Route segment conventions
 
@@ -22,25 +27,25 @@ Next.js 16.2 App Router uses filesystem-based routing. Directories under `src/ap
 - **`redirect(url)`** — server-side, throws internally (307 temporary). Use in Server Components, actions, route handlers.
 - **`permanentRedirect(url)`** — 308 permanent. Use when a URL has moved forever.
 - **`generateStaticParams()`** — pre-render specific dynamic route paths at build time.
-- **View Transitions (experimental integration)** — Next.js 16.2 adds `transitionTypes` for links and
-  router navigation, but the framework integration still requires `experimental.viewTransition`.
+- **Version-specific navigation features** — use only when the installed package documentation
+  supports them. Do not copy a View/Instant Transition API from another Next.js minor.
 
 ## How
 
 ### Link component
 
 ```tsx
-import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { Link } from '@/i18n/navigation';
 
 export function Navigation() {
   const t = useTranslations('common');
   return (
     <nav>
-      <Link href="/en/products">{t('nav.products')}</Link>
-      <Link href="/en/legal/terms" prefetch={false}>{t('nav.terms')}</Link>
-      <Link href="/en/dashboard" replace>{t('nav.dashboard')}</Link>
-      <Link href="/en/products?page=2" scroll={false}>{t('nav.nextPage')}</Link>
+      <Link href="/products">{t('nav.products')}</Link>
+      <Link href="/legal/terms" prefetch={false}>{t('nav.terms')}</Link>
+      <Link href="/dashboard" replace>{t('nav.dashboard')}</Link>
+      <Link href="/products?page=2" scroll={false}>{t('nav.nextPage')}</Link>
     </nav>
   );
 }
@@ -52,22 +57,22 @@ export function Navigation() {
 
 ```tsx
 'use client';
-import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { useRouter } from '@/i18n/navigation';
 
 export function SearchForm() {
   const router = useRouter();
   const t = useTranslations('search');
 
   function handleSearch(query: string) {
-    router.push(`/en/products?q=${encodeURIComponent(query)}`);
+    router.push(`/products?q=${encodeURIComponent(query)}`);
   }
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); handleSearch(new FormData(e.currentTarget).get('q') as string); }}>
       <input name="q" placeholder={t('placeholder')} />
       <button type="submit">{t('submit')}</button>
-      <button type="button" onClick={() => router.replace('/en/products')}>{t('reset')}</button>
+      <button type="button" onClick={() => router.replace('/products')}>{t('reset')}</button>
     </form>
   );
 }
@@ -88,7 +93,7 @@ const nextConfig: NextConfig = {
 
 ```tsx
 import { ViewTransition } from 'react';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 
 export function ProductLink({ id, children }: { id: string; children: React.ReactNode }) {
   return (
@@ -99,8 +104,8 @@ export function ProductLink({ id, children }: { id: string; children: React.Reac
 }
 ```
 
-Programmatic navigation uses
-`router.push('/en/products/widget', { transitionTypes: ['product-detail'] })`. Do not enable this
+Programmatic navigation uses the locale-aware router, for example
+`router.push('/products/widget', { transitionTypes: ['product-detail'] })`. Do not enable this
 experimental integration during an unrelated routing change.
 
 CSS (`globals.css`) — always respect reduced motion:
@@ -117,17 +122,20 @@ CSS (`globals.css`) — always respect reduced motion:
 
 ```tsx
 // src/app/[locale]/products/[slug]/page.tsx
-import { getProduct } from '@/lib/api/endpoints/products';
+import { getProduct } from '@/lib/api/products-server';
 import { getTranslations } from 'next-intl/server';
+import { routing } from '@/i18n/routing';
 
 export async function generateStaticParams() {
-  return [{ slug: 'widget-pro' }, { slug: 'widget-lite' }];
+  return routing.locales.flatMap((locale) =>
+    ['widget-pro', 'widget-lite'].map((slug) => ({ locale, slug })),
+  );
 }
 
 export default async function ProductPage({ params }: PageProps<'/[locale]/products/[slug]'>) {
   const { locale, slug } = await params;  // ALWAYS await — sync removed in v16
   const t = await getTranslations({ locale, namespace: 'products' });
-  const product = await getProduct(slug);
+  const product = await getProduct(slug, locale);
   return (
     <main>
       <h1>{product.name}</h1>
@@ -171,55 +179,35 @@ src/app/[locale]/
 
 Directory name in `()` shares a layout without adding a URL segment. Use for layout boundaries: `(marketing)/` with nav+footer, `(app)/` with sidebar, `(auth)/` with centered card. Each group can have its own `layout.tsx`, `loading.tsx`, `error.tsx`.
 
-### proxy.ts — full Node.js pattern
+### proxy.ts — locale, Markdown and original-path preservation
 
 ```typescript
-// src/proxy.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { routing } from '@/i18n/routing';
+// src/proxy.ts — schematic; use the repository's routing helpers
+import { type NextRequest, NextResponse } from 'next/server';
 
-const PUBLIC_PATHS = ['/', '/login', '/register', '/about', '/pricing'];
-const DEFAULT_LOCALE = routing.defaultLocale; // 'en'
-const LOCALES = routing.locales;              // ['en', 'ar', 'de']
+const ORIGINAL_PATH_HEADER = 'x-internal-original-path';
 
-export function proxy(request: NextRequest): NextResponse {
+export default function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
-  const locale = detectLocale(request);
+  const accept = request.headers.get('Accept') ?? '';
 
-  // Markdown mirror routing (see machine-readable.md, seo.md)
-  // .md suffix or Accept: text/markdown → rewrite to /[...slug]/md handler
-
-  // Auth check — optimistic only, real auth is in DAL (see auth.md)
-  const sessionCookie = request.cookies.get('session')?.value;
-  const isPublic = PUBLIC_PATHS.some(
-    (p) => pathname === `/${locale}${p}` || pathname === `/${locale}`
-  );
-  if (!sessionCookie && !isPublic) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = `/${locale}/login`;
-    loginUrl.searchParams.set('callbackUrl', pathname);
-    return NextResponse.redirect(loginUrl);
+  const knownMarkdownTarget = maybeRewriteKnownMarkdownPage(pathname, accept);
+  if (knownMarkdownTarget !== null) {
+    const url = request.nextUrl.clone();
+    url.pathname = knownMarkdownTarget;
+    return NextResponse.rewrite(url);
   }
 
-  // Security headers set here (see security.md for CSP nonce, HSTS)
-  return NextResponse.next();
-}
+  if (wantsMarkdownResponse(pathname, accept)) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/internal/agent-not-found';
+    const forwarded = new Headers(request.headers);
+    // set() overwrites a forged client value; never append or preserve it.
+    forwarded.set(ORIGINAL_PATH_HEADER, validateOriginalPath(pathname));
+    return NextResponse.rewrite(url, { request: { headers: forwarded } });
+  }
 
-function detectLocale(request: NextRequest): string {
-  // 1. URL path prefix — user explicitly chose this locale
-  const pathLocale = LOCALES.find(
-    (l) => request.nextUrl.pathname.startsWith(`/${l}/`) || request.nextUrl.pathname === `/${l}`
-  );
-  if (pathLocale) return pathLocale;
-  // 2. Cookie — persisted preference from language switcher
-  const cookieLocale = request.cookies.get('NEXT_LOCALE')?.value;
-  if (cookieLocale && LOCALES.includes(cookieLocale)) return cookieLocale;
-  // 3. Accept-Language — browser preference for first-time visitors
-  const acceptLang = request.headers.get('Accept-Language') ?? '';
-  const preferred = acceptLang.split(',')
-    .map((part) => part.split(';')[0]?.trim().substring(0, 2))
-    .find((code) => code && LOCALES.includes(code));
-  return preferred ?? DEFAULT_LOCALE;
+  return intlMiddleware(request);
 }
 
 export const config = {
@@ -227,13 +215,33 @@ export const config = {
 };
 ```
 
-**Additional proxy.ts responsibilities** (documented in owning files):
-- **Markdown mirrors** — `.md` suffix and `Accept: text/markdown` content negotiation. See `machine-readable.md`.
-- **CSP nonce and secure headers** — See `security.md`.
+The proxy must preserve the original pathname when an internal rewrite would otherwise hide it. The
+internal header name is project-owned, excluded from backend forwarding, and overwritten for every
+rewrite. Validate it as a bounded path beginning with `/`; do not trust a client-supplied value or
+derive it from `Referer`/`Host`.
+
+Known Markdown mirrors and unknown Markdown 404s are separate branches. The unknown handler returns
+an explicit non-empty `Response` with status 404, `Content-Type: text/markdown; charset=utf-8`, and
+`Vary: Accept`. Do not call `notFound()` from that catch-all Route Handler: production can otherwise
+produce an empty 404 body. See `machine-readable.md` and `error-handling.md`.
+
+Authentication is absent from this proxy. Authenticated locale layouts call the React-cached
+`getServerSession()` and perform locale-aware redirects when the verified backend session is absent.
+The backend's policies remain the final authorization boundary. See `auth.md`.
 
 `proxy.ts` cannot declare or run on the Edge runtime. If an installed dependency genuinely requires
 Edge middleware, retain `middleware.ts` and document the exception instead of performing a blind
 rename. The matcher export remains `export const config`, not `proxyConfig`.
+
+### Canonical-domain redirects
+
+Choose one configured canonical HTTPS origin and one localized homepage. Apex and other owned
+noncanonical hosts redirect directly to that origin in one hop while preserving the exact path and
+query string. Prefer the deployed reverse proxy/CDN as the domain-normalization boundary and verify
+it there; a Next.js unit test alone cannot prove the external redirect chain.
+
+Never build canonicals, Open Graph URLs, JSON-LD IDs, sitemap entries, Markdown links, or `llms.txt`
+links from the incoming Host or forwarded headers. Those use the validated site configuration.
 
 ## When
 
@@ -252,17 +260,25 @@ rename. The matcher export remains `export const config`, not `proxyConfig`.
 | Modal overlay preserving background | Parallel route + intercepting route |
 | Different layouts without URL segments | Route groups: `(marketing)/`, `(app)/`, `(auth)/` |
 | Pre-render known slugs at build time | `generateStaticParams()` |
+| Protect an authenticated route tree | Verified session in its layout, then backend policy checks |
+| Normalize apex/noncanonical host | One-hop deployed reverse-proxy redirect preserving path/query |
 
 ## Never
 
 - **No new `middleware.ts` for Node.js interception** — use `proxy.ts`. Preserve middleware only for
   a verified Edge-runtime requirement because proxy cannot run on Edge.
 - **No sync params** — `params` and `searchParams` are async in v16. Always `await params`. Sync access is removed.
-- **No `useRouter` from `next/router`** — use `next/navigation`. The Pages Router import does not exist in App Router.
+- **No `useRouter` from `next/router`** — use `next/navigation` or the project's locale-aware
+  navigation wrapper. The Pages Router import does not exist in App Router.
 - **No `useRouter` in Server Components** — client-only hook. Use `redirect()` for server-side navigation.
 - **No `@slot/` without `default.tsx`** — build breaks. Return `null` or call `notFound()`.
 - **No `router.push()` for simple links** — `<Link>` prefetches, is accessible, works without JS.
 - **No `getStaticPaths`** — removed. Use `generateStaticParams`.
-- **No route handlers for client data fetching** — use Server Components with the API client.
+- **No auth-by-cookie-presence in `proxy.ts`** — authenticated layouts resolve the verified session.
+- **No trust in an inbound internal-path header** — overwrite it during the rewrite and validate the
+  preserved path.
+- **No public URLs derived from Host/forwarded headers** — use canonical configuration.
+- **No generic Route Handler proxy** — use Route Handlers only for the bounded cases in
+  `api-client-pattern.md`.
 - **No `next.config.ts` rewrites for request interception** — all goes through `proxy.ts`. See `machine-readable.md`.
 - **No hardcoded strings in navigation** — every visible string uses `t()`.

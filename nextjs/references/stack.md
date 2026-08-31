@@ -1,48 +1,86 @@
-# Stack — Next.js 16.2 Baseline & Build Toolchain
+# Stack — Installed Next.js Contract & Build Toolchain
 
-Every other reference file assumes these decisions. Do not deviate.
+Every other reference assumes App Router semantics. The installed package and discovered project
+contract outrank version-sensitive or architectural examples in this skill.
 
 ## Version policy
 
-- Recommend the stable **Next.js 16.2** line for new applications. The verified latest patch on
-  2026-07-20 is 16.2.10; use `next@latest` and the lockfile instead of freezing that snapshot in a
-  hand-written dependency template.
-- Before changing an existing application, inspect `package.json` and its active lockfile (`pnpm why
-  next`, `npm ls next`, or equivalent). Follow the resolved version unless the task explicitly
-  includes an upgrade.
-- At this verification snapshot, 16.3 existed only as a prerelease. Do not recommend
-  `next@canary` or any prerelease by default. Read `upgrading.md` for new apps, version choices, and
-  migrations.
+- Read the application's `package.json` and resolved lockfile before making framework assumptions.
+  Use the repository's package manager (`npm ls next`, `pnpm why next`, or equivalent) when the
+  resolved version is unclear.
+- Read the installed, version-matched documentation under the application package's
+  `node_modules/next/dist/docs/` before using a minor-version-specific API.
+- Follow the installed version unless the user explicitly requests an upgrade. Never change the
+  Next.js, React, or related framework versions during unrelated feature, bug-fix, SEO, or security
+  work.
+- When a project declares or resolves `next: 16.3.x`, preserve that line and never downgrade it to
+  an older release. Use a 16.3 behavior only when the installed package and its bundled docs support
+  it.
+- For a new application, resolve the current stable release through the official generator and
+  commit the lockfile. Do not freeze a dated minor recommendation in this skill. Prerelease or
+  canary channels require an explicit user request.
 
 ## What
 
 | Dependency | Version | Notes |
 |---|---|---|
-| Node.js | 20.9+ | 18.x dropped in Next.js 16 |
-| TypeScript | 5.1+ | Strict mode with `noUncheckedIndexedAccess` |
-| React | 19.2 | App Router Server Components, `useActionState`, `useOptimistic` |
-| Next.js | Stable 16.2 line | App Router only. Verified latest patch: 16.2.10. |
+| Node.js | Installed Next.js requirement | Verify `engines`, CI, container, and installed support docs. |
+| TypeScript | Installed compatible line | Preserve strict project settings. |
+| React | Installed compatible line | Match the resolved Next.js peer requirements. |
+| Next.js | Project-declared and lockfile-resolved | App Router only. Preserve an installed 16.3.x line. |
 | Bundler | Turbopack (default) | Opt out with `next dev --webpack` / `next build --webpack` |
 | React Compiler | Stable opt-in | `reactCompiler: true`; not enabled by Next.js by default |
 | Linter | ESLint flat config | `next lint` removed in v16 — run `eslint .` directly |
-| i18n | next-intl | All visible strings via `t()` |
+| i18n | Project's established localization layer | Preserve it; this reference uses next-intl examples. |
+
+## Project contract and canonical identity
+
+Before applying any template, discover and preserve:
+
+- whether Next.js owns identity or integrates with a separate backend authority;
+- whether browser and server transports differ and which shared client owns them;
+- whether authenticated redirects live in layouts, proxy, or another verified boundary;
+- the locale routing, translation, and RTL contract;
+- whether the design is light-only, dark-only, or theme-switchable;
+- whether standalone/container output needs runtime-loaded files copied explicitly;
+- the configured public canonical origin and trusted proxy boundary;
+- the repository's build, production-server, and integrated-environment scripts.
+
+Never introduce a parallel auth system, API transport, localization layer, theme mechanism, or
+canonical source during unrelated work.
+
+Public commercial products need one validated identity source with these verified inputs:
+
+| Identity field | Requirement |
+|---|---|
+| Canonical public origin | Absolute HTTPS origin from validated configuration |
+| Localized homepage | Canonical origin plus the verified default locale |
+| Legal organization | Verified legal name, not the product or an invented entity |
+| Contact email and telephone | Real monitored contact values supplied by the operator |
+| Postal address | Complete verified address supplied by the operator |
+
+Keep these values in one validated site/identity configuration module. Canonicals, Open Graph URLs,
+JSON-LD, sitemap, robots, Markdown mirrors, `llms.txt`, and public links must consume that same
+source. Never derive public identity from request `Host`, `Origin`, `Referer`, or forwarded-host
+headers. Treat identity data as verified input: do not invent missing corporate details for another
+project.
 
 ## How
 
-### next.config.ts — complete template
+### next.config.ts — illustrative options
 
 ```typescript
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  // --- Project defaults ---
-  typedRoutes: true,            // Type-check Link/router hrefs against generated routes.
-  reactCompiler: true,          // Stable opt-in; measure its build-time cost.
-  cacheComponents: true,        // Deliberate project opt-in for 'use cache' and PPR.
+  // Preserve existing settings. Add an option only when the installed docs and task require it.
+  typedRoutes: true,            // Recommended when the project adopts generated route types.
+  // reactCompiler: true,       // Stable opt-in; measure its build-time cost.
+  // cacheComponents: true,     // Architectural opt-in for 'use cache' and PPR.
 
   // --- Turbopack (default in v16, no config needed) ---
   // Opt out: next dev --webpack, next build --webpack
-  // experimental: { turbopackFileSystemCacheForDev: true },  // beta: faster cold starts
+  // Read installed docs before adding any Turbopack option; names/stability can change by minor.
 
   // --- Images ---
   images: {
@@ -155,26 +193,36 @@ async function getConfig() {
 **Rules:**
 - Never prefix a secret with `NEXT_PUBLIC_` — it will be in the client bundle.
 - Use `connection()` in a prerenderable route when a server value must be read at request time.
-- `.env.local` is gitignored (local secrets). `.env` is committed (non-secret defaults only).
+- Keep secret-bearing `.env*` files out of version control. Check in `.env.example` with names and
+  safe placeholders; follow an existing repository policy only when a particular env file is
+  explicitly guaranteed to contain non-secret configuration.
 
-### Build validation pipeline
+### Validation pipeline
 
-Run in this order. Fail fast — do not continue if a step fails.
+Run the repository's checked-in scripts, not generic substitutes. When the package exposes these
+script names, the normal frontend sequence is:
 
 ```bash
-# 1. Lint
-npx eslint .
+# 1. Static and unit gates
+npm run lint
+npm run typegen
+npm run typecheck
+npm run test
 
-# 2. Typecheck
-npx next typegen
-npx tsc --noEmit
-
-# 3. Build
-npx next build
-
-# 4. Test
-npx vitest run
+# 2. Production artifact
+npm run build
+npm run start
 ```
+
+The running production server is required for status, headers, raw HTML, content negotiation,
+canonical redirects, sitemap, robots, Markdown, and `llms.txt` proof. When a change crosses into
+the backend, run the repository's single canonical integration environment and tear it down. For a
+Laravel/Sanctum repository, that commonly means Next.js, Laravel, Postgres, Redis, and required
+workers. Do not describe a mocked backend run as full stack.
+
+Repeat canonical-host endpoint checks after deployment when the acceptance criterion concerns live
+behavior. Do not manually pre-generate every dynamic page merely to test it; request the real
+production rendering mode.
 
 **Concurrent dev/build:** Dev and production use separate output directories (`.next/dev` for
 dev) so `next dev` and `next build` can run in parallel without cache conflicts.
@@ -210,16 +258,22 @@ The React Compiler auto-memoizes components and hooks. With `reactCompiler: true
 
 - **No new `middleware.ts` for Node.js work** — use `proxy.ts`. Keep deprecated middleware only
   when the application genuinely requires the Edge runtime, which `proxy.ts` does not support.
-- **No Prisma, no ORM** — all data goes through the API client (`src/lib/api/`).
+- **No bypass of an API-backed architecture** — when the repository owns data through a backend API,
+  all frontend data access goes through its shared transport rather than a new ORM connection.
 - **No unstable or experimental API by default** — use one only when the task explicitly accepts
   its stability risk and the installed Next.js version is checked.
-- **No `next lint`** — removed in v16. Run `npx eslint .` directly.
+- **No `next lint` in Next.js 16+** — it is removed there. For an older installed project, follow
+  that version's scripts until an explicit upgrade removes it.
 - **No speculative manual memoization** — let the React Compiler handle ordinary rendering
   optimization, but preserve memoization that has semantic or measured value.
 - **No Cache Components APIs without the opt-in** — `'use cache'`, `cacheLife`, and `cacheTag`
   require `cacheComponents: true` and an intentional migration.
-- **No Node.js 18** — minimum is 20.9. CI and Dockerfiles must pin `node:20` or higher.
+- **No runtime below the installed Next.js requirement** — Next.js 16 requires Node.js 20.9 or
+  newer; verify the installed support matrix before changing CI or container pins.
 - **No `pages/` directory** — App Router only. No Pages Router, no `getServerSideProps`, no `getStaticProps`.
 - **No inline fetch** — all data fetching goes through `src/lib/api/client.ts`. See `api-client-pattern.md`.
 - **No hardcoded strings in JSX** — every user-visible string uses `t()`. See `i18n-conventions.md`.
 - **No physical Tailwind properties** — use logical: `ps-`/`pe-` not `pl-`/`pr-`, `ms-`/`me-` not `ml-`/`mr-`, `text-start`/`text-end` not `text-left`/`text-right`.
+- **No framework version edits during unrelated work** — preserve the manifest and lockfile,
+  especially an installed 16.3.x line.
+- **No public URL construction from request headers** — use the validated canonical identity source.

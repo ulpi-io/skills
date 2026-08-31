@@ -2,7 +2,10 @@
 
 ## What
 
-Next.js 16.2 uses React error boundaries to catch rendering errors at any route segment. Every route can have an `error.tsx` (catches errors in its subtree), a `not-found.tsx` (handles missing resources), and `global-error.tsx` at the root for layout-level failures. For fine-grained async recovery, use native `try/catch` and either rethrow, return fallback content, or redirect outside the protected operation.
+The Next.js App Router uses React error boundaries to catch rendering errors at route segments. A
+route can have `error.tsx` (subtree render errors), `not-found.tsx` (missing resources), and
+`global-error.tsx` (root-layout failures). Public unknown routes additionally need a verified HTTP
+404 contract for both HTML and Markdown clients.
 
 All error boundaries are Client Components (`'use client'` required). All user-facing messages use `t()`. All errors are logged server-side via pino before reaching the boundary — see `references/logging.md`.
 
@@ -74,7 +77,7 @@ Must render its own `<html>` and `<body>` — replaces the entire page. Only act
 ```typescript
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { getProduct } from '@/lib/api/endpoints/products';
+import { getProduct } from '@/lib/api/products-server';
 import { logger } from '@/lib/logger';
 
 type Props = PageProps<'/[locale]/products/[slug]'>;
@@ -100,12 +103,10 @@ Log structured context (entity ID, locale) before deciding to rethrow, call `not
 fallback content. Keep `notFound()` and `redirect()` outside the `try` body because they throw
 framework-controlled errors.
 
-Next.js 16.2 also introduces experimental `unstable_catchError()` and `unstable_retry()` for
-component-level error boundaries. They are not a promise-tuple utility and are not the default for
-this skill. Use them only when the task explicitly accepts an unstable API and the installed version
-has been verified.
+Do not introduce an unstable error API from memory. Use it only when the installed version-matched
+documentation supports it and the task explicitly accepts its stability level.
 
-### not-found.tsx — depth and placement
+### Resource not-found UI — depth and placement
 
 ```tsx
 // src/app/[locale]/products/[slug]/not-found.tsx
@@ -130,6 +131,63 @@ export default async function ProductNotFound() {
 const product = await getProduct(slug, locale);
 if (!product) notFound();  // Triggers products/[slug]/not-found.tsx
 ```
+
+### Public unknown-route HTTP contract
+
+A visual `not-found.tsx` alone is insufficient. Verify the response emitted by a built production
+server.
+
+Unknown HTML requests must:
+
+- return status exactly `404`;
+- return `Content-Type: text/html` (a charset parameter is fine);
+- render the localized visual 404 with exactly one H1;
+- include recovery links to the localized homepage, sitemap, `/llms.txt`, and a documentation or
+  product-index page.
+
+The same path with `Accept: text/markdown`, and its `.md` form, must:
+
+- return status exactly `404`;
+- return `Content-Type: text/markdown; charset=utf-8`;
+- return `Vary: Accept`;
+- have a non-empty body containing `# Page not found`, the original requested path, an absolute
+  canonical homepage link, sitemap link, `/llms.txt` link, and documentation/product-index link.
+
+When proxy negotiation rewrites to an internal Route Handler, preserve the original pathname in a
+bounded internal header or validated query value. The proxy must `set`/overwrite that value rather
+than accept a client-supplied internal-path header. The handler validates the path again.
+
+```typescript
+export function GET(request: Request): Response {
+  const requestedPath = validatedOriginalPath(request.headers.get(INTERNAL_PATH_HEADER));
+  const locale = validatedLocaleFromPath(requestedPath) ?? defaultLocale;
+  const localizedHomepage = `${canonicalOrigin}/${locale}`;
+  const localizedProductIndex = `${canonicalOrigin}/${locale}/products`;
+  const body = [
+    '# Page not found',
+    '',
+    `No public page exists at \`${requestedPath}\`.`,
+    '',
+    `- [Homepage](${localizedHomepage})`,
+    `- [Sitemap](${canonicalOrigin}/sitemap.xml)`,
+    `- [Agent instructions](${canonicalOrigin}/llms.txt)`,
+    `- [Product index](${localizedProductIndex})`,
+  ].join('\n');
+
+  return new Response(body, {
+    status: 404,
+    headers: {
+      'Content-Type': 'text/markdown; charset=utf-8',
+      Vary: 'Accept',
+    },
+  });
+}
+```
+
+Do not rely on `notFound()` inside a negotiated catch-all Route Handler. In production that exception
+path can yield a 404 with an empty body. Return the explicit `Response` above. Directly invoking the
+handler in a unit test is useful regression coverage but does not prove deployed status, content
+type, body, negotiation, or rewrite behavior; use the production HTTP tests in `testing-e2e.md`.
 
 ### Error logging — structured context via pino
 
@@ -202,7 +260,8 @@ redirect('/');
 Error occurred →
 ├─ During render?          → Let error.tsx handle it automatically
 ├─ Async op needing log?   → try/catch → log → rethrow or fallback
-├─ Resource not found?     → notFound() → not-found.tsx
+├─ Known resource missing? → notFound() → nearest not-found.tsx
+├─ Unknown public route?   → verified HTML/Markdown 404 contract
 ├─ Non-critical section?   → try/catch → log warn → fallback content
 ├─ Unrecoverable?          → try/catch → log error → redirect outside try
 └─ Root layout crashed?    → global-error.tsx (last resort)
@@ -234,8 +293,11 @@ Error occurred →
 - **No `global-error.tsx` with translation providers.** The layout providing `NextIntlClientProvider` has crashed. Use hardcoded fallback strings.
 - **No `notFound()` inside try/catch.** Like `redirect()`, it throws internally. Catching it prevents the not-found page from rendering.
 - **No skipping `error.tsx` at the locale root.** Without it, unhandled errors show the default Next.js error page — no translations, no retry.
-- **No invented stable `catchError()` promise helper.** In 16.2, `unstable_catchError()` is an
-  experimental Client Component boundary API, not a tuple-returning async helper.
+- **No invented stable error helper.** Verify its exact API and stability in the installed docs.
 - **No silently swallowed `try/catch`.** Always log before rendering fallback content. Silent
   failures hide bugs.
-- **No error handling in Client Components for server data.** Data fetching is in Server Components. Boundaries catch render failures. Clients receive resolved props.
+- **No assumption that a render boundary catches event-handler or browser-request failures.**
+  Interactive clients need explicit visible error, timeout, and retry state; see
+  `client-async-state.md`.
+- **No visual-only 404 proof.** Assert status, content type, raw body, recovery links, and both
+  Markdown negotiation paths against the built server.

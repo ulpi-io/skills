@@ -2,10 +2,11 @@
 
 ## What
 
-With Next.js 16.2 Cache Components enabled, `'use cache'` is the explicit model for caching function
-and component output. Cache Components are opt-in and require `cacheComponents: true` in
-`next.config.ts`; do not treat this flag as a universal requirement for applications that have not
-adopted the model.
+When the installed Next.js package and its bundled documentation support Cache Components, `'use cache'`
+is the explicit model for caching function and component output. Cache Components are opt-in and require
+the installed version's documented configuration (commonly `cacheComponents: true` in `next.config.ts`).
+Do not add the flag or these APIs to an application that has not adopted that rendering model. Read the
+installed documentation under `node_modules/next/dist/docs/` before changing cache behavior.
 
 ### Prerequisite
 
@@ -117,7 +118,7 @@ Cached function arguments and return values must be serializable.
 
 ```typescript
 import { cacheTag, cacheLife } from 'next/cache';
-import { apiFetch } from '@/lib/api/client';
+import { apiRequest } from '@/lib/api/client';
 import type { Product } from '@/types/product';
 
 async function getProduct(slug: string): Promise<Product> {
@@ -125,7 +126,7 @@ async function getProduct(slug: string): Promise<Product> {
   cacheLife('hours');
   cacheTag(`product-${slug}`, 'products');
 
-  return apiFetch<Product>(`/products/${slug}`);
+  return apiRequest<Product>(`/products/${encodeURIComponent(slug)}`);
 }
 
 async function getProductList(category: string): Promise<Product[]> {
@@ -133,7 +134,7 @@ async function getProductList(category: string): Promise<Product[]> {
   cacheLife('minutes');
   cacheTag(`products-${category}`, 'products');
 
-  return apiFetch<Product[]>(`/products?category=${category}`);
+  return apiRequest<Product[]>('/products', { searchParams: { category } });
 }
 
 export { getProduct, getProductList };
@@ -144,16 +145,16 @@ export { getProduct, getProductList };
 ```tsx
 import { cacheTag, cacheLife } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
-import { getProduct } from '@/lib/api/endpoints/products';
+import { getProduct } from '@/lib/api/products-server';
 import { formatPrice } from '@/lib/utils/format';
 
-async function ProductDetails({ slug }: { slug: string }) {
+async function ProductDetails({ slug, locale }: { slug: string; locale: string }) {
   'use cache';
   cacheLife('hours');
   cacheTag(`product-${slug}`);
 
-  const t = await getTranslations('products');
-  const product = await getProduct(slug);
+  const t = await getTranslations({ locale, namespace: 'products' });
+  const product = await getProduct(slug, locale);
 
   return (
     <section>
@@ -175,8 +176,11 @@ export { ProductDetails };
 'use server';
 
 import { updateTag, revalidateTag, refresh } from 'next/cache';
-import { apiFetch } from '@/lib/api/client';
-import { verifySession } from '@/lib/auth/dal';
+import { getServerSession } from '@/lib/auth/server-session';
+import {
+  updatePreferences as updatePreferencesRequest,
+  updateProduct as updateProductRequest,
+} from '@/lib/api/products-server';
 import { updateProductSchema } from '@/lib/validations/products';
 import type { ActionResult } from '@/types/actions';
 import type { Product } from '@/types/product';
@@ -185,35 +189,38 @@ import type { Product } from '@/types/product';
 export async function updateProduct(
   productId: string, formData: FormData,
 ): Promise<ActionResult<Product>> {
-  await verifySession();
+  const session = await getServerSession();
+  if (!session) return { success: false, error: 'auth.required' };
   const parsed = updateProductSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
-    return { success: false, error: 'Validation failed', fieldErrors: parsed.error.flatten().fieldErrors };
+    return { success: false, error: 'validation_failed', fieldErrors: parsed.error.flatten().fieldErrors };
   }
-  const product = await apiFetch<Product>(`/products/${productId}`, {
-    method: 'PATCH', body: JSON.stringify(parsed.data),
-  });
+  const product = await updateProductRequest(productId, parsed.data);
   updateTag(`product-${product.slug}`); // read-your-writes: editor sees fresh data
   return { success: true, data: product };
 }
 
 // Background content refresh → revalidateTag (2nd arg = cacheLife profile, required)
 export async function refreshCatalog(): Promise<ActionResult<null>> {
-  await verifySession();
+  const session = await getServerSession();
+  if (!session) return { success: false, error: 'auth.required' };
   revalidateTag('products', 'minutes'); // SWR: stale served while refreshing
   return { success: true, data: null };
 }
 
 // Uncached data changed (e.g., user preferences in cookies) → refresh
 export async function updatePreferences(formData: FormData): Promise<ActionResult<null>> {
-  const session = await verifySession();
-  await apiFetch(`/users/${session.userId}/preferences`, {
-    method: 'PUT', body: JSON.stringify(Object.fromEntries(formData)),
-  });
+  const session = await getServerSession();
+  if (!session) return { success: false, error: 'auth.required' };
+  await updatePreferencesRequest(Object.fromEntries(formData));
   refresh(); // no cached data involved — re-render Server Components with fresh uncached data
   return { success: true, data: null };
 }
 ```
+
+The server domain module uses the shared API client. In a first-party cookie-session project it forwards
+only the required Cookie, configured canonical Origin, and locale; it never synthesizes identity or role
+headers. The backend policy authorizes each mutation.
 
 ## When
 

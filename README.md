@@ -69,7 +69,7 @@ npx skills add https://github.com/ulpi-io/skills --skill browse
 | [secrets](#secrets) | Credential management — encrypted vault, CLI injection, MCP shim |
 | [build-dmg](#build-dmg) | Build distributable DMG installers for macOS Xcode projects |
 | [lokei](#lokei) | Local dev proxy — named HTTPS domains on .test with valid TLS |
-| [nextjs](#nextjs) | Next.js 16.2 stable App Router reference — upgrades, Cache Components, i18n, data layer |
+| [nextjs](#nextjs) | Installed-version-aware Next.js App Router reference — i18n, trusted data access, public-page contracts |
 | [laravel](#laravel) | Laravel 13 API framework — Actions, JSON:API, AI SDK, Boost 2, MCP, Horizon, Pest 4 |
 | [laravel-filament](#laravel-filament) | Filament v5 admin panel — resources, schemas, tables, actions, widgets, v3-to-v5 migration |
 | [rust](#rust) | Rust systems programming — storage engines, SIMD, pgwire, DataFusion, tantivy, HNSW, arenas |
@@ -788,9 +788,9 @@ Requires: `npm i -g lokei && lokei setup`
 npx skills add https://github.com/ulpi-io/skills --skill nextjs
 ```
 
-**Next.js 16.2 stable App Router reference for AI coding agents.**
+**Installed-version-aware Next.js App Router reference for AI coding agents.**
 
-Recommends the stable Next.js 16.2 line for new applications while detecting and respecting the resolved version in existing projects. The App Router reference covers version upgrades, async request APIs, typed routes and `next typegen`, Node.js `proxy.ts` with the Edge-middleware exception, opt-in Cache Components and React Compiler, the API-backed data layer, next-intl, structured logging, analytics, testing, security, SEO, and accessibility across 20 focused references. Canary releases remain explicit opt-ins rather than the default recommendation.
+Reads the project manifest, resolved lockfile, and bundled Next.js documentation before making framework decisions, preserves the installed release during unrelated work, and never downgrades an installed 16.3.x project. The App Router reference covers upgrades, async request APIs, typed routes and `next typegen`, locale-prefixed routing and RTL, trusted server and browser API lanes, cookie-session boundaries, Cache Components, agent-ready and machine-readable public pages, raw-HTML and SEO contracts, stale-response protection, accessibility, and three levels of testing across 22 focused references.
 
 ---
 
